@@ -20,7 +20,55 @@ export default function AvatarWindow() {
   const [showMenu, setShowMenu] = useState(false);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const [showGreeting, setShowGreeting] = useState(true);
-  const avatarRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const modelRef = useRef<any>(null);
+
+  // 初始化 Live2D
+  useEffect(() => {
+    let app: any = null;
+
+    async function initLive2D() {
+      if (!canvasRef.current) return;
+
+      try {
+        const PIXI = await import("pixi.js");
+        const { Live2DModel } = await import("pixi-live2d-display");
+        await import("pixi-live2d-display/dist/cubism2.es.js");
+
+        app = new PIXI.Application({
+          view: canvasRef.current,
+          width: 280,
+          height: 380,
+          transparent: true,
+          autoStart: false,
+        });
+
+        const model = await Live2DModel.from("/live2d/Pio_model1/model1.json", {
+          autoInteract: true,
+        });
+
+        model.anchor.set(0.5, 0.5);
+        model.position.set(140, 220);
+        model.scale.set(0.22);
+
+        app.stage.addChild(model);
+        app.renderer.render(app.stage);
+        app.start();
+
+        modelRef.current = model;
+      } catch (err) {
+        console.error("Live2D init error:", err);
+      }
+    }
+
+    initLive2D();
+
+    return () => {
+      if (app) {
+        app.destroy(false, { children: true });
+      }
+    };
+  }, []);
 
   // 隐藏 greeting 气泡
   useEffect(() => {
@@ -72,11 +120,8 @@ export default function AvatarWindow() {
       onDoubleClick={handleDoubleClick}
       onMouseDown={handleMouseDown}
     >
-      {/* 数字人本体 */}
-      <div className="avatar-body" ref={avatarRef}>
-        <div className="avatar-sprite" />
-        <div className="avatar-shadow" />
-      </div>
+      {/* Live2D Canvas */}
+      <canvas ref={canvasRef} className="live2d-canvas" />
 
       {/* 打招呼气泡 */}
       {showGreeting && (
@@ -85,11 +130,6 @@ export default function AvatarWindow() {
           <div className="bubble-tail" />
         </div>
       )}
-
-      {/* 浮动粒子 */}
-      <div className="particle p1" />
-      <div className="particle p2" />
-      <div className="particle p3" />
 
       {/* 右键菜单 */}
       {showMenu && (
