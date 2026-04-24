@@ -17,13 +17,18 @@
   cursor: grabbing;
 }
 
-/* Live2D Canvas */
-.live2d-canvas {
+/* Three.js Canvas Mount */
+.three-canvas-mount {
   position: absolute;
   top: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  width: 280px;
+  height: 380px;
   pointer-events: none;
+}
+
+.three-canvas-mount canvas {
+  display: block;
 }
 
 /* 打招呼气泡 */
