@@ -1,9 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, State};
 
-// ── 状态管理 ──
 struct AgentProcess(Mutex<Option<std::process::Child>>);
 
 #[derive(Serialize)]
@@ -12,18 +11,14 @@ struct ChatResponse {
     thinking: Option<String>,
 }
 
-// ── Rust 命令 ──
-
 /// 重启 Hermes Agent
 #[tauri::command]
 fn restart_hermes(state: State<'_, AgentProcess>) -> Result<String, String> {
-    // 先杀掉现有进程
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = guard.take() {
         let _ = child.kill();
     }
 
-    // 启动新进程
     let child = Command::new("hermes")
         .arg("--acp")
         .arg("--stdio")
@@ -40,7 +35,6 @@ fn restart_hermes(state: State<'_, AgentProcess>) -> Result<String, String> {
 /// 与 Hermes Agent 对话
 #[tauri::command]
 async fn chat_with_hermes(message: String) -> Result<ChatResponse, String> {
-    // 调用本地 Hermes Agent
     let request = serde_json::json!({
         "jsonrpc": "2.0",
         "id": "1",
@@ -57,7 +51,7 @@ async fn chat_with_hermes(message: String) -> Result<ChatResponse, String> {
         .spawn()
         .map_err(|e| format!("启动 hermes 失败: {}", e))?;
 
-    let stdin = child.stdin.as_mut().map_err(|e| e.to_string())?;
+    let stdin = child.stdin.as_mut().ok_or("无法获取 stdin")?;
     use std::io::Write;
     stdin
         .write_all(format!("{}\n", request).as_bytes())
@@ -104,17 +98,15 @@ fn open_log_dir(_app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// ── 入口点 ──
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_context_menu::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_dialog::init())
         .manage(AgentProcess(Mutex::new(None)))
         .setup(|_app| {
             log::info!("Hermes Desktop 启动");
