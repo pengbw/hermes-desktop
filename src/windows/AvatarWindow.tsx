@@ -41,15 +41,15 @@ export default function AvatarWindow() {
           autoStart: false,
         });
 
-        const model = await Live2DModel.from("/live2d/Pio_model1/model1.json", {
+        const model = await (Live2DModel as any).from("/live2d/Pio_model1/model1.json", {
           autoInteract: true,
         });
 
-        model.anchor.set(0.5, 0.5);
-        model.position.set(140, 220);
-        model.scale.set(0.22);
+        (model as any).anchor.set(0.5, 0.5);
+        (model as any).position.set(140, 220);
+        (model as any).scale.set(0.22);
 
-        app.stage.addChild(model);
+        app.stage.addChild(model as any);
         app.renderer.render(app.stage);
         app.start();
 
