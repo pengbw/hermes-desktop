@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import * as PIXI from "pixi.js";
+import { Live2DModel } from "pixi-live2d-display";
 import "./AvatarWindow.css";
 
 const GREETING = "Hi 主人您好，我是你的助理小跃";
@@ -21,20 +23,16 @@ export default function AvatarWindow() {
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const [showGreeting, setShowGreeting] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const modelRef = useRef<any>(null);
+  const appRef = useRef<PIXI.Application | null>(null);
 
   // 初始化 Live2D
   useEffect(() => {
-    let app: any = null;
+    let app: PIXI.Application | null = null;
 
     async function initLive2D() {
       if (!canvasRef.current) return;
 
       try {
-        const PIXI = await import("pixi.js");
-        const { Live2DModel } = await import("pixi-live2d-display");
-        await import("pixi-live2d-display/dist/cubism2.es.js");
-
         app = new PIXI.Application({
           view: canvasRef.current,
           width: 280,
@@ -55,7 +53,7 @@ export default function AvatarWindow() {
         app.renderer.render(app.stage);
         app.start();
 
-        modelRef.current = model;
+        appRef.current = app;
       } catch (err) {
         console.error("Live2D init error:", err);
       }
