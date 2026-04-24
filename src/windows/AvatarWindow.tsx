@@ -4,11 +4,17 @@ import "./AvatarWindow.css";
 
 const GREETING = "Hi 主人您好，我是你的助理小跃";
 
-interface MenuItem {
+interface SeparatorItem {
+  separator: true;
+}
+
+interface ActionItem {
   label: string;
   action: () => void;
-  separator?: boolean;
+  separator?: false;
 }
+
+type MenuItem = ActionItem | SeparatorItem;
 
 export default function AvatarWindow() {
   const [showMenu, setShowMenu] = useState(false);
@@ -52,10 +58,10 @@ export default function AvatarWindow() {
     { label: "🗨️ 对话", action: () => openMainWindow("chat") },
     { label: "⚙️ 设置", action: () => openMainWindow("settings") },
     { label: "📦 技能中心", action: () => openMainWindow("skills") },
-    { separator: true, label: "" },
+    { separator: true },
     { label: "🔄 重启 Agent", action: () => restartAgent() },
     { label: "📋 查看日志", action: () => openLogDir() },
-    { separator: true, label: "" },
+    { separator: true },
     { label: "❌ 退出", action: () => quitApp() },
   ];
 
@@ -63,7 +69,7 @@ export default function AvatarWindow() {
     <div
       className="avatar-window"
       onContextMenu={handleContextMenu}
-      onDblClick={handleDoubleClick}
+      onDoubleClick={handleDoubleClick}
       onMouseDown={handleMouseDown}
     >
       {/* 数字人本体 */}
