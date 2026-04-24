@@ -49,7 +49,7 @@ export default function AvatarWindow() {
         model.position.set(140, 220);
         model.scale.set(0.22);
 
-        app.stage.addChild(model);
+        app.stage.addChild(model as any);
         app.renderer.render(app.stage);
         app.start();
 
