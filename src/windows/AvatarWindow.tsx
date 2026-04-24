@@ -365,14 +365,8 @@ export default function AvatarWindow() {
     const particles = new THREE.Points(particleGeo, particleMat);
     scene.add(particles);
 
-    // Background gradient sphere
-    const bgGeo = new THREE.SphereGeometry(15, 32, 32);
-    const bgMat = new THREE.MeshBasicMaterial({
-      color: 0x080818,
-      side: THREE.BackSide,
-    });
-    const bg = new THREE.Mesh(bgGeo, bgMat);
-    scene.add(bg);
+    // Transparent background - no mesh, let window transparency show through
+    scene.background = null;
 
     avatar.position.y = 0.2;
     scene.add(avatar);
