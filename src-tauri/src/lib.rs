@@ -1,12 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::process::Stdio;
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 
 // ── 状态管理 ──
-struct AgentProcess(Mutex<Option<tokio::process::Child>>);
+struct AgentProcess(Mutex<Option<std::process::Child>>);
 
 #[derive(Serialize)]
 struct ChatResponse {
@@ -18,54 +16,31 @@ struct ChatResponse {
 
 /// 重启 Hermes Agent
 #[tauri::command]
-async fn restart_hermes(state: State<'_, AgentProcess>) -> Result<String, String> {
+fn restart_hermes(state: State<'_, AgentProcess>) -> Result<String, String> {
     // 先杀掉现有进程
-    {
-        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-        if let Some(mut child) = guard.take() {
-            let _ = child.kill().await;
-        }
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    if let Some(mut child) = guard.take() {
+        let _ = child.kill();
     }
 
     // 启动新进程
     let child = Command::new("hermes")
         .arg("--acp")
         .arg("--stdio")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("启动 hermes 失败: {}", e))?;
 
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     *guard = Some(child);
-
     Ok("Hermes Agent 已重启".to_string())
 }
 
 /// 与 Hermes Agent 对话
 #[tauri::command]
-async fn chat_with_hermes(
-    message: String,
-    state: State<'_, AgentProcess>,
-) -> Result<ChatResponse, String> {
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-
-    // 如果没有运行中的进程，先启动
-    if guard.is_none() {
-        let child = Command::new("hermes")
-            .arg("--acp")
-            .arg("--stdio")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("启动 hermes 失败: {}", e))?;
-        *guard = Some(child);
-    }
-
-    let child = guard.as_mut().ok_or("Agent 进程未运行")?;
-    let stdout = child.stdout.as_mut().ok_or("无法获取 stdout")?;
-
-    let mut reader = BufReader::new(stdout).lines();
+async fn chat_with_hermes(message: String) -> Result<ChatResponse, String> {
+    // 调用本地 Hermes Agent
     let request = serde_json::json!({
         "jsonrpc": "2.0",
         "id": "1",
@@ -73,38 +48,30 @@ async fn chat_with_hermes(
         "params": { "message": message }
     });
 
-    // 发给 hermes stdin
     let mut child = Command::new("hermes")
         .arg("--acp")
         .arg("--stdio")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("启动 hermes 失败: {}", e))?;
 
-    let stdin = child.stdin.as_mut().ok_or("无法获取 stdin")?;
-    use tokio::io::AsyncWriteExt;
+    let stdin = child.stdin.as_mut().map_err(|e| e.to_string())?;
+    use std::io::Write;
     stdin
         .write_all(format!("{}\n", request).as_bytes())
-        .await
         .map_err(|e| e.to_string())?;
 
-    // 读取响应
-    let mut resp_lines = Vec::new();
-    let mut reader = BufReader::new(child.stdout.take().unwrap()).lines();
-    while let Ok(Some(line)) = reader.next_line().await {
-        resp_lines.push(line);
-        if line.contains("\"result\"") || line.contains("\"error\"") {
-            break;
-        }
-    }
+    let output = child
+        .wait_with_output()
+        .map_err(|e| e.to_string())?;
 
-    let resp_text = resp_lines.join("\n");
-    let resp: serde_json::Value =
-        serde_json::from_str(&resp_text).unwrap_or(serde_json::json!({
-            "content": resp_text,
-            "thinking": null
-        }));
+    let resp_text = String::from_utf8_lossy(&output.stdout);
+    let resp: serde_json::Value = serde_json::from_str(&resp_text).unwrap_or(serde_json::json!({
+        "content": resp_text.to_string(),
+        "thinking": null
+    }));
 
     Ok(ChatResponse {
         content: resp["content"].as_str().unwrap_or("").to_string(),
@@ -114,7 +81,7 @@ async fn chat_with_hermes(
 
 /// 打开日志目录
 #[tauri::command]
-async fn open_log_dir(app: AppHandle) -> Result<(), String> {
+fn open_log_dir(_app: AppHandle) -> Result<(), String> {
     let log_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("hermes-desktop")
@@ -149,9 +116,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AgentProcess(Mutex::new(None)))
-        .setup(|app| {
-            // avatar 窗口已由 tauri.conf.json 定义，默认可见
-            // main 窗口通过 JS 按需创建
+        .setup(|_app| {
             log::info!("Hermes Desktop 启动");
             Ok(())
         })
