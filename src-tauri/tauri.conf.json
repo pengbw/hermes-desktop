@@ -1,20 +1,42 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "hermes-desktop-init",
+  "productName": "Hermes Desktop",
   "version": "0.1.0",
-  "identifier": "com.root.hermes-desktop-init",
+  "identifier": "com.hermes.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "frontendDist": "../dist",
+    "devtools": true
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
-        "title": "hermes-desktop-init",
-        "width": 800,
-        "height": 600
+        "title": "Hermes Desktop",
+        "label": "main",
+        "width": 1024,
+        "height": 720,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "visible": false,
+        "decorations": true
+      },
+      {
+        "title": "Hermes Avatar",
+        "label": "avatar",
+        "width": 300,
+        "height": 400,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": true,
+        "center": true
       }
     ],
     "security": {
