@@ -101,8 +101,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 32px;
+  gap: 28px;
+  padding: 32px 24px;
+  overflow-y: auto;
 }
 
 .home-avatar {
@@ -175,6 +176,7 @@
   background: #ffffff;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  min-width: 100px;
 }
 
 .stat-num {
@@ -186,6 +188,189 @@
 .stat-label {
   font-size: 12px;
   color: #666666;
+}
+
+/* Agent 状态指示器 */
+.status-dot.online {
+  color: #4CAF50;
+}
+
+.status-dot.offline {
+  color: #F44336;
+}
+
+/* Agent 详细信息卡片 */
+.agent-info-section {
+  width: 100%;
+  max-width: 640px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  padding: 20px 24px;
+}
+
+.agent-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.agent-info-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1A1A1A;
+}
+
+.refresh-btn {
+  padding: 6px 12px;
+  border: 1px solid #E5E5E5;
+  background: #ffffff;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  border-color: #4FC3F7;
+  color: #4FC3F7;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.agent-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.agent-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: #F9FAFB;
+  border-radius: 8px;
+}
+
+.agent-info-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.info-label {
+  font-size: 11px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.info-value {
+  font-size: 13px;
+  color: #1A1A1A;
+  word-break: break-all;
+}
+
+.info-value.highlight {
+  color: #4FC3F7;
+  font-weight: 600;
+}
+
+.info-value.mono {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+  font-size: 12px;
+  color: #666;
+}
+
+/* API Keys 区域 */
+.api-keys-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #F0F0F0;
+}
+
+.api-keys-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1A1A1A;
+}
+
+.api-keys-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.api-key-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.api-key-badge.configured {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.api-key-badge.missing {
+  background: #F5F5F5;
+  color: #999;
+}
+
+.key-indicator {
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.key-name {
+  font-size: 12px;
+}
+
+/* Agent 未安装提示 */
+.agent-not-found {
+  width: 100%;
+  max-width: 480px;
+  text-align: center;
+  padding: 32px;
+  background: #FFF8E1;
+  border: 1px solid #FFE082;
+  border-radius: 12px;
+}
+
+.agent-not-found .warning-icon {
+  font-size: 36px;
+}
+
+.agent-not-found h3 {
+  margin: 12px 0 8px;
+  font-size: 16px;
+  color: #F57F17;
+}
+
+.agent-not-found p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #666;
+}
+
+.agent-not-found code {
+  display: inline-block;
+  padding: 6px 14px;
+  background: #FFF3E0;
+  border-radius: 6px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 13px;
+  color: #E65100;
 }
 
 /* ── 对话 ── */
@@ -285,6 +470,19 @@
   word-break: break-word;
 }
 
+/* 流式输出光标 */
+.streaming-cursor {
+  display: inline-block;
+  color: #4FC3F7;
+  animation: blink 1s infinite;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
 /* 输入区 */
 .chat-input-area {
   display: flex;
@@ -334,10 +532,195 @@
   cursor: not-allowed;
 }
 
+/* ── 对话布局（带侧边栏） ── */
+.chat-layout {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.chat-sidebar {
+  width: 200px;
+  background: #ffffff;
+  border-right: 1px solid #E5E5E5;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.new-chat-btn {
+  margin: 12px;
+  padding: 8px 12px;
+  background: #4FC3F7;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.new-chat-btn:hover {
+  background: #29B6F6;
+}
+
+.conversation-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.conversation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1A1A1A;
+  transition: background 0.1s;
+  margin-bottom: 2px;
+}
+
+.conversation-item:hover {
+  background: #F5F5F7;
+}
+
+.conversation-item.active {
+  background: #e8f4fd;
+  color: #4FC3F7;
+}
+
+.conv-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.conv-delete {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.conversation-item:hover .conv-delete {
+  opacity: 1;
+}
+
+.conv-delete:hover {
+  background: #ffebee;
+  color: #f44336;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* ── 设置 ── */
-.settings-panel h2 {
-  margin: 0 0 24px 0;
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-header h2 {
+  margin: 0;
   font-size: 18px;
+  font-weight: 600;
+  color: #1A1A1A;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 配置文件路径 */
+.config-path-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #F9FAFB;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.path-label {
+  color: #999;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.path-value {
+  color: #666;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 保存提示 Toast */
+.save-toast {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  animation: slideIn 0.3s ease;
+}
+
+.save-toast.success {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.save-toast.error {
+  background: #FFEBEE;
+  color: #C62828;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 设置分区 */
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-section {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.settings-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 15px;
   font-weight: 600;
   color: #1A1A1A;
 }
@@ -345,8 +728,7 @@
 .settings-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-width: 480px;
+  gap: 14px;
 }
 
 .form-group {
@@ -359,6 +741,9 @@
   font-size: 13px;
   color: #666666;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .form-group input,
@@ -382,81 +767,371 @@
   border: none;
 }
 
+/* 修改标记 */
+.dirty-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #FFF3E0;
+  color: #E65100;
+  font-weight: 600;
+}
+
+/* Toggle 开关样式 */
+.toggle-label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.toggle-label input[type="checkbox"] {
+  width: 40px;
+  height: 22px;
+  appearance: none;
+  background: #D0D0D0;
+  border-radius: 11px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: none;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.toggle-label input[type="checkbox"]:checked {
+  background: #4FC3F7;
+}
+
+.toggle-label input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.toggle-label input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+}
+
+/* 底部保存栏 */
+.settings-save-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-top: 1px solid #F0F0F0;
+  margin-top: 8px;
+  position: sticky;
+  bottom: 0;
+  background: #F5F5F7;
+}
+
+.dirty-count {
+  font-size: 13px;
+  color: #999;
+}
+
 .save-btn {
-  padding: 10px 20px;
+  padding: 10px 24px;
   background: #4FC3F7;
   color: #ffffff;
   border: none;
   border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
-  margin-top: 8px;
-  transition: background 0.15s;
+  transition: all 0.15s;
+  font-weight: 500;
 }
 
-.save-btn:hover {
+.save-btn:hover:not(:disabled) {
   background: #29B6F6;
+  transform: translateY(-1px);
+}
+
+.save-btn:disabled {
+  background: #D0D0D0;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* ── 技能中心 ── */
-.skills-panel h2 {
-  margin: 0 0 24px 0;
+.skills-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.skills-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.skills-header h2 {
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
   color: #1A1A1A;
 }
 
-.skills-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+/* 统计概览 */
+.skills-stats {
+  display: flex;
+  gap: 12px;
 }
 
-.skill-card {
-  padding: 20px;
-  background: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: box-shadow 0.15s;
+.skills-stat-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  min-width: 64px;
+}
+
+.skills-stat-badge.total {
+  background: #E3F2FD;
+}
+
+.skills-stat-badge.builtin {
+  background: #E8F5E9;
+}
+
+.skills-stat-badge.local {
+  background: #FFF3E0;
+}
+
+.skills-stat-badge.hub {
+  background: #F3E5F5;
+}
+
+.stat-count {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1A1A1A;
+}
+
+.stat-text {
+  font-size: 11px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* 搜索和过滤工具栏 */
+.skills-toolbar {
+  display: flex;
+  gap: 10px;
+}
+
+.skills-search {
+  flex: 1;
+  padding: 9px 14px;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+  transition: border-color 0.15s;
+}
+
+.skills-search:focus {
+  border-color: #4FC3F7;
+}
+
+.skills-filter {
+  padding: 9px 12px;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+  color: #1A1A1A;
   cursor: pointer;
+  transition: border-color 0.15s;
 }
 
-.skill-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+.skills-filter:focus {
+  border-color: #4FC3F7;
 }
 
-.skill-icon {
-  font-size: 32px;
-  display: block;
-  margin-bottom: 12px;
+/* 分类列表 */
+.skills-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.skill-card h3 {
-  margin: 0 0 8px 0;
-  font-size: 15px;
+.skill-category-group {
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.category-header:hover {
+  background: #F9FAFB;
+}
+
+.category-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.category-icon {
+  font-size: 18px;
+}
+
+.category-name {
+  font-size: 14px;
   font-weight: 600;
   color: #1A1A1A;
 }
 
-.skill-card p {
-  margin: 0;
+.category-count {
+  font-size: 11px;
+  font-weight: 600;
+  background: #F0F0F0;
+  color: #666;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.category-arrow {
   font-size: 12px;
-  color: #666666;
-  line-height: 1.5;
+  color: #999;
+  transition: transform 0.2s;
 }
 
-.add-skill-btn {
-  padding: 10px 20px;
-  background: transparent;
-  color: #4FC3F7;
-  border: 1px dashed #4FC3F7;
+.category-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+/* 分类下技能列表 */
+.category-skills {
+  border-top: 1px solid #F0F0F0;
+  padding: 4px 0;
+}
+
+.skill-item {
+  padding: 8px 16px 8px 44px;
+  transition: background 0.1s;
+}
+
+.skill-item:hover {
+  background: #FAFBFC;
+}
+
+.skill-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.skill-name {
+  font-size: 13px;
+  color: #333;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+}
+
+.skill-badges {
+  display: flex;
+  gap: 6px;
+}
+
+.source-badge,
+.trust-badge {
+  font-size: 10px;
+  padding: 2px 8px;
   border-radius: 8px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.15s;
+  font-weight: 500;
 }
 
-.add-skill-btn:hover {
-  background: #e8f4fd;
+.source-badge.builtin {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.source-badge.local {
+  background: #FFF3E0;
+  color: #E65100;
+}
+
+.source-badge.hub {
+  background: #F3E5F5;
+  color: #7B1FA2;
+}
+
+.trust-badge.builtin {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.trust-badge.local {
+  background: #FFF8E1;
+  color: #F57F17;
+}
+
+/* 加载状态 */
+.skills-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  color: #999;
+}
+
+.loading-spinner {
+  font-size: 32px;
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.skills-loading p {
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+
+/* 空状态 */
+.skills-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  color: #999;
+}
+
+.skills-empty span {
+  font-size: 36px;
+}
+
+.skills-empty p {
+  margin: 12px 0 0;
+  font-size: 14px;
 }

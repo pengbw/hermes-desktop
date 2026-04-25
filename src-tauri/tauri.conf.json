@@ -21,7 +21,7 @@
         "minHeight": 600,
         "center": true,
         "resizable": true,
-        "visible": false,
+        "visible": true,
         "decorations": true
       },
       {
@@ -31,15 +31,22 @@
         "height": 400,
         "resizable": false,
         "decorations": false,
-        "transparent": true,
+        "transparent": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "visible": true,
-        "center": true
+        "center": false,
+        "x": 100,
+        "y": 100
       }
     ],
     "security": {
       "csp": null
+    }
+  },
+  "plugins": {
+    "sql": {
+      "preload": ["sqlite:hermes.db"]
     }
   },
   "bundle": {

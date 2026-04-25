@@ -9,7 +9,7 @@
   align-items: center;
   justify-content: center;
   cursor: grab;
-  background: transparent;
+  background: #f0f8ff;
   overflow: hidden;
 }
 
@@ -17,18 +17,29 @@
   cursor: grabbing;
 }
 
-/* Three.js Canvas Mount */
-.three-canvas-mount {
+/* Live2D Canvas Mount */
+.live2d-canvas-mount {
   position: absolute;
   top: 0;
   left: 0;
   width: 280px;
   height: 380px;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
-.three-canvas-mount canvas {
+.live2d-canvas-mount canvas {
   display: block;
+}
+
+/* Loading indicator */
+.loading-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #4FC3F7;
+  font-size: 14px;
+  z-index: 5;
 }
 
 /* 打招呼气泡 */
