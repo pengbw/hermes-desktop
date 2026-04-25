@@ -8,66 +8,29 @@
   overflow: hidden;
 }
 
-/* 标题栏 */
-.title-bar {
+/* 工具栏：菜单 + 数字人按钮 */
+.toolbar {
   height: 40px;
   background: #ffffff;
   border-bottom: 1px solid #E5E5E5;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  -webkit-app-region: drag;
+  padding: 0 12px;
   flex-shrink: 0;
 }
 
-.title-text {
-  font-size: 13px;
-  color: #666666;
-}
-
-.window-controls {
-  display: flex;
-  gap: 8px;
-  -webkit-app-region: no-drag;
-}
-
-.win-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s;
-}
-
-.win-btn.minimize { background: #F5F5F7; color: #666; }
-.win-btn.minimize:hover { background: #E8E8E8; }
-.win-btn.maximize { background: #F5F5F7; color: #666; }
-.win-btn.maximize:hover { background: #E8E8E8; }
-.win-btn.close { background: #F5F5F7; color: #666; }
-.win-btn.close:hover { background: #FF3B30; color: #fff; }
-
-/* Tab 导航 */
-.tab-nav {
+.toolbar-nav {
   display: flex;
   gap: 4px;
-  padding: 8px 16px;
-  background: #ffffff;
-  border-bottom: 1px solid #E5E5E5;
-  flex-shrink: 0;
 }
 
 .tab-btn {
-  padding: 6px 16px;
+  padding: 5px 14px;
   border: none;
   background: transparent;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
   color: #666666;
   cursor: pointer;
   transition: all 0.15s;
@@ -82,6 +45,30 @@
   background: #4FC3F7;
   color: #ffffff;
   font-weight: 500;
+}
+
+.avatar-toggle-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.avatar-toggle-btn:hover {
+  opacity: 1;
+}
+
+.avatar-toggle-btn.active {
+  opacity: 1;
+  background: rgba(79, 195, 247, 0.15);
 }
 
 /* 内容区 */
@@ -1135,3 +1122,22 @@
   margin: 12px 0 0;
   font-size: 14px;
 }
+
+/* 会话重命名 */
+.conv-rename-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
+  padding: 2px 6px;
+  outline: none;
+  min-width: 0;
+}
+
+.conv-rename-input:focus {
+  border-color: rgba(100, 180, 255, 0.6);
+}
+
+

@@ -27,6 +27,7 @@
       {
         "title": "Hermes Avatar",
         "label": "avatar",
+        "url": "index.html",
         "width": 300,
         "height": 400,
         "resizable": false,
@@ -34,7 +35,7 @@
         "transparent": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "visible": true,
+        "visible": false,
         "center": false,
         "x": 100,
         "y": 100

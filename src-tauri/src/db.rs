@@ -15,6 +15,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         CREATE TABLE IF NOT EXISTS conversations (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
+            hermes_session_id TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            last_active_at INTEGER NOT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         )
@@ -22,6 +25,19 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
+
+    // 迁移：为旧表添加新列
+    for alter in [
+        "ALTER TABLE conversations ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+        "ALTER TABLE conversations ADD COLUMN last_active_at INTEGER NOT NULL DEFAULT 0",
+    ] {
+        let _ = sqlx::query(alter).execute(pool).await; // 忽略已存在的列错误
+    }
+
+    // 更新 last_active_at 为 updated_at（旧数据迁移）
+    sqlx::query("UPDATE conversations SET last_active_at = updated_at WHERE last_active_at = 0")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -70,14 +86,19 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Conversation {
     pub id: String,
     pub title: String,
+    pub hermes_session_id: Option<String>,
+    pub status: String,
+    pub last_active_at: i64,
     pub created_at: i64,
     pub updated_at: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Message {
     pub id: String,
     pub role: String,
@@ -87,11 +108,13 @@ pub struct Message {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateConversationRequest {
     pub title: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateMessageRequest {
     pub conversation_id: String,
     pub role: String,
@@ -100,6 +123,7 @@ pub struct CreateMessageRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateMessageRequest {
     pub id: String,
     pub content: String,

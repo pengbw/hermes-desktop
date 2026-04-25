@@ -22,6 +22,19 @@ export default function AvatarWindow() {
 
     const initLive2D = async () => {
       try {
+        // 检查 Cubism 2 core 是否可用
+        const hasCubismCore = typeof (window as any).Live2DModelCore !== "undefined"
+          || typeof (window as any).Live2D !== "undefined";
+
+        if (!hasCubismCore) {
+          // 尝试动态加载 Cubism 2 core
+          try {
+            await loadScript("/live2d/core/live2d.min.js");
+          } catch {
+            console.warn("[Avatar] Cubism 2 core not found, trying to continue...");
+          }
+        }
+
         const PIXI = await import("pixi.js");
         const { Live2DModel } = await import("pixi-live2d-display");
 
@@ -141,8 +154,8 @@ export default function AvatarWindow() {
   const menuItems: Array<{ label: string; action: () => void } | { separator: true }> = [
     { label: "🏠 首页", action: () => openMainWindow("home") },
     { label: "🗨️ 对话", action: () => openMainWindow("chat") },
-    { label: "⚙️ 设置", action: () => openMainWindow("settings") },
     { label: "📦 技能中心", action: () => openMainWindow("skills") },
+    { label: "⚙️ 设置", action: () => openMainWindow("settings") },
     { separator: true },
     { label: "🔄 重启 Agent", action: () => restartAgent() },
     { label: "📋 查看日志", action: () => openLogDir() },
@@ -159,25 +172,35 @@ export default function AvatarWindow() {
     >
       <div ref={containerRef} className="live2d-canvas-mount" />
 
+      {/* 加载中 */}
       {!isLoaded && !loadError && (
         <div className="loading-indicator">
+          <div className="loading-spinner-avatar" />
           <span>加载中...</span>
         </div>
       )}
 
+      {/* Live2D 加载失败 - 显示 fallback */}
       {loadError && (
-        <div className="loading-indicator" style={{ color: "#f44336", fontSize: 12, textAlign: "center", padding: 20 }}>
-          <span>模型加载失败</span>
+        <div className="avatar-fallback">
+          <div className="fallback-avatar-circle">
+            <span className="fallback-emoji">🎭</span>
+          </div>
+          <div className="fallback-name">小跃</div>
+          <div className="fallback-status">在线待命中</div>
+          <div className="fallback-hint">Live2D 模型未加载</div>
         </div>
       )}
 
-      {showGreeting && isLoaded && (
+      {/* 打招呼气泡 */}
+      {showGreeting && (isLoaded || loadError) && (
         <div className="greeting-bubble">
           <span>{GREETING}</span>
           <div className="bubble-tail" />
         </div>
       )}
 
+      {/* 右键菜单 */}
       {showMenu && (
         <div
           className="context-menu"
@@ -206,32 +229,25 @@ export default function AvatarWindow() {
   );
 }
 
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
 async function openMainWindow(tab: string) {
   try {
     const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-    const { Window } = await import("@tauri-apps/api/window");
-
-    const existing = await Window.getByLabel("main");
+    const existing = await WebviewWindow.getByLabel("main");
     if (existing) {
       await existing.setFocus();
       await existing.emit("navigate-to-tab", { tab });
       return;
     }
-
-    const mainWin = new WebviewWindow("main", {
-      url: `index.html?tab=${tab}`,
-      title: "Hermes Desktop",
-      width: 1024,
-      height: 720,
-      minWidth: 800,
-      minHeight: 600,
-      center: true,
-      resizable: true,
-      decorations: true,
-    });
-    mainWin.once("tauri://error", (e) => {
-      console.error("main window error:", e);
-    });
   } catch (err) {
     console.error("openMainWindow error:", err);
   }

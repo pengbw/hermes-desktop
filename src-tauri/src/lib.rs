@@ -20,9 +20,11 @@ struct ChatStreamEvent {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ChatResponse {
     content: String,
     thinking: Option<String>,
+    session_id: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -486,115 +488,254 @@ fn restart_hermes(state: State<'_, AgentProcess>) -> Result<String, String> {
     Ok("Hermes Agent 已重启".to_string())
 }
 
-/// 与 Hermes Agent 对话（阻塞式，用于非流式场景）
+/// 与 Hermes Agent 对话（阻塞式，使用 hermes chat -q）
+/// 支持 session_id 恢复上下文
 #[tauri::command]
-async fn chat_with_hermes(message: String) -> Result<ChatResponse, String> {
-    let request = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": "1",
-        "method": "chat",
-        "params": { "message": message }
-    });
+async fn chat_with_hermes(message: String, session_id: Option<String>) -> Result<ChatResponse, String> {
+    log::info!("[chat] 开始: message={}, session_id={:?}", message, session_id);
 
-    let mut child = Command::new("hermes")
-        .arg("--acp")
-        .arg("--stdio")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("启动 hermes 失败: {}", e))?;
+    // 使用 zsh -lc 确保加载用户的 shell 环境（PATH 等）
+    let resume_arg = match &session_id {
+        Some(sid) => format!(" --resume '{}'", sid.replace('\'', "'\"'\"'")),
+        None => String::new(),
+    };
+    let shell_cmd = format!(
+        "hermes chat -q '{}' -Q{}",
+        message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
+        resume_arg
+    );
+    log::info!("[chat] 执行命令: zsh -lc {}", shell_cmd);
 
-    let stdin = child.stdin.as_mut().ok_or("无法获取 stdin")?;
-    use std::io::Write;
-    stdin
-        .write_all(format!("{}\n", request).as_bytes())
-        .map_err(|e| e.to_string())?;
+    let output = match tokio::time::timeout(
+        tokio::time::Duration::from_secs(60),
+        tokio::process::Command::new("zsh")
+            .args(["-lc", &shell_cmd])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output(),
+    )
+    .await
+    {
+        Ok(Ok(o)) => {
+            log::info!("[chat] 命令完成, exit={:?}", o.status.code());
+            o
+        }
+        Ok(Err(e)) => {
+            log::error!("[chat] 启动失败: {}", e);
+            return Err(format!("启动 hermes chat 失败: {}", e));
+        }
+        Err(_) => {
+            log::error!("[chat] 超时");
+            return Err("请求超时，请检查网络或模型配置".to_string());
+        }
+    };
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| e.to_string())?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    log::info!("[chat] stdout 长度={}, stderr 长度={}", stdout.len(), stderr.len());
 
-    let resp_text = String::from_utf8_lossy(&output.stdout);
-    let resp: serde_json::Value = serde_json::from_str(&resp_text).unwrap_or(serde_json::json!({
-        "content": resp_text.to_string(),
-        "thinking": null
-    }));
+    if !output.status.success() {
+        let err_text = if stderr.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            stderr.trim().to_string()
+        };
+        log::error!("[chat] 命令失败: {}", err_text);
+        return Err(format!("hermes chat 出错: {}", err_text));
+    }
 
-    Ok(ChatResponse {
-        content: resp["content"].as_str().unwrap_or("").to_string(),
-        thinking: resp["thinking"].as_str().map(|s| s.to_string()),
-    })
+    // 提取 session_id（可能在 stdout 或 stderr 中）和内容
+    let mut new_session_id: Option<String> = None;
+
+    // 先从 stderr 中找 session_id
+    for line in stderr.lines() {
+        let line = line.trim();
+        if line.starts_with("session_id:") {
+            new_session_id = Some(line.replace("session_id:", "").trim().to_string());
+            break;
+        }
+    }
+
+    // 从 stdout 中提取内容（同时检查是否有 session_id，过滤 resume 提示行）
+    let content: String = stdout
+        .lines()
+        .filter(|line| {
+            let line = line.trim();
+            if line.starts_with("session_id:") {
+                if new_session_id.is_none() {
+                    new_session_id = Some(line.replace("session_id:", "").trim().to_string());
+                }
+                false
+            } else if line.starts_with("↻ Resumed session") {
+                // 过滤掉 resume 提示行
+                false
+            } else {
+                true
+            }
+        })
+        .collect::<Vec<&str>>()
+        .join("\n")
+        .trim()
+        .to_string();
+
+    if content.is_empty() {
+        return Ok(ChatResponse {
+            content: "无法获取响应".to_string(),
+            thinking: None,
+            session_id: new_session_id,
+        });
+    }
+
+    log::info!("[chat] 返回内容长度={}, session_id={:?}", content.len(), new_session_id);
+    let response = ChatResponse {
+        content,
+        thinking: None,
+        session_id: new_session_id,
+    };
+    Ok(response)
 }
 
-/// 流式对话 - 通过事件发送数据到前端
+/// 流式对话 - 通过事件发送数据到前端（使用 hermes chat -q）
+/// 真正的流式：边读 stdout 边 emit 事件到前端
 #[tauri::command]
 async fn chat_with_hermes_stream(
     app: AppHandle,
     message: String,
     conversation_id: String,
 ) -> Result<(), String> {
-    let request = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": "1",
-        "method": "chat",
-        "params": { "message": message, "stream": true }
+    let event_id = format!("chat_stream_{}", conversation_id);
+    log::info!("[chat_stream] 开始: conversation_id={}, message={}", conversation_id, message);
+
+    // 使用 zsh -lc 确保加载用户的 shell 环境（PATH 等）
+    let shell_cmd = format!(
+        "hermes chat -q '{}' -Q",
+        message.replace('\\', "\\\\").replace('\'', "'\"'\"'")
+    );
+    log::info!("[chat_stream] 执行命令: zsh -lc {}", shell_cmd);
+
+    // spawn 子进程，实时读取 stdout
+    let mut child = match tokio::process::Command::new("zsh")
+        .args(["-lc", &shell_cmd])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("[chat_stream] 启动命令失败: {}", e);
+            let _ = app.emit(&event_id, ChatStreamEvent {
+                chunk: format!("[错误] 启动 hermes chat 失败: {}", e),
+                done: false,
+            });
+            let _ = app.emit(&event_id, ChatStreamEvent {
+                chunk: "".to_string(),
+                done: true,
+            });
+            return Ok(());
+        }
+    };
+
+    let stdout = child.stdout.take();
+    let stderr_child = child.stderr.take();
+
+    // 在后台读取 stderr
+    let stderr_task = tokio::spawn(async move {
+        if let Some(mut stderr) = stderr_child {
+            use tokio::io::AsyncReadExt;
+            let mut buf = Vec::new();
+            let _ = stderr.read_to_end(&mut buf).await;
+            String::from_utf8_lossy(&buf).to_string()
+        } else {
+            String::new()
+        }
     });
 
-    let mut child = Command::new("hermes")
-        .arg("--acp")
-        .arg("--stdio")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("启动 hermes 失败: {}", e))?;
+    // 实时读取 stdout 并 emit 事件
+    use tokio::io::{AsyncBufReadExt, BufReader};
 
-    let stdin = child.stdin.as_mut().ok_or("无法获取 stdin")?;
-    use std::io::Write;
-    stdin
-        .write_all(format!("{}\n", request).as_bytes())
-        .map_err(|e| e.to_string())?;
+    let result = if let Some(stdout) = stdout {
+        let reader = BufReader::new(stdout);
+        let mut lines = reader.lines();
+        let mut total_content = String::new();
 
-    let stdout = child.stdout.take().ok_or("无法获取 stdout")?;
-    use std::io::{BufRead, BufReader};
-    let reader = BufReader::new(stdout);
+        // 带超时的逐行读取循环
+        loop {
+            let line_result = tokio::time::timeout(
+                tokio::time::Duration::from_secs(60),
+                lines.next_line(),
+            ).await;
 
-    let event_id = format!("chat-stream-{}", conversation_id);
-
-    for line in reader.lines() {
-        let line = line.map_err(|e| e.to_string())?;
-        if line.trim().is_empty() {
-            continue;
+            match line_result {
+                Ok(Ok(Some(line))) => {
+                    // 跳过 session_id 行
+                    if line.starts_with("session_id:") {
+                        log::info!("[chat_stream] 跳过 session_id 行: {}", line);
+                        continue;
+                    }
+                    if !line.is_empty() {
+                        total_content.push_str(&line);
+                        total_content.push('\n');
+                        let _ = app.emit(&event_id, ChatStreamEvent {
+                            chunk: line,
+                            done: false,
+                        });
+                    }
+                }
+                Ok(Ok(None)) => {
+                    // stdout EOF
+                    log::info!("[chat_stream] stdout EOF, 总长度={}", total_content.len());
+                    break;
+                }
+                Ok(Err(e)) => {
+                    log::error!("[chat_stream] 读取 stdout 错误: {}", e);
+                    break;
+                }
+                Err(_) => {
+                    log::error!("[chat_stream] 读取超时");
+                    let _ = app.emit(&event_id, ChatStreamEvent {
+                        chunk: "[错误] 请求超时，请检查网络或模型配置".to_string(),
+                        done: false,
+                    });
+                    break;
+                }
+            }
         }
 
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-            if let Some(chunk) = json.get("chunk").and_then(|v| v.as_str()) {
-                let _ = app.emit(&event_id, ChatStreamEvent {
-                    chunk: chunk.to_string(),
-                    done: false,
-                });
-            } else if json.get("done").and_then(|v| v.as_bool()).unwrap_or(false) {
-                let _ = app.emit(&event_id, ChatStreamEvent {
-                    chunk: "".to_string(),
-                    done: true,
-                });
-                break;
-            }
-        } else {
+        if total_content.is_empty() {
+            log::warn!("[chat_stream] stdout 为空");
             let _ = app.emit(&event_id, ChatStreamEvent {
-                chunk: line,
+                chunk: "[无回复]".to_string(),
                 done: false,
             });
         }
+
+        Ok(())
+    } else {
+        log::error!("[chat_stream] 无法获取 stdout");
+        let _ = app.emit(&event_id, ChatStreamEvent {
+            chunk: "[错误] 无法获取命令输出".to_string(),
+            done: false,
+        });
+        Ok(())
+    };
+
+    // 等待子进程退出
+    let _ = child.wait().await;
+
+    // 检查 stderr
+    let stderr_output = stderr_task.await.unwrap_or_default();
+    if !stderr_output.trim().is_empty() {
+        log::warn!("[chat_stream] stderr: {}", stderr_output.trim());
     }
 
+    // 发送 done 事件
     let _ = app.emit(&event_id, ChatStreamEvent {
         chunk: "".to_string(),
         done: true,
     });
 
-    Ok(())
+    log::info!("[chat_stream] 完成");
+    result
 }
 
 /// 打开日志目录
@@ -620,6 +761,23 @@ fn open_log_dir() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+/// 切换 Avatar 窗口的显示/隐藏
+#[tauri::command]
+async fn toggle_avatar_window(app: AppHandle) -> Result<bool, String> {
+    let avatar = app.get_webview_window("avatar")
+        .ok_or("Avatar window not found")?;
+
+    let visible = avatar.is_visible().map_err(|e| e.to_string())?;
+    if visible {
+        avatar.hide().map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        avatar.show().map_err(|e| e.to_string())?;
+        avatar.set_focus().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -661,6 +819,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             restart_hermes,
+            toggle_avatar_window,
             chat_with_hermes,
             chat_with_hermes_stream,
             open_log_dir,
@@ -672,6 +831,10 @@ pub fn run() {
             commands::create_conversation,
             commands::list_conversations,
             commands::delete_conversation,
+            commands::update_conversation_session_id,
+            commands::activate_conversation,
+            commands::rename_conversation,
+            commands::archive_stale_conversations,
             commands::create_message,
             commands::list_messages,
             commands::update_message,

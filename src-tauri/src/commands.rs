@@ -16,9 +16,10 @@ pub async fn create_conversation(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
-    sqlx::query("INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)")
+    sqlx::query("INSERT INTO conversations (id, title, hermes_session_id, status, last_active_at, created_at, updated_at) VALUES (?, ?, NULL, 'active', ?, ?, ?)")
         .bind(&id)
         .bind(&req.title)
+        .bind(now)
         .bind(now)
         .bind(now)
         .execute(&pool)
@@ -28,6 +29,9 @@ pub async fn create_conversation(
     Ok(db::Conversation {
         id,
         title: req.title,
+        hermes_session_id: None,
+        status: "active".to_string(),
+        last_active_at: now,
         created_at: now,
         updated_at: now,
     })
@@ -38,8 +42,8 @@ pub async fn list_conversations(
     app: AppHandle,
 ) -> Result<Vec<db::Conversation>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, i64, i64)>(
-        "SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC"
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, String, i64, i64, i64)>(
+        "SELECT id, title, hermes_session_id, status, last_active_at, created_at, updated_at FROM conversations ORDER BY updated_at DESC"
     )
     .fetch_all(&pool)
     .await
@@ -47,15 +51,88 @@ pub async fn list_conversations(
 
     let conversations = rows
         .into_iter()
-        .map(|(id, title, created_at, updated_at)| db::Conversation {
+        .map(|(id, title, hermes_session_id, status, last_active_at, created_at, updated_at)| db::Conversation {
             id,
             title,
+            hermes_session_id,
+            status,
+            last_active_at,
             created_at,
             updated_at,
         })
         .collect();
 
     Ok(conversations)
+}
+
+#[tauri::command]
+pub async fn update_conversation_session_id(
+    app: AppHandle,
+    id: String,
+    hermes_session_id: String,
+) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+    sqlx::query("UPDATE conversations SET hermes_session_id = ?, last_active_at = ? WHERE id = ?")
+        .bind(&hermes_session_id)
+        .bind(now)
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 激活归档会话（将 status 改为 active）
+#[tauri::command]
+pub async fn activate_conversation(
+    app: AppHandle,
+    id: String,
+) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+    sqlx::query("UPDATE conversations SET status = 'active', last_active_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 修改会话名称
+#[tauri::command]
+pub async fn rename_conversation(
+    app: AppHandle,
+    id: String,
+    title: String,
+) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    sqlx::query("UPDATE conversations SET title = ? WHERE id = ?")
+        .bind(&title)
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 归档超时会话（超过指定分钟数未使用的会话标记为 archived）
+#[tauri::command]
+pub async fn archive_stale_conversations(
+    app: AppHandle,
+    stale_minutes: i64,
+) -> Result<i64, String> {
+    let pool = get_pool(&app)?;
+    let threshold = chrono::Utc::now().timestamp_millis() - stale_minutes * 60 * 1000;
+
+    let result = sqlx::query("UPDATE conversations SET status = 'archived' WHERE status = 'active' AND last_active_at < ?")
+        .bind(threshold)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(result.rows_affected() as i64)
 }
 
 #[tauri::command]
@@ -92,7 +169,9 @@ pub async fn create_message(
         .await
         .map_err(|e| e.to_string())?;
 
-    sqlx::query("UPDATE conversations SET updated_at = ? WHERE id = ?")
+    // 更新会话的 updated_at 和 last_active_at，并激活会话
+    sqlx::query("UPDATE conversations SET updated_at = ?, last_active_at = ?, status = 'active' WHERE id = ?")
+        .bind(now)
         .bind(now)
         .bind(&req.conversation_id)
         .execute(&pool)

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import "./MainWindow.css";
@@ -17,23 +16,57 @@ interface Message {
 interface Conversation {
   id: string;
   title: string;
-  created_at: number;
-  updated_at: number;
+  hermesSessionId?: string;
+  status: string;
+  lastActiveAt: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 const DEFAULT_TAB = "home";
 
+// 每个会话独立的聊天状态
+interface ChatSessionState {
+  isStreaming: boolean;
+  isThinking: boolean;
+  thinkingContent: string;
+  streamedContent: string;
+}
+
+const DEFAULT_CHAT_STATE: ChatSessionState = {
+  isStreaming: false,
+  isThinking: false,
+  thinkingContent: "",
+  streamedContent: "",
+};
+
 export default function MainWindow() {
   const [activeTab, setActiveTab] = useState<Tab>(DEFAULT_TAB);
+  const [showAvatar, setShowAvatar] = useState(false);
+
+  // 控制 Avatar 独立窗口
+  const toggleAvatarWindow = async () => {
+    try {
+      const visible = await invoke<boolean>("toggle_avatar_window");
+      setShowAvatar(visible);
+    } catch (err) {
+      console.error("Failed to toggle avatar window:", err);
+    }
+  };
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingContent, setThinkingContent] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
   const [streamedContent, setStreamedContent] = useState("");
+  const streamedContentRef = useRef("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // 每个会话独立的聊天状态存储
+  const chatStatesRef = useRef<Map<string, ChatSessionState>>(new Map());
+  // 每个会话独立的消息存储
+  const messagesMapRef = useRef<Map<string, Message[]>>(new Map());
 
   // Load conversations on mount
   useEffect(() => {
@@ -42,9 +75,29 @@ export default function MainWindow() {
 
   // Load messages when conversation changes
   useEffect(() => {
+    // 保存当前会话的聊天状态
+
     if (currentConversationId) {
-      loadMessages(currentConversationId);
+      // 恢复目标会话的聊天状态
+      const savedState = chatStatesRef.current.get(currentConversationId) || DEFAULT_CHAT_STATE;
+      setIsStreaming(savedState.isStreaming);
+      setIsThinking(savedState.isThinking);
+      setThinkingContent(savedState.thinkingContent);
+      setStreamedContent(savedState.streamedContent);
+      streamedContentRef.current = savedState.streamedContent;
+
+      // 恢复目标会话的消息（优先从缓存，否则从DB加载）
+      const cachedMessages = messagesMapRef.current.get(currentConversationId);
+      if (cachedMessages) {
+        setMessages(cachedMessages);
+      } else {
+        loadMessages(currentConversationId);
+      }
     } else {
+      setIsStreaming(false);
+      setIsThinking(false);
+      setStreamedContent("");
+      streamedContentRef.current = "";
       setMessages([]);
     }
   }, [currentConversationId]);
@@ -88,6 +141,7 @@ export default function MainWindow() {
   const loadMessages = async (conversationId: string) => {
     try {
       const result = await invoke<Message[]>("list_messages", { conversationId });
+      messagesMapRef.current.set(conversationId, result);
       setMessages(result);
     } catch (err) {
       console.error("Failed to load messages:", err);
@@ -97,7 +151,9 @@ export default function MainWindow() {
   const createNewConversation = async () => {
     try {
       const result = await invoke<Conversation>("create_conversation", {
-        title: "新对话",
+        req: {
+          title: "新对话",
+        },
       });
       setConversations((prev) => [result, ...prev]);
       setCurrentConversationId(result.id);
@@ -106,6 +162,10 @@ export default function MainWindow() {
     } catch (err) {
       console.error("Failed to create conversation:", err);
     }
+  };
+
+  const handleSelectConversation = async (id: string) => {
+    setCurrentConversationId(id);
   };
 
   const deleteConversation = async (id: string) => {
@@ -121,6 +181,17 @@ export default function MainWindow() {
     }
   };
 
+  const renameConversation = async (id: string, title: string) => {
+    try {
+      await invoke("rename_conversation", { id, title });
+      setConversations((prev) =>
+        prev.map(c => c.id === id ? { ...c, title } : c)
+      );
+    } catch (err) {
+      console.error("Failed to rename conversation:", err);
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || isStreaming) return;
 
@@ -130,7 +201,9 @@ export default function MainWindow() {
     if (!conversationId) {
       try {
         const conv = await invoke<Conversation>("create_conversation", {
-          title: input.trim().slice(0, 30) || "新对话",
+          req: {
+            title: input.trim().slice(0, 30) || "新对话",
+          },
         });
         conversationId = conv.id;
         setConversations((prev) => [conv, ...prev]);
@@ -148,11 +221,11 @@ export default function MainWindow() {
       timestamp: Date.now(),
     };
 
-    // Save user message to DB
+    // Save user message to DB（失败不阻塞）
     try {
       await invoke("create_message", {
         req: {
-          conversation_id: conversationId,
+          conversationId: conversationId,
           role: "user",
           content: userMsg.content,
           thinking: null,
@@ -162,62 +235,108 @@ export default function MainWindow() {
       console.error("Failed to save user message:", err);
     }
 
+    // 辅助函数：更新指定会话的聊天状态
+    const updateChatState = (convId: string, update: Partial<ChatSessionState>) => {
+      const current = chatStatesRef.current.get(convId) || { ...DEFAULT_CHAT_STATE };
+      const next = { ...current, ...update };
+      chatStatesRef.current.set(convId, next);
+      // 如果是当前会话，同步更新 React 状态
+      if (convId === currentConversationId) {
+        if (update.isStreaming !== undefined) setIsStreaming(update.isStreaming);
+        if (update.isThinking !== undefined) setIsThinking(update.isThinking);
+        if (update.thinkingContent !== undefined) setThinkingContent(update.thinkingContent);
+        if (update.streamedContent !== undefined) {
+          setStreamedContent(update.streamedContent);
+          streamedContentRef.current = update.streamedContent;
+        }
+      }
+    };
+
+    // 辅助函数：更新指定会话的消息
+    const updateChatMessages = (convId: string, updater: (prev: Message[]) => Message[]) => {
+      const prev = messagesMapRef.current.get(convId) || [];
+      const next = updater(prev);
+      messagesMapRef.current.set(convId, next);
+      if (convId === currentConversationId) {
+        setMessages(next);
+      }
+    };
+
     setMessages((prev) => [...prev, userMsg]);
+    messagesMapRef.current.set(conversationId, [...(messagesMapRef.current.get(conversationId) || []), userMsg]);
     setInput("");
-    setIsStreaming(true);
-    setIsThinking(true);
-    setThinkingContent("");
-    setStreamedContent("");
+    updateChatState(conversationId, { isStreaming: true, isThinking: true, thinkingContent: "", streamedContent: "" });
 
     // Listen for stream events
-    const eventId = `chat-stream-${conversationId}`;
+    const eventId = `chat_stream_${conversationId}`;
+
     const unlisten = await listen<{ chunk: string; done: boolean }>(eventId, (event) => {
       if (event.payload.done) {
-        setIsStreaming(false);
-        setIsThinking(false);
+        updateChatState(conversationId, { isStreaming: false, isThinking: false });
         unlisten();
       } else {
-        setStreamedContent((prev) => prev + event.payload.chunk);
-        setIsThinking(false);
+        const newContent = (chatStatesRef.current.get(conversationId)?.streamedContent || "") + "\n" + event.payload.chunk;
+        updateChatState(conversationId, { streamedContent: newContent.trim(), isThinking: false });
       }
     });
 
     try {
-      await invoke("chat_with_hermes_stream", {
+      // 获取当前会话的 hermes session_id 用于恢复上下文
+      const currentConv = conversations.find(c => c.id === conversationId);
+      const hermesSessionId = currentConv?.hermesSessionId;
+
+      // 使用非流式对话获取回复
+      const result = await invoke<{ content: string; thinking: string | null; sessionId?: string }>("chat_with_hermes", {
         message: userMsg.content,
-        conversationId,
+        sessionId: hermesSessionId || null,
       });
 
-      // After stream completes, save assistant message
-      const finalContent = streamedContent + "";
-      if (finalContent) {
-        await invoke("create_message", {
-          req: {
-            conversation_id: conversationId,
-            role: "assistant",
-            content: finalContent,
-            thinking: thinkingContent || null,
-          },
-        });
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: (Date.now() + 1).toString(),
-            role: "assistant",
-            content: finalContent,
-            thinking: thinkingContent || undefined,
-            timestamp: Date.now(),
-          },
-        ]);
-        setStreamedContent("");
+      updateChatState(conversationId, { isStreaming: false, isThinking: false, streamedContent: "" });
+
+      // 添加 assistant 消息到会话
+      const assistantMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: result.content,
+        thinking: result.thinking || undefined,
+        timestamp: Date.now(),
+      };
+      updateChatMessages(conversationId, (prev) => [...prev, assistantMsg]);
+      unlisten();
+
+      // 保存 hermes session_id（用于上下文恢复）
+      if (result.sessionId && result.sessionId !== hermesSessionId) {
+        try {
+          await invoke("update_conversation_session_id", {
+            id: conversationId,
+            hermesSessionId: result.sessionId,
+          });
+          setConversations((prev) =>
+            prev.map(c => c.id === conversationId ? { ...c, hermesSessionId: result.sessionId } : c)
+          );
+        } catch (err) {
+          console.error("Failed to save session_id:", err);
+        }
       }
 
-      // Refresh conversations to update title if needed
+      // 保存 assistant 消息到 DB（失败不影响显示）
+      try {
+        await invoke("create_message", {
+          req: {
+            conversationId: conversationId,
+            role: "assistant",
+            content: result.content,
+            thinking: result.thinking || null,
+          },
+        });
+      } catch (saveErr) {
+        console.error("Failed to save assistant message:", saveErr);
+      }
+
       loadConversations();
     } catch (err) {
-      console.error("Stream error:", err);
-      setIsStreaming(false);
-      setIsThinking(false);
+      console.error("Chat error:", err);
+      updateChatState(conversationId, { isStreaming: false, isThinking: false });
       unlisten();
     }
   };
@@ -231,43 +350,27 @@ export default function MainWindow() {
 
   return (
     <div className="main-window">
-      {/* 标题栏 */}
-      <div className="title-bar" data-tauri-drag-region>
-        <span className="title-text">Hi 主人您好，我是你的助理 小跃</span>
-        <div className="window-controls">
-          <button
-            className="win-btn minimize"
-            onClick={() => getCurrentWindow().minimize()}
-          >
-            ─
-          </button>
-          <button
-            className="win-btn maximize"
-            onClick={() => getCurrentWindow().toggleMaximize()}
-          >
-            □
-          </button>
-          <button
-            className="win-btn close"
-            onClick={() => getCurrentWindow().close()}
-          >
-            ×
-          </button>
-        </div>
+      {/* 工具栏：菜单 + 数字人按钮 */}
+      <div className="toolbar">
+        <nav className="toolbar-nav">
+          {(["home", "chat", "skills", "settings"] as Tab[]).map((tab) => (
+            <button
+              key={tab}
+              className={`tab-btn ${activeTab === tab ? "active" : ""}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tabLabels[tab]}
+            </button>
+          ))}
+        </nav>
+        <button
+          className={`avatar-toggle-btn ${showAvatar ? "active" : ""}`}
+          onClick={toggleAvatarWindow}
+          title="数字人"
+        >
+          🎭
+        </button>
       </div>
-
-      {/* Tab 导航 */}
-      <nav className="tab-nav">
-        {(["home", "chat", "settings", "skills"] as Tab[]).map((tab) => (
-          <button
-            key={tab}
-            className={`tab-btn ${activeTab === tab ? "active" : ""}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tabLabels[tab]}
-          </button>
-        ))}
-      </nav>
 
       {/* 内容区 */}
       <div className="content-area">
@@ -278,9 +381,10 @@ export default function MainWindow() {
           <ChatPanel
             conversations={conversations}
             currentConversationId={currentConversationId}
-            onSelectConversation={setCurrentConversationId}
+            onSelectConversation={handleSelectConversation}
             onNewConversation={createNewConversation}
             onDeleteConversation={deleteConversation}
+            onRenameConversation={renameConversation}
             messages={messages}
             input={input}
             setInput={setInput}
@@ -467,6 +571,7 @@ interface ChatPanelProps {
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
   onDeleteConversation: (id: string) => void;
+  onRenameConversation: (id: string, title: string) => void;
   messages: Message[];
   input: string;
   setInput: (v: string) => void;
@@ -485,6 +590,7 @@ function ChatPanel({
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
+  onRenameConversation,
   messages,
   input,
   setInput,
@@ -496,6 +602,61 @@ function ChatPanel({
   onKeyDown,
   messagesEndRef,
 }: ChatPanelProps) {
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const startRename = (conv: Conversation) => {
+    setRenamingId(conv.id);
+    setRenameValue(conv.title);
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  };
+
+  const commitRename = () => {
+    if (renamingId && renameValue.trim()) {
+      onRenameConversation(renamingId, renameValue.trim());
+    }
+    setRenamingId(null);
+  };
+
+  const renderConvItem = (conv: Conversation, extraClass: string = "") => {
+    const isRenaming = renamingId === conv.id;
+    return (
+      <div
+        key={conv.id}
+        className={`conversation-item ${extraClass} ${conv.id === currentConversationId ? "active" : ""}`}
+        onClick={() => !isRenaming && onSelectConversation(conv.id)}
+        onDoubleClick={(e) => { e.stopPropagation(); startRename(conv); }}
+      >
+        {isRenaming ? (
+          <input
+            ref={renameInputRef}
+            className="conv-rename-input"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") setRenamingId(null);
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="conv-title">{conv.title}</span>
+        )}
+        <button
+          className="conv-delete"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteConversation(conv.id);
+          }}
+        >
+          ×
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="chat-layout">
       {/* 侧边栏 - 对话列表 */}
@@ -504,24 +665,7 @@ function ChatPanel({
           + 新对话
         </button>
         <div className="conversation-list">
-          {conversations.map((conv) => (
-            <div
-              key={conv.id}
-              className={`conversation-item ${conv.id === currentConversationId ? "active" : ""}`}
-              onClick={() => onSelectConversation(conv.id)}
-            >
-              <span className="conv-title">{conv.title}</span>
-              <button
-                className="conv-delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteConversation(conv.id);
-                }}
-              >
-                ×
-              </button>
-            </div>
-          ))}
+          {conversations.map((conv) => renderConvItem(conv))}
         </div>
       </div>
 
