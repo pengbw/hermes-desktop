@@ -14,7 +14,7 @@
 
 ### 核心理念
 
-Hermes Desktop 以 **2.5D Live2D 数字人**作为 AI 助手的外观载体，赋予对话式 AI 一个"形象"。用户不是在和一个无形的聊天框对话，而是和一个有表情、有动作的数字人互动。整体风格追求：**白色主题、简洁、时尚、科技感**。
+Hermes Desktop 以 **3D VRM 数字人**作为 AI 助手的外观载体，赋予对话式 AI 一个"形象"。用户不是在和一个无形的聊天框对话，而是和一个有表情、有动作的数字人互动。整体风格追求：**白色主题、简洁、时尚、科技感**。
 
 ### 目标用户
 
@@ -98,7 +98,7 @@ Hermes Desktop 有两种交互形态：
 | 桌面框架 | **Tauri 2.x** | 轻量级，比 Electron 小 10x，原生性能 |
 | 前端 | **React 19 + TypeScript** | 组件化，生态成熟 |
 | 样式 | **Tailwind CSS** | 原子化 CSS，快速构建白色主题 |
-| 数字人 | **Live2D Cubism SDK Web** | 2.5D 纸片人，成熟度高，资源丰富 |
+| 数字人 | **Three.js + @pixiv/three-vrm** | VRM 3D数字人，成熟 VRM 标准支持 |
 | 语音合成 | **Web Speech API / 第三方 TTS** | 数字人说话时的口型驱动 |
 | 对话内核 | **Hermes Agent** | 通过子进程调用，接管 Agent 逻辑 |
 | 状态管理 | **Zustand** | 轻量，无样板代码 |
@@ -112,7 +112,7 @@ Hermes Desktop 有两种交互形态：
 ├──────────────┬──────────────────────────────┤
 │   UI Layer   │   React + Tailwind (白色主题) │
 ├──────────────┼──────────────────────────────┤
-│  数字人层    │   Live2D Cubism Canvas        │
+│  数字人层    │   Three.js + @pixiv/three-vrm  │
 ├──────────────┼──────────────────────────────┤
 │  Tauri IPC   │   invoke() Rust commands      │
 ├──────────────┼──────────────────────────────┤
@@ -136,7 +136,7 @@ hermes-desktop/
 │   │   │   ├── MessageBubble.tsx
 │   │   │   ├── ThinkingPanel.tsx
 │   │   │   └── InputBar.tsx
-│   │   ├── Live2D/              # 数字人组件
+│   │   ├── Avatar/                # 数字人组件
 │   │   │   ├── DigitalAvatar.tsx
 │   │   │   └── MotionController.ts
 │   │   ├── Settings/            # 设置面板
@@ -164,7 +164,7 @@ hermes-desktop/
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── public/
-│   └── models/                  # Live2D 模型文件 (.model3.json, .moc3, etc.)
+│   └── vrm/                      # VRM 模型文件 (.vrm)
 └── package.json
 ```
 
@@ -172,15 +172,15 @@ hermes-desktop/
 
 ## 3. 功能模块
 
-### 3.1 数字人模块（Live2D Avatar）
+## 3. 数字人模块（VRM Avatar）
 
-**目标：** 在窗口左侧或中央展示 Live2D 数字人形象，说话时有口型动画。
+**目标：** 在窗口左侧或中央展示 VRM 3D 数字人形象，说话时有口型动画。
 
 #### 功能点
 
 | 功能 | 描述 | 优先级 |
 |------|------|--------|
-| 模型加载 | 加载 Live2D Cubism 4/5 模型（.model3.json） | P0 |
+| 模型加载 | 加载 VRM 模型（.vrm） | P0 |
 | 待机动作 | 数字人待机时播放 idle 动画（呼吸/眨眼） | P0 |
 | 说话口型 | 根据 TTS 音频驱动口型同步 | P1 |
 | 表情切换 | 根据对话情绪（开心/思考/抱歉）切换表情 | P1 |
@@ -191,7 +191,7 @@ hermes-desktop/
 
 - 数字人区域背景：**透明**（融入主界面）
 - 数字人大小：占左侧区域 **60%高度**，居中展示
-- 白色主题 UI 下的数字人：浅色系 Live2D 模型更合适（避免深色）
+- 白色主题 UI 下的数字人：浅色系 VRM 模型更合适（避免深色）
 - 推荐默认模型：**二次元邻家女孩风格**
 
 ---
@@ -358,9 +358,9 @@ hermes-desktop/
 - [ ] 会话管理（新建/切换/删除）
 
 ### Phase 3 — 数字人集成（P0）
-- [ ] Live2D Cubism SDK 接入
-- [ ] 默认模型加载
-- [ ] 待机 idle 动画
+- [x] Three.js + @pixiv/three-vrm 接入
+- [x] VRM 模型加载
+- [x] 待机 idle 动画
 - [ ] TTS 语音合成接入
 - [ ] 口型动画驱动
 
@@ -387,7 +387,8 @@ hermes-desktop/
 ## 7. 参考资料
 
 - [Tauri 2.x 官方文档](https://tauri.app/)
-- [Live2D Cubism SDK Web](https://www.live2d.com/sdk/web/)
+- [Three.js](https://threejs.org/)
+- [@pixiv/three-vrm](https://github.com/pixiv/three-vrm)
 - [Hermes Agent GitHub](https://github.com/NousResearch/hermes-agent)
 - [Tailwind CSS](https://tailwindcss.com/)
 - [Zustand](https://github.com/pmndrs/zustand)
