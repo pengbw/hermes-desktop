@@ -595,6 +595,107 @@ async fn chat_with_hermes(message: String, session_id: Option<String>) -> Result
     Ok(response)
 }
 
+/// 与 Avatar 数字人对话（简化版，直接返回文本）
+#[tauri::command]
+async fn chat_with_agent(_app: AppHandle, message: String, session_id: Option<String>) -> Result<ChatResponse, String> {
+    log::info!("[avatar_chat] 开始: message={}, session_id={:?}", message, session_id);
+
+    let resume_arg = match &session_id {
+        Some(sid) => format!(" --resume '{}'", sid.replace('\'', "'\"'\"'")),
+        None => String::new(),
+    };
+    let shell_cmd = format!(
+        "hermes chat -q '{}' -Q{}",
+        message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
+        resume_arg
+    );
+    log::info!("[avatar_chat] 执行命令: zsh -lc {}", shell_cmd);
+
+    let output = match tokio::time::timeout(
+        tokio::time::Duration::from_secs(120),
+        tokio::process::Command::new("zsh")
+            .args(["-lc", &shell_cmd])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output(),
+    )
+    .await
+    {
+        Ok(Ok(o)) => {
+            log::info!("[avatar_chat] 命令完成, exit={:?}, stdout_len={}, stderr_len={}", 
+                o.status.code(), o.stdout.len(), o.stderr.len());
+            o
+        }
+        Ok(Err(e)) => {
+            log::error!("[avatar_chat] 启动失败: {}", e);
+            return Err(format!("启动 hermes chat 失败: {}", e));
+        }
+        Err(_) => {
+            log::error!("[avatar_chat] 超时");
+            return Err("请求超时，请检查网络或模型配置".to_string());
+        }
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    log::info!("[avatar_chat] stdout 长度={}, stderr 长度={}", stdout.len(), stderr.len());
+
+    if !output.status.success() {
+        let err_text = if stderr.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            stderr.trim().to_string()
+        };
+        log::error!("[avatar_chat] 命令失败: {}", err_text);
+        return Err(format!("hermes chat 出错: {}", err_text));
+    }
+
+    let mut new_session_id: Option<String> = None;
+
+    for line in stderr.lines() {
+        let line = line.trim();
+        if line.starts_with("session_id:") {
+            new_session_id = Some(line.replace("session_id:", "").trim().to_string());
+            break;
+        }
+    }
+
+    let content: String = stdout
+        .lines()
+        .filter(|line| {
+            let line = line.trim();
+            if line.starts_with("session_id:") {
+                if new_session_id.is_none() {
+                    new_session_id = Some(line.replace("session_id:", "").trim().to_string());
+                }
+                false
+            } else if line.starts_with("↻ Resumed session") {
+                false
+            } else {
+                true
+            }
+        })
+        .collect::<Vec<&str>>()
+        .join("\n")
+        .trim()
+        .to_string();
+
+    if content.is_empty() {
+        return Ok(ChatResponse {
+            content: "抱歉，我没有理解你的意思，能再说一遍吗？".to_string(),
+            thinking: None,
+            session_id: new_session_id,
+        });
+    }
+
+    log::info!("[avatar_chat] 返回内容长度={}, session_id={:?}", content.len(), new_session_id);
+    Ok(ChatResponse {
+        content,
+        thinking: None,
+        session_id: new_session_id,
+    })
+}
+
 /// 流式对话 - 通过事件发送数据到前端（使用 hermes chat -q）
 /// 真正的流式：边读 stdout 边 emit 事件到前端
 #[tauri::command]
@@ -780,6 +881,68 @@ async fn toggle_avatar_window(app: AppHandle) -> Result<bool, String> {
     }
 }
 
+#[tauri::command]
+async fn close_chat_window(app: AppHandle) -> Result<(), String> {
+    if let Some(chat_win) = app.get_webview_window("chat") {
+        chat_win.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn hide_avatar_window(app: AppHandle) -> Result<(), String> {
+    if let Some(avatar_win) = app.get_webview_window("avatar") {
+        avatar_win.hide().map_err(|e| e.to_string())?;
+    }
+    if let Some(chat_win) = app.get_webview_window("chat") {
+        chat_win.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn sync_chat_window(app: AppHandle) -> Result<bool, String> {
+    let avatar_win = app.get_webview_window("avatar").ok_or("avatar window not found")?;
+    let chat_win = match app.get_webview_window("chat") {
+        Some(w) => w,
+        None => return Ok(false),
+    };
+
+    let pos = avatar_win.outer_position().map_err(|e| e.to_string())?;
+    let size = avatar_win.outer_size().map_err(|e| e.to_string())?;
+    let monitor = avatar_win.primary_monitor().map_err(|e| e.to_string())?;
+    let monitor = match monitor {
+        Some(m) => m,
+        None => return Err("no monitor".into()),
+    };
+
+    let sf = monitor.scale_factor();
+    let chat_w_phys = (300.0 * sf) as i32;
+    let screen_w = monitor.size().width as i32;
+    let avatar_right = pos.x as i32 + size.width as i32;
+    let space_right = screen_w - avatar_right;
+    let space_left = pos.x as i32;
+
+    let chat_x = if space_right >= chat_w_phys {
+        avatar_right
+    } else if space_left >= chat_w_phys {
+        pos.x as i32 - chat_w_phys
+    } else if space_right >= space_left {
+        avatar_right
+    } else {
+        pos.x as i32 - chat_w_phys
+    };
+
+    chat_win
+        .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+            chat_x,
+            pos.y as i32,
+        )))
+        .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -820,6 +983,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             restart_hermes,
             toggle_avatar_window,
+            sync_chat_window,
+            close_chat_window,
+            hide_avatar_window,
+            chat_with_agent,
             chat_with_hermes,
             chat_with_hermes_stream,
             open_log_dir,
@@ -841,6 +1008,9 @@ pub fn run() {
             commands::delete_message,
             commands::get_config,
             commands::set_config,
+            commands::get_avatar_conversation,
+            commands::create_avatar_conversation,
+            commands::get_avatar_messages,
         ])
         .run(tauri::generate_context!())
         .expect("Hermes Desktop 启动失败");

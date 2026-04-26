@@ -16,9 +16,10 @@ pub async fn create_conversation(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
-    sqlx::query("INSERT INTO conversations (id, title, hermes_session_id, status, last_active_at, created_at, updated_at) VALUES (?, ?, NULL, 'active', ?, ?, ?)")
+    sqlx::query("INSERT INTO conversations (id, title, hermes_session_id, status, source, last_active_at, created_at, updated_at) VALUES (?, ?, NULL, 'active', ?, ?, ?, ?)")
         .bind(&id)
         .bind(&req.title)
+        .bind(req.source.as_deref())
         .bind(now)
         .bind(now)
         .bind(now)
@@ -31,6 +32,7 @@ pub async fn create_conversation(
         title: req.title,
         hermes_session_id: None,
         status: "active".to_string(),
+        source: req.source,
         last_active_at: now,
         created_at: now,
         updated_at: now,
@@ -42,8 +44,8 @@ pub async fn list_conversations(
     app: AppHandle,
 ) -> Result<Vec<db::Conversation>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, Option<String>, String, i64, i64, i64)>(
-        "SELECT id, title, hermes_session_id, status, last_active_at, created_at, updated_at FROM conversations ORDER BY updated_at DESC"
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, i64, i64, i64)>(
+        "SELECT id, title, hermes_session_id, status, source, last_active_at, created_at, updated_at FROM conversations WHERE source IS NULL OR source != 'avatar' ORDER BY updated_at DESC"
     )
     .fetch_all(&pool)
     .await
@@ -51,11 +53,12 @@ pub async fn list_conversations(
 
     let conversations = rows
         .into_iter()
-        .map(|(id, title, hermes_session_id, status, last_active_at, created_at, updated_at)| db::Conversation {
+        .map(|(id, title, hermes_session_id, status, source, last_active_at, created_at, updated_at)| db::Conversation {
             id,
             title,
             hermes_session_id,
             status,
+            source,
             last_active_at,
             created_at,
             updated_at,
@@ -81,6 +84,93 @@ pub async fn update_conversation_session_id(
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_avatar_conversation(app: AppHandle) -> Result<Option<db::Conversation>, String> {
+    let pool = get_pool(&app)?;
+    let row = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, i64, i64, i64)>(
+        "SELECT id, title, hermes_session_id, status, source, last_active_at, created_at, updated_at FROM conversations WHERE source = 'avatar' ORDER BY updated_at DESC LIMIT 1"
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(row.map(|(id, title, hermes_session_id, status, source, last_active_at, created_at, updated_at)| db::Conversation {
+        id,
+        title,
+        hermes_session_id,
+        status,
+        source,
+        last_active_at,
+        created_at,
+        updated_at,
+    }))
+}
+
+#[tauri::command]
+pub async fn create_avatar_conversation(app: AppHandle) -> Result<db::Conversation, String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+
+    sqlx::query("INSERT INTO conversations (id, title, hermes_session_id, status, source, last_active_at, created_at, updated_at) VALUES (?, ?, NULL, 'active', 'avatar', ?, ?, ?)")
+        .bind(&id)
+        .bind("数字助手对话")
+        .bind(now)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(db::Conversation {
+        id,
+        title: "数字助手对话".to_string(),
+        hermes_session_id: None,
+        status: "active".to_string(),
+        source: Some("avatar".to_string()),
+        last_active_at: now,
+        created_at: now,
+        updated_at: now,
+    })
+}
+
+#[tauri::command]
+pub async fn get_avatar_messages(app: AppHandle) -> Result<Vec<db::Message>, String> {
+    let pool = get_pool(&app)?;
+    let conv = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, i64, i64, i64)>(
+        "SELECT id, title, hermes_session_id, status, source, last_active_at, created_at, updated_at FROM conversations WHERE source = 'avatar' ORDER BY updated_at DESC LIMIT 1"
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let conv_id = match conv {
+        Some((id, _, _, _, _, _, _, _)) => id,
+        None => return Ok(vec![]),
+    };
+
+    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, i64)>(
+        "SELECT id, role, content, thinking, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
+    )
+    .bind(&conv_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let messages = rows
+        .into_iter()
+        .map(|(id, role, content, thinking, timestamp)| db::Message {
+            id,
+            role,
+            content,
+            thinking: thinking.filter(|s| !s.is_empty()),
+            timestamp,
+        })
+        .collect();
+
+    Ok(messages)
 }
 
 /// 激活归档会话（将 status 改为 active）

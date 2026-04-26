@@ -366,9 +366,9 @@ export default function MainWindow() {
         <button
           className={`avatar-toggle-btn ${showAvatar ? "active" : ""}`}
           onClick={toggleAvatarWindow}
-          title="数字人"
+          title="打开数字人"
         >
-          🎭
+          <img src="/bot.svg" alt="数字人" className="toolbar-avatar-icon" />
         </button>
       </div>
 
@@ -462,7 +462,7 @@ function HomePanel({ onStartChat, conversationCount }: { onStartChat: () => void
     <div className="panel home-panel">
       <div className="home-avatar">
         <div className="home-avatar-circle">
-          <span className="home-avatar-emoji">🎭</span>
+          <img src="/bot.svg" alt="小跃" className="home-avatar-icon" />
         </div>
         <h2>小跃</h2>
         <p>你的 AI 助理，随时待命</p>

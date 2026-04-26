@@ -30,6 +30,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     for alter in [
         "ALTER TABLE conversations ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
         "ALTER TABLE conversations ADD COLUMN last_active_at INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE conversations ADD COLUMN source TEXT NOT NULL DEFAULT 'main'",
     ] {
         let _ = sqlx::query(alter).execute(pool).await; // 忽略已存在的列错误
     }
@@ -92,6 +93,7 @@ pub struct Conversation {
     pub title: String,
     pub hermes_session_id: Option<String>,
     pub status: String,
+    pub source: Option<String>,
     pub last_active_at: i64,
     pub created_at: i64,
     pub updated_at: i64,
@@ -111,6 +113,7 @@ pub struct Message {
 #[serde(rename_all = "camelCase")]
 pub struct CreateConversationRequest {
     pub title: String,
+    pub source: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

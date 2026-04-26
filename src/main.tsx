@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import "./styles/index.css";
 
 import AvatarWindow from "./windows/AvatarWindow";
+import ChatWindow from "./windows/ChatWindow";
 import MainWindow from "./windows/MainWindow";
 
 async function bootstrap() {
@@ -21,6 +22,15 @@ async function bootstrap() {
       ReactDOM.createRoot(root).render(
         <React.StrictMode>
           <AvatarWindow />
+        </React.StrictMode>
+      );
+    } else if (label === "chat") {
+      document.querySelectorAll('link[rel="icon"]').forEach(el => el.remove());
+      document.body.style.background = "transparent";
+      document.documentElement.style.background = "transparent";
+      ReactDOM.createRoot(root).render(
+        <React.StrictMode>
+          <ChatWindow />
         </React.StrictMode>
       );
     } else {
