@@ -72,73 +72,90 @@ function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
 
-// Find a bone by name pattern in humanoid or scene
-function findBone(vrm: any, namePart: string): THREE.Object3D | null {
+// Find a humanoid bone by VRMHumanBoneName enum, fallback to scene traversal
+function getHumanoidBone(vrm: any, boneName: VRMHumanBoneName): THREE.Object3D | null {
+  try {
+    if (vrm.humanoid) {
+      const node = vrm.humanoid.getRawBoneNode(boneName);
+      if (node) return node;
+    }
+  } catch {}
+  return null;
+}
+
+// Find any bone in scene by name (case-insensitive substring match)
+function findBoneInScene(vrm: any, namePart: string): THREE.Object3D | null {
   let found: THREE.Object3D | null = null;
-  if (vrm.humanoid) {
-    try {
-      const bones = vrm.humanoid.humanBones as Map<string, any>;
-      bones.forEach((bone: any) => {
-        if (!found && bone.node && bone.node.name.includes(namePart)) {
-          found = bone.node;
-        }
-      });
-    } catch {}
-  }
-  if (!found) {
-    vrm.scene.traverse((obj: any) => {
-      if (!found && obj.isBone && obj.name.includes(namePart)) {
-        found = obj;
-      }
-    });
-  }
+  vrm.scene.traverse((obj: THREE.Object3D) => {
+    if (!found && (obj as any).isBone && obj.name.toLowerCase().includes(namePart.toLowerCase())) {
+      found = obj;
+    }
+  });
   return found;
 }
 
-// Apply a gesture pose to arm bones
+// Apply arm pose: set shoulder + upper arm + forearm rotations from base
+function applyArmRestPose(
+  leftUpperArm: THREE.Object3D | null,
+  rightUpperArm: THREE.Object3D | null,
+  leftForeArm: THREE.Object3D | null,
+  rightForeArm: THREE.Object3D | null,
+) {
+  // Left upper arm: slightly outward (z) + slight forward (x) = natural hanging pose
+  if (leftUpperArm) {
+    leftUpperArm.rotation.set(0.1, 0, 0.35);
+  }
+  if (rightUpperArm) {
+    rightUpperArm.rotation.set(0.1, 0, -0.35);
+  }
+  // Forearms hang naturally
+  if (leftForeArm) leftForeArm.rotation.set(0.05, 0, 0);
+  if (rightForeArm) rightForeArm.rotation.set(0.05, 0, 0);
+}
+
+// Apply a gesture pose to arm bones — uses humanoid bones if available
 function applyArmPose(
   vrm: any,
   gesture: typeof GESTURES[0],
-  t: number, // 0..1
-  baseLeftArm: THREE.Euler,
-  baseRightArm: THREE.Euler
+  t: number,
+  leftUpperArm: THREE.Object3D | null,
+  rightUpperArm: THREE.Object3D | null,
+  leftForeArm: THREE.Object3D | null,
+  rightForeArm: THREE.Object3D | null,
 ) {
-  const leftShoulder = findBone(vrm, "LeftArm") || findBone(vrm, "left_shoulder");
-  const leftUpperArm = findBone(vrm, "LeftForeArm") || findBone(vrm, "left_elbow") || findBone(vrm, "LeftUpperArm");
-  const rightShoulder = findBone(vrm, "RightArm") || findBone(vrm, "right_shoulder");
-  const rightUpperArm = findBone(vrm, "RightForeArm") || findBone(vrm, "right_elbow") || findBone(vrm, "RightUpperArm");
-
   const e = easeInOut(t);
 
   if (gesture.name === "bounce") {
-    // Whole body bounce
     const bounce = Math.sin(t * Math.PI) * 0.08;
     vrm.scene.position.y = -bounce;
-    // Slight head tilt
     return;
   }
 
   const armBones = gesture.armBones || { left: [], right: [] };
 
   // Left arm
-  if (armBones.left.length > 0) {
-    if (leftUpperArm) {
-      leftUpperArm.rotation.x = lerp(baseLeftArm.x, armBones.left[0].axis === "x" ? armBones.left[0].value : 0, e);
-      leftUpperArm.rotation.z = lerp(baseLeftArm.z, armBones.left.find((b: any) => b.axis === "z")?.value ?? baseLeftArm.z, e);
+  if (armBones.left.length > 0 && leftUpperArm) {
+    for (const rot of armBones.left) {
+      if (rot.axis === "x") leftUpperArm.rotation.x = lerp(leftUpperArm.rotation.x, rot.value, e);
+      if (rot.axis === "z") leftUpperArm.rotation.z = lerp(leftUpperArm.rotation.z, rot.value, e);
     }
-    if (leftShoulder) {
-      leftShoulder.rotation.z = lerp(baseLeftArm.z, armBones.left.find((b: any) => b.axis === "z")?.value ?? baseLeftArm.z, e);
+  }
+  if (armBones.left.length > 0 && leftForeArm) {
+    for (const rot of armBones.left) {
+      if (rot.axis === "x") leftForeArm.rotation.x = lerp(leftForeArm.rotation.x, rot.value * 0.5, e);
     }
   }
 
   // Right arm
-  if (armBones.right.length > 0) {
-    if (rightUpperArm) {
-      rightUpperArm.rotation.x = lerp(baseRightArm.x, armBones.right[0].axis === "x" ? armBones.right[0].value : 0, e);
-      rightUpperArm.rotation.z = lerp(baseRightArm.z, armBones.right.find(b => b.axis === "z")?.value ?? baseRightArm.z, e);
+  if (armBones.right.length > 0 && rightUpperArm) {
+    for (const rot of armBones.right) {
+      if (rot.axis === "x") rightUpperArm.rotation.x = lerp(rightUpperArm.rotation.x, rot.value, e);
+      if (rot.axis === "z") rightUpperArm.rotation.z = lerp(rightUpperArm.rotation.z, rot.value, e);
     }
-    if (rightShoulder) {
-      rightShoulder.rotation.z = lerp(baseRightArm.z, armBones.right.find(b => b.axis === "z")?.value ?? baseRightArm.z, e);
+  }
+  if (armBones.right.length > 0 && rightForeArm) {
+    for (const rot of armBones.right) {
+      if (rot.axis === "x") rightForeArm.rotation.x = lerp(rightForeArm.rotation.x, rot.value * 0.5, e);
     }
   }
 }
@@ -152,16 +169,17 @@ export default function AvatarWindow() {
   const clockRef = useRef(new THREE.Clock());
   const animIdRef = useRef<number>(0);
   const mouseRef = useRef({ x: 0, y: 0 });
-  const baseArmRef = useRef({ left: new THREE.Euler(), right: new THREE.Euler() });
-  const gestureRef = useRef<{ index: number; start: number; active: boolean }>({ index: -1, start: 0, active: false });
-  const idleTimerRef = useRef(0);
 
-  // Animation state — kept in refs so they persist across frames
-  const breathElapsedRef = useRef(0);
-  const lastBlinkRef = useRef(0);
-  const isBlinkingRef = useRef(false);
-  const blinkProgressRef = useRef(0);
-  const idleAccumRef = useRef(0);
+  // Bone refs — resolved once after VRM loads, reused every frame
+  const bonesRef = useRef<{
+    head: THREE.Object3D | null;
+    leftUpperArm: THREE.Object3D | null;
+    rightUpperArm: THREE.Object3D | null;
+    leftForeArm: THREE.Object3D | null;
+    rightForeArm: THREE.Object3D | null;
+  }>({ head: null, leftUpperArm: null, rightUpperArm: null, leftForeArm: null, rightForeArm: null });
+
+  const gestureRef = useRef<{ index: number; start: number; active: boolean }>({ index: -1, start: 0, active: false });
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -175,7 +193,6 @@ export default function AvatarWindow() {
   const triggerNextGesture = useCallback(() => {
     const next = (gestureRef.current.index + 1) % GESTURES.length;
     gestureRef.current = { index: next, start: performance.now(), active: true };
-    idleTimerRef.current = 0;
   }, []);
 
   // Trigger heart gesture on click
@@ -235,108 +252,48 @@ export default function AvatarWindow() {
         vrm.userData = vrm.userData || {};
         vrm.userData.baseRotation = vrm.userData.baseRotation || { x: 0, y: 0, z: 0 };
 
-        // 打印所有 Bone 名称（供调试用）
-        const boneNames: string[] = [];
-        vrm.scene.traverse((obj: THREE.Object3D) => {
-          if ((obj as any).isBone) boneNames.push(obj.name);
-        });
-        console.log("[Avatar] VRM bones:", boneNames);
+        // ── Resolve arm + head bones using VRM humanoid API ─────────────────────
+        // Primary: use VRMHumanBoneName enum (the spec-correct way)
+        // Fallback: scan scene for bones by name pattern
+        const b = bonesRef.current;
+        b.head         = getHumanoidBone(vrm, VRMHumanBoneName.Head)         || findBoneInScene(vrm, "Head");
+        b.leftUpperArm = getHumanoidBone(vrm, VRMHumanBoneName.LeftUpperArm) || findBoneInScene(vrm, "LeftUpperArm") || findBoneInScene(vrm, "LeftArm");
+        b.rightUpperArm= getHumanoidBone(vrm, VRMHumanBoneName.RightUpperArm)|| findBoneInScene(vrm, "RightUpperArm")|| findBoneInScene(vrm, "RightArm");
+        b.leftForeArm  = getHumanoidBone(vrm, VRMHumanBoneName.LeftLowerArm) || findBoneInScene(vrm, "LeftForeArm")  || findBoneInScene(vrm, "LeftHand");
+        b.rightForeArm = getHumanoidBone(vrm, VRMHumanBoneName.RightLowerArm)|| findBoneInScene(vrm, "RightForeArm") || findBoneInScene(vrm, "RightHand");
 
-        // 移除 VRM 模型中不需要的 UI 元素（图标、邮件按钮等）
-        // 递归遍历所有子孙节点，不只看顶层子节点
+        console.log("[Avatar] 骨骼:", {
+          head:         b.head?.name,
+          leftUpperArm: b.leftUpperArm?.name,
+          rightUpperArm:b.rightUpperArm?.name,
+          leftForeArm:  b.leftForeArm?.name,
+          rightForeArm: b.rightForeArm?.name,
+        });
+
+        // Apply rest pose so arms hang naturally at startup
+        applyArmRestPose(b.leftUpperArm, b.rightUpperArm, b.leftForeArm, b.rightForeArm);
+
+        // ── Remove non-body meshes (UI icons / accessories) ──────────────────
         const toRemove: THREE.Object3D[] = [];
         vrm.scene.traverse((obj: THREE.Object3D) => {
-          const nameLC = obj.name.toLowerCase();
-          const isIconMesh = obj.type.includes("Mesh") && (
-            nameLC.includes("icon") ||
-            nameLC.includes("email") ||
-            nameLC.includes("mail") ||
-            nameLC.includes("button") ||
-            nameLC.includes("social") ||
-            nameLC.includes("badge") ||
-            nameLC.includes("chat")
-          );
-          const isSmallIcon = obj.type.includes("Mesh") && (
-            (obj as any).isMesh &&
-            nameLC.length < 20 &&
-            !nameLC.includes("eye") &&
-            !nameLC.includes("mouth") &&
-            !nameLC.includes("brow") &&
-            !nameLC.includes("hair") &&
-            !nameLC.includes("head") &&
-            !nameLC.includes("body") &&
-            !nameLC.includes("arm") &&
-            !nameLC.includes("leg") &&
-            !nameLC.includes("torso") &&
-            !nameLC.includes("neck") &&
-            !nameLC.includes("cloth")
-          );
-          if (isIconMesh || isSmallIcon) {
+          if ((obj as any).isBone || obj.type === "Scene") return;
+          const n = obj.name.toLowerCase();
+          const isBody = /^(eye|ear|nose|mouth|brow|hair|head|body|torso|neck|spine|chest|hip|leg|foot|knee|ankle|arm|hand|finger|thumb|shoulder|elbow|cloth|skirt|shirt|pant|shoe|sock)/.test(n);
+          const isIcon = /^(email|mail|icon|button|badge|chat|social|notify|talk|bell|home|user|set|gear|tool|star|heart|like|share|msg|call|phone|mess|notif|alarm)/.test(n);
+          const isSmallDecorative = obj.type.includes("Mesh") && !isBody && n.length < 25;
+          if (isIcon || isSmallDecorative) {
             toRemove.push(obj);
           }
         });
         for (const obj of toRemove) {
-          console.log("[Avatar] 移除:", obj.name, obj.type);
-          if (obj.parent) obj.parent.remove(obj);
+          console.log("[Avatar] 移除:", obj.name);
+          obj.parent?.remove(obj);
         }
 
+        // Add to scene and face camera
         scene.add(vrm.scene);
         vrmRef.current = vrm;
-
-        // 模型面向相机（VRM 默认面向 +Z，需要旋转）
         vrm.scene.rotation.y = Math.PI;
-
-        // 设置自然初始姿态（胳膊自然下垂）
-        // 尝试多种可能的骨骼名称
-        const shoulderBones = ["Shoulder", "shoulder", "Clavicle", "clavicle", "Scapula", "scapula"];
-        const upperArmBones = ["UpperArm", "upperarm", "Upper_Arm", "Arm", "arm"];
-        const foreArmBones = ["ForeArm", "forearm", "Fore_Arm", "LowerArm", "lowerarm", "Lower_Arm"];
-
-        const getBone = (names: string[]) => {
-          for (const n of names) {
-            const b = findBone(vrm, n);
-            if (b) return b;
-          }
-          return null;
-        };
-
-        const leftShoulder = getBone(shoulderBones.map(n => "Left" + n));
-        const rightShoulder = getBone(shoulderBones.map(n => "Right" + n));
-        const leftUpperArm = getBone(upperArmBones.map(n => "Left" + n));
-        const rightUpperArm = getBone(upperArmBones.map(n => "Right" + n));
-        const leftForeArm = getBone(foreArmBones.map(n => "Left" + n));
-        const rightForeArm = getBone(foreArmBones.map(n => "Right" + n));
-
-        console.log("[Avatar] 找到的胳膊骨骼:", {
-          leftShoulder: leftShoulder?.name,
-          rightShoulder: rightShoulder?.name,
-          leftUpperArm: leftUpperArm?.name,
-          rightUpperArm: rightUpperArm?.name,
-          leftForeArm: leftForeArm?.name,
-          rightForeArm: rightForeArm?.name,
-        });
-
-        // 上臂自然下垂角度
-        if (leftUpperArm) {
-          leftUpperArm.rotation.z = 0.3; // 向外张开
-          leftUpperArm.rotation.x = 0.1; // 轻微前倾
-        }
-        if (rightUpperArm) {
-          rightUpperArm.rotation.z = -0.3;
-          rightUpperArm.rotation.x = 0.1;
-        }
-        // 前臂自然下垂
-        if (leftForeArm) {
-          leftForeArm.rotation.x = 0.1;
-        }
-        if (rightForeArm) {
-          rightForeArm.rotation.x = 0.1;
-        }
-
-        // Store base arm rotations for gesture reset (after setting natural pose)
-        if (leftForeArm) baseArmRef.current.left.copy(leftForeArm.rotation);
-        if (rightForeArm) baseArmRef.current.right.copy(rightForeArm.rotation);
-        console.log("[Avatar] base arm rotations:", baseArmRef.current.left, baseArmRef.current.right);
 
         // BlendShape check
         const hasVRM1 = !!vrm.expressionManager;
@@ -368,22 +325,13 @@ export default function AvatarWindow() {
 
         applyExpr("happy", 0.3);
 
-        // Find head bone
-        let headBone: THREE.Object3D | null = null;
-        if (vrm.humanoid) {
-          try {
-            const h = vrm.humanoid.getRawBoneNode(VRMHumanBoneName.Head);
-            if (h) headBone = h;
-          } catch {}
-        }
-        if (!headBone) {
-          vrm.scene.traverse((obj: any) => {
-            if (!headBone && obj.isBone && /[Hh]ead/i.test(obj.name)) headBone = obj;
-          });
-        }
-
-        // Animation state refs (declared once, reused every frame)
+        // ── Animation state (simple let — declared OUTSIDE animate, survive each frame) ─
         let lastFrameTime = performance.now();
+        let breathElapsed = 0;
+        let idleAccum = 0;
+        let lastBlink = 0;
+        let isBlinking = false;
+        let blinkProgress = 0;
 
         // Trigger first gesture after 5s
         setTimeout(() => {
@@ -400,21 +348,22 @@ export default function AvatarWindow() {
           lastFrameTime = now;
           const elapsed = clockRef.current.elapsedTime;
 
-          breathElapsedRef.current += delta;
-          idleAccumRef.current += delta;
+          breathElapsed += delta;
+          idleAccum += delta;
 
           try {
             // Idle breathing
-            const breathY = Math.sin(breathElapsedRef.current * 1.2) * 0.004;
-            const breathSway = Math.sin(breathElapsedRef.current * 0.8) * 0.002;
+            const breathY = Math.sin(breathElapsed * 1.2) * 0.004;
+            const breathSway = Math.sin(breathElapsed * 0.8) * 0.002;
             vrm.scene.position.set(breathSway, breathY, 0);
 
-            // Idle sway (gentle body rock)
+            // Idle sway
             if (!gestureRef.current.active) {
               vrm.scene.rotation.y = Math.PI + Math.sin(elapsed * 0.4) * 0.06;
             }
 
-            // Head look-at from mouse + gesture
+            // Head look-at
+            const b = bonesRef.current;
             const g = GESTURES[gestureRef.current.index];
             let targetRotX = -mouseRef.current.y * 0.2;
             let targetRotY = mouseRef.current.x * 0.35;
@@ -422,43 +371,38 @@ export default function AvatarWindow() {
               targetRotX += g.lookAt.y * 0.3;
               targetRotY += g.lookAt.x * 0.3;
             }
-
-            if (headBone) {
-              headBone.rotation.x = lerp(headBone.rotation.x, targetRotX, 0.06);
-              headBone.rotation.y = lerp(headBone.rotation.y, targetRotY, 0.06);
+            if (b.head) {
+              b.head.rotation.x = lerp(b.head.rotation.x, targetRotX, 0.06);
+              b.head.rotation.y = lerp(b.head.rotation.y, targetRotY, 0.06);
             }
 
             // Gesture animation
             if (gestureRef.current.active && g) {
               const now = performance.now();
               const t = Math.min(1, (now - gestureRef.current.start) / g.duration);
-              applyArmPose(vrm, g, t, baseArmRef.current.left, baseArmRef.current.right);
+              applyArmPose(vrm, g, t, b.leftUpperArm, b.rightUpperArm, b.leftForeArm, b.rightForeArm);
               if (t >= 1) {
                 gestureRef.current.active = false;
-                // Reset arm bones
-                const leftA = findBone(vrm, "LeftForeArm") || findBone(vrm, "left_elbow");
-                const rightA = findBone(vrm, "RightForeArm") || findBone(vrm, "right_elbow");
-                if (leftA) { leftA.rotation.x = lerp(leftA.rotation.x, baseArmRef.current.left.x, 0.5); leftA.rotation.z = lerp(leftA.rotation.z, baseArmRef.current.left.z, 0.5); }
-                if (rightA) { rightA.rotation.x = lerp(rightA.rotation.x, baseArmRef.current.right.x, 0.5); rightA.rotation.z = lerp(rightA.rotation.z, baseArmRef.current.right.z, 0.5); }
+                applyArmRestPose(b.leftUpperArm, b.rightUpperArm, b.leftForeArm, b.rightForeArm);
                 vrm.scene.position.y = 0;
                 vrm.scene.rotation.y = Math.PI;
               }
             } else {
               // Auto-gesture timer
-              if (idleAccumRef.current > 6 + Math.random() * 4) {
+              if (idleAccum > 6 + Math.random() * 4) {
                 triggerNextGesture();
-                idleAccumRef.current = 0;
+                idleAccum = 0;
               }
             }
 
             // Auto blink
-            if (elapsed - lastBlinkRef.current > 3.5 + Math.random() * 2) {
-              isBlinkingRef.current = true;
-              lastBlinkRef.current = elapsed;
+            if (elapsed - lastBlink > 3.5 + Math.random() * 2) {
+              isBlinking = true;
+              lastBlink = elapsed;
             }
-            if (isBlinkingRef.current) {
-              blinkProgressRef.current += delta * 14;
-              const bv = Math.max(0, Math.sin(blinkProgressRef.current * Math.PI));
+            if (isBlinking) {
+              blinkProgress += delta * 14;
+              const bv = Math.max(0, Math.sin(blinkProgress * Math.PI));
               try {
                 if (hasVRM1 && vrm.expressionManager) {
                   const bl = vrm.expressionManager.getExpression("blinkLeft");
@@ -469,9 +413,9 @@ export default function AvatarWindow() {
                   try { vrm.blendShapeProxy.setValue("Blink", bv); } catch {}
                 }
               } catch {}
-              if (blinkProgressRef.current >= 1) {
-                isBlinkingRef.current = false;
-                blinkProgressRef.current = 0;
+              if (blinkProgress >= 1) {
+                isBlinking = false;
+                blinkProgress = 0;
               }
             }
 
