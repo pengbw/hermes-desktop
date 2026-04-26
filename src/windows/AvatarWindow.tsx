@@ -155,6 +155,13 @@ export default function AvatarWindow() {
   const baseArmRef = useRef({ left: new THREE.Euler(), right: new THREE.Euler() });
   const gestureRef = useRef<{ index: number; start: number; active: boolean }>({ index: -1, start: 0, active: false });
   const idleTimerRef = useRef(0);
+
+  // Animation state — kept in refs so they persist across frames
+  const breathElapsedRef = useRef(0);
+  const lastBlinkRef = useRef(0);
+  const isBlinkingRef = useRef(false);
+  const blinkProgressRef = useRef(0);
+  const idleAccumRef = useRef(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -228,27 +235,48 @@ export default function AvatarWindow() {
         vrm.userData = vrm.userData || {};
         vrm.userData.baseRotation = vrm.userData.baseRotation || { x: 0, y: 0, z: 0 };
 
-        // 调试：打印 VRM 场景树
+        // 打印所有 Bone 名称（供调试用）
+        const boneNames: string[] = [];
         vrm.scene.traverse((obj: THREE.Object3D) => {
-          console.log(`[VRM] ${obj.type} "${obj.name}" (visible=${obj.visible})`, obj);
+          if ((obj as any).isBone) boneNames.push(obj.name);
         });
+        console.log("[Avatar] VRM bones:", boneNames);
 
-        // 移除 VRM 模型中不需要的 UI 图标（如 email 图标等）
+        // 移除 VRM 模型中不需要的 UI 元素（图标、邮件按钮等）
+        // 递归遍历所有子孙节点，不只看顶层子节点
         const toRemove: THREE.Object3D[] = [];
         vrm.scene.traverse((obj: THREE.Object3D) => {
           const nameLC = obj.name.toLowerCase();
-          if (
-            !obj.isBone &&
-            obj.type !== "Scene" &&
-            obj.type !== "Group" &&
-            obj.type !== "Object3D" &&
-            (nameLC.includes("email") || nameLC.includes("mail") || nameLC.includes("icon") || nameLC.includes("button") || nameLC.includes("ui") || nameLC.includes("social"))
-          ) {
+          const isIconMesh = obj.type.includes("Mesh") && (
+            nameLC.includes("icon") ||
+            nameLC.includes("email") ||
+            nameLC.includes("mail") ||
+            nameLC.includes("button") ||
+            nameLC.includes("social") ||
+            nameLC.includes("badge") ||
+            nameLC.includes("chat")
+          );
+          const isSmallIcon = obj.type.includes("Mesh") && (
+            (obj as any).isMesh &&
+            nameLC.length < 20 &&
+            !nameLC.includes("eye") &&
+            !nameLC.includes("mouth") &&
+            !nameLC.includes("brow") &&
+            !nameLC.includes("hair") &&
+            !nameLC.includes("head") &&
+            !nameLC.includes("body") &&
+            !nameLC.includes("arm") &&
+            !nameLC.includes("leg") &&
+            !nameLC.includes("torso") &&
+            !nameLC.includes("neck") &&
+            !nameLC.includes("cloth")
+          );
+          if (isIconMesh || isSmallIcon) {
             toRemove.push(obj);
           }
         });
         for (const obj of toRemove) {
-          console.log("[Avatar] 移除 VRM 对象:", obj.name, obj.type);
+          console.log("[Avatar] 移除:", obj.name, obj.type);
           if (obj.parent) obj.parent.remove(obj);
         }
 
@@ -258,23 +286,57 @@ export default function AvatarWindow() {
         // 模型面向相机（VRM 默认面向 +Z，需要旋转）
         vrm.scene.rotation.y = Math.PI;
 
-        // 设置自然初始姿态（胳膊放下）
-        const leftUpperArm = findBone(vrm, "LeftArm") || findBone(vrm, "left_shoulder");
-        const rightUpperArm = findBone(vrm, "RightArm") || findBone(vrm, "right_shoulder");
+        // 设置自然初始姿态（胳膊自然下垂）
+        // 尝试多种可能的骨骼名称
+        const shoulderBones = ["Shoulder", "shoulder", "Clavicle", "clavicle", "Scapula", "scapula"];
+        const upperArmBones = ["UpperArm", "upperarm", "Upper_Arm", "Arm", "arm"];
+        const foreArmBones = ["ForeArm", "forearm", "Fore_Arm", "LowerArm", "lowerarm", "Lower_Arm"];
+
+        const getBone = (names: string[]) => {
+          for (const n of names) {
+            const b = findBone(vrm, n);
+            if (b) return b;
+          }
+          return null;
+        };
+
+        const leftShoulder = getBone(shoulderBones.map(n => "Left" + n));
+        const rightShoulder = getBone(shoulderBones.map(n => "Right" + n));
+        const leftUpperArm = getBone(upperArmBones.map(n => "Left" + n));
+        const rightUpperArm = getBone(upperArmBones.map(n => "Right" + n));
+        const leftForeArm = getBone(foreArmBones.map(n => "Left" + n));
+        const rightForeArm = getBone(foreArmBones.map(n => "Right" + n));
+
+        console.log("[Avatar] 找到的胳膊骨骼:", {
+          leftShoulder: leftShoulder?.name,
+          rightShoulder: rightShoulder?.name,
+          leftUpperArm: leftUpperArm?.name,
+          rightUpperArm: rightUpperArm?.name,
+          leftForeArm: leftForeArm?.name,
+          rightForeArm: rightForeArm?.name,
+        });
+
+        // 上臂自然下垂角度
         if (leftUpperArm) {
-          leftUpperArm.rotation.z = 0.25;
-          leftUpperArm.rotation.x = 0.05;
+          leftUpperArm.rotation.z = 0.3; // 向外张开
+          leftUpperArm.rotation.x = 0.1; // 轻微前倾
         }
         if (rightUpperArm) {
-          rightUpperArm.rotation.z = -0.25;
-          rightUpperArm.rotation.x = 0.05;
+          rightUpperArm.rotation.z = -0.3;
+          rightUpperArm.rotation.x = 0.1;
+        }
+        // 前臂自然下垂
+        if (leftForeArm) {
+          leftForeArm.rotation.x = 0.1;
+        }
+        if (rightForeArm) {
+          rightForeArm.rotation.x = 0.1;
         }
 
-        // Store base arm rotations (after setting natural pose)
-        const leftArm = findBone(vrm, "LeftForeArm") || findBone(vrm, "left_elbow");
-        const rightArm = findBone(vrm, "RightForeArm") || findBone(vrm, "right_elbow");
-        if (leftArm) baseArmRef.current.left.copy(leftArm.rotation);
-        if (rightArm) baseArmRef.current.right.copy(rightArm.rotation);
+        // Store base arm rotations for gesture reset (after setting natural pose)
+        if (leftForeArm) baseArmRef.current.left.copy(leftForeArm.rotation);
+        if (rightForeArm) baseArmRef.current.right.copy(rightForeArm.rotation);
+        console.log("[Avatar] base arm rotations:", baseArmRef.current.left, baseArmRef.current.right);
 
         // BlendShape check
         const hasVRM1 = !!vrm.expressionManager;
@@ -320,12 +382,8 @@ export default function AvatarWindow() {
           });
         }
 
-        // Idle breath
-        let breathElapsed = 0;
-        let lastBlink = 0;
-        let isBlinking = false;
-        let blinkProgress = 0;
-        let idleAccum = 0;
+        // Animation state refs (declared once, reused every frame)
+        let lastFrameTime = performance.now();
 
         // Trigger first gesture after 5s
         setTimeout(() => {
@@ -335,14 +393,20 @@ export default function AvatarWindow() {
         const animate = () => {
           if (destroyed) return;
           animIdRef.current = requestAnimationFrame(animate);
-          const delta = clockRef.current.getDelta();
+
+          // Calculate delta from last frame (capped at 100ms to avoid huge jumps)
+          const now = performance.now();
+          const delta = Math.min((now - lastFrameTime) / 1000, 0.1);
+          lastFrameTime = now;
           const elapsed = clockRef.current.elapsedTime;
-          breathElapsed += delta;
+
+          breathElapsedRef.current += delta;
+          idleAccumRef.current += delta;
 
           try {
             // Idle breathing
-            const breathY = Math.sin(breathElapsed * 1.2) * 0.004;
-            const breathSway = Math.sin(breathElapsed * 0.8) * 0.002;
+            const breathY = Math.sin(breathElapsedRef.current * 1.2) * 0.004;
+            const breathSway = Math.sin(breathElapsedRef.current * 0.8) * 0.002;
             vrm.scene.position.set(breathSway, breathY, 0);
 
             // Idle sway (gentle body rock)
@@ -381,20 +445,20 @@ export default function AvatarWindow() {
               }
             } else {
               // Auto-gesture timer
-              idleAccum += delta;
-              if (idleAccum > 6 + Math.random() * 4) {
+              if (idleAccumRef.current > 6 + Math.random() * 4) {
                 triggerNextGesture();
+                idleAccumRef.current = 0;
               }
             }
 
             // Auto blink
-            if (elapsed - lastBlink > 3.5 + Math.random() * 2) {
-              isBlinking = true;
-              lastBlink = elapsed;
+            if (elapsed - lastBlinkRef.current > 3.5 + Math.random() * 2) {
+              isBlinkingRef.current = true;
+              lastBlinkRef.current = elapsed;
             }
-            if (isBlinking) {
-              blinkProgress += delta * 14;
-              const bv = Math.max(0, Math.sin(blinkProgress * Math.PI));
+            if (isBlinkingRef.current) {
+              blinkProgressRef.current += delta * 14;
+              const bv = Math.max(0, Math.sin(blinkProgressRef.current * Math.PI));
               try {
                 if (hasVRM1 && vrm.expressionManager) {
                   const bl = vrm.expressionManager.getExpression("blinkLeft");
@@ -405,7 +469,10 @@ export default function AvatarWindow() {
                   try { vrm.blendShapeProxy.setValue("Blink", bv); } catch {}
                 }
               } catch {}
-              if (blinkProgress >= 1) { isBlinking = false; blinkProgress = 0; }
+              if (blinkProgressRef.current >= 1) {
+                isBlinkingRef.current = false;
+                blinkProgressRef.current = 0;
+              }
             }
 
             if (vrm.update) vrm.update(delta);
