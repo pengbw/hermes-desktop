@@ -8,6 +8,11 @@ src-tauri/target/
 # IDE
 .vscode/
 .idea/
+.arts/
+.codeartsdoer/
+
+# Test
+src/windows/test_pose.json
 
 # OS
 .DS_Store
