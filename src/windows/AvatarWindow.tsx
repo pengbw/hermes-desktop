@@ -228,10 +228,49 @@ export default function AvatarWindow() {
         vrm.userData = vrm.userData || {};
         vrm.userData.baseRotation = vrm.userData.baseRotation || { x: 0, y: 0, z: 0 };
 
+        // 调试：打印 VRM 场景树
+        vrm.scene.traverse((obj: THREE.Object3D) => {
+          console.log(`[VRM] ${obj.type} "${obj.name}" (visible=${obj.visible})`, obj);
+        });
+
+        // 移除 VRM 模型中不需要的 UI 图标（如 email 图标等）
+        const toRemove: THREE.Object3D[] = [];
+        vrm.scene.traverse((obj: THREE.Object3D) => {
+          const nameLC = obj.name.toLowerCase();
+          if (
+            !obj.isBone &&
+            obj.type !== "Scene" &&
+            obj.type !== "Group" &&
+            obj.type !== "Object3D" &&
+            (nameLC.includes("email") || nameLC.includes("mail") || nameLC.includes("icon") || nameLC.includes("button") || nameLC.includes("ui") || nameLC.includes("social"))
+          ) {
+            toRemove.push(obj);
+          }
+        });
+        for (const obj of toRemove) {
+          console.log("[Avatar] 移除 VRM 对象:", obj.name, obj.type);
+          if (obj.parent) obj.parent.remove(obj);
+        }
+
         scene.add(vrm.scene);
         vrmRef.current = vrm;
 
-        // Store base arm rotations
+        // 模型面向相机（VRM 默认面向 +Z，需要旋转）
+        vrm.scene.rotation.y = Math.PI;
+
+        // 设置自然初始姿态（胳膊放下）
+        const leftUpperArm = findBone(vrm, "LeftArm") || findBone(vrm, "left_shoulder");
+        const rightUpperArm = findBone(vrm, "RightArm") || findBone(vrm, "right_shoulder");
+        if (leftUpperArm) {
+          leftUpperArm.rotation.z = 0.25;
+          leftUpperArm.rotation.x = 0.05;
+        }
+        if (rightUpperArm) {
+          rightUpperArm.rotation.z = -0.25;
+          rightUpperArm.rotation.x = 0.05;
+        }
+
+        // Store base arm rotations (after setting natural pose)
         const leftArm = findBone(vrm, "LeftForeArm") || findBone(vrm, "left_elbow");
         const rightArm = findBone(vrm, "RightForeArm") || findBone(vrm, "right_elbow");
         if (leftArm) baseArmRef.current.left.copy(leftArm.rotation);
@@ -308,7 +347,7 @@ export default function AvatarWindow() {
 
             // Idle sway (gentle body rock)
             if (!gestureRef.current.active) {
-              vrm.scene.rotation.y = Math.sin(elapsed * 0.4) * 0.06;
+              vrm.scene.rotation.y = Math.PI + Math.sin(elapsed * 0.4) * 0.06;
             }
 
             // Head look-at from mouse + gesture
@@ -338,7 +377,7 @@ export default function AvatarWindow() {
                 if (leftA) { leftA.rotation.x = lerp(leftA.rotation.x, baseArmRef.current.left.x, 0.5); leftA.rotation.z = lerp(leftA.rotation.z, baseArmRef.current.left.z, 0.5); }
                 if (rightA) { rightA.rotation.x = lerp(rightA.rotation.x, baseArmRef.current.right.x, 0.5); rightA.rotation.z = lerp(rightA.rotation.z, baseArmRef.current.right.z, 0.5); }
                 vrm.scene.position.y = 0;
-                vrm.scene.rotation.y = 0;
+                vrm.scene.rotation.y = Math.PI;
               }
             } else {
               // Auto-gesture timer

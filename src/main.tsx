@@ -15,6 +15,9 @@ async function bootstrap() {
     const root = document.getElementById("root") as HTMLElement;
 
     if (label === "avatar") {
+      document.querySelectorAll('link[rel="icon"]').forEach(el => el.remove());
+      document.body.style.background = "transparent";
+      document.documentElement.style.background = "transparent";
       ReactDOM.createRoot(root).render(
         <React.StrictMode>
           <AvatarWindow />
