@@ -88,18 +88,47 @@
 
 .chat-msg {
   display: flex;
-  flex-direction: column;
-  max-width: 85%;
+  flex-direction: row;
+  gap: 8px;
+  max-width: 90%;
   animation: msg-in 0.25s ease-out;
+  align-items: flex-start;
 }
 
 .chat-msg.user {
   align-self: flex-end;
-  align-items: flex-end;
+  flex-direction: row-reverse;
 }
 
 .chat-msg.assistant {
   align-self: flex-start;
+}
+
+.chat-msg-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.chat-msg-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 100%;
+}
+
+.chat-msg.user .chat-msg-content {
+  align-items: flex-end;
+}
+
+.chat-msg.assistant .chat-msg-content {
   align-items: flex-start;
 }
 

@@ -82,10 +82,15 @@ export default function ChatWindow() {
         )}
         {messages.map((msg) => (
           <div key={msg.id} className={`chat-msg ${msg.role}`}>
-            <div className="chat-msg-bubble">
-              {msg.content}
+            <div className="chat-msg-avatar">
+              {msg.role === "user" ? "👤" : <img src="/bot.svg" alt="bot" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
             </div>
-            <div className="chat-msg-time">{formatTime(msg.timestamp)}</div>
+            <div className="chat-msg-content">
+              <div className="chat-msg-bubble">
+                {msg.content}
+              </div>
+              <div className="chat-msg-time">{formatTime(msg.timestamp)}</div>
+            </div>
           </div>
         ))}
         <div ref={messagesEndRef} />

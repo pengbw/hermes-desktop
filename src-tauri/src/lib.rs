@@ -472,9 +472,22 @@ async fn set_hermes_config(key: String, value: String) -> Result<String, String>
 #[tauri::command]
 fn restart_hermes(state: State<'_, AgentProcess>) -> Result<String, String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    if let Some(mut child) = guard.take() {
-        let _ = child.kill();
+
+    let _ = guard.take();
+
+    let kill_output = Command::new("pkill")
+        .args(&["-f", "hermes acp"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .output();
+
+    if let Ok(kill_output) = kill_output {
+        if kill_output.status.success() {
+            println!("已停止旧的 Hermes 进程");
+        }
     }
+
+    std::thread::sleep(std::time::Duration::from_millis(500));
 
     let child = Command::new("hermes")
         .arg("acp")
@@ -978,6 +991,31 @@ pub fn run() {
                 app_handle.manage(AppState { db_pool: pool });
             });
 
+            let _ = Command::new("pkill")
+                .args(&["-f", "hermes acp"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .output();
+
+            std::thread::sleep(std::time::Duration::from_millis(300));
+
+            match Command::new("hermes")
+                .arg("acp")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+            {
+                Ok(child) => {
+                    log::info!("Hermes Agent 已启动");
+                    app.manage(AgentProcess(Mutex::new(Some(child))));
+                }
+                Err(e) => {
+                    log::error!("启动 Hermes Agent 失败: {}", e);
+                    app.manage(AgentProcess(Mutex::new(None)));
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1001,6 +1039,10 @@ pub fn run() {
             commands::update_conversation_session_id,
             commands::activate_conversation,
             commands::rename_conversation,
+            commands::get_avatar_gestures,
+            commands::create_avatar_gesture,
+            commands::update_avatar_gesture,
+            commands::delete_avatar_gesture,
             commands::archive_stale_conversations,
             commands::create_message,
             commands::list_messages,
@@ -1011,6 +1053,12 @@ pub fn run() {
             commands::get_avatar_conversation,
             commands::create_avatar_conversation,
             commands::get_avatar_messages,
+            commands::list_providers,
+            commands::create_provider,
+            commands::update_provider,
+            commands::delete_provider,
+            commands::sync_provider_keys,
+            commands::list_models,
         ])
         .run(tauri::generate_context!())
         .expect("Hermes Desktop 启动失败");

@@ -58,7 +58,7 @@ const REST_POSE = {
 
 // 角色动作定义数组
 // 每个动作包含：名称、持续时间、目标骨骼姿势、视线方向、问候语等
-const GESTURES = [
+let GESTURES: any[] = [
   {
     name: "initialGreeting",
     duration: 8000,
@@ -89,30 +89,37 @@ const GESTURES = [
   },
   {
     name: "think",
-    duration: 4000,
+    duration: 5000,
     target: {
-      leftUpperArm: { x: -0.1, y: 0.1, z: 1.2 },
-      rightUpperArm: { x: -0.8, y: -0.1, z: -0.6 },
-      leftForeArm: { x: -1.3, y: 0, z: 0.3 },
-      rightForeArm: { x: -1.6, y: 0, z: 0 },
-      rightHand: { x: 0, y: 0, z: 0 },
-      rightThumb1: { x: 0, y: 0, z: 0 },
-      rightThumb2: { x: 0, y: 0, z: 0 },
-      rightThumb3: { x: 0, y: 0, z: 0 },
-      rightIndex1: { x: 0, y: 0, z: 0 },
-      rightIndex2: { x: 0, y: 0, z: 0 },
-      rightIndex3: { x: 0, y: 0, z: 0 },
-      rightMiddle1: { x: 0, y: 0, z: 0 },
-      rightMiddle2: { x: 0, y: 0, z: 0 },
-      rightMiddle3: { x: 0, y: 0, z: 0 },
-      rightRing1: { x: 0, y: 0, z: 0 },
-      rightRing2: { x: 0, y: 0, z: 0 },
-      rightRing3: { x: 0, y: 0, z: 0 },
-      rightLittle1: { x: 0, y: 0, z: 0 },
-      rightLittle2: { x: 0, y: 0, z: 0 },
-      rightLittle3: { x: 0, y: 0, z: 0 },
+      // 右臂抬起，手肘弯曲，食指轻触下巴
+      rightUpperArm: { x: -2.0, y: 0, z: -0.5 },
+      rightForeArm: { x: 2.5, y: 0, z: 0 },
+      rightHand: { x: -0.3, y: 0, z: 0 },
+      // 右手拇指自然弯曲
+      rightThumb1: { x: 0.2, y: 0, z: 0.2 },
+      rightThumb2: { x: 0.2, y: 0, z: 0 },
+      rightThumb3: { x: 0.2, y: 0, z: 0 },
+      // 右手食指伸直指向下巴
+      rightIndex1: { x: 0, y: 0, z: -0.2 },
+      rightIndex2: { x: 0, y: 0, z: -0.1 },
+      rightIndex3: { x: 0, y: 0, z: -0.1 },
+      // 其他手指自然弯曲
+      rightMiddle1: { x: 0, y: 0, z: 0.6 },
+      rightMiddle2: { x: 0, y: 0, z: 0.6 },
+      rightMiddle3: { x: 0, y: 0, z: 0.6 },
+      rightRing1: { x: 0, y: 0, z: 0.6 },
+      rightRing2: { x: 0, y: 0, z: 0.6 },
+      rightRing3: { x: 0, y: 0, z: 0.6 },
+      rightLittle1: { x: 0, y: 0, z: 0.6 },
+      rightLittle2: { x: 0, y: 0, z: 0.6 },
+      rightLittle3: { x: 0, y: 0, z: 0.6 },
+      // 左臂交叉在胸前，手搭在右臂上
+      leftUpperArm: { x: -0.2, y: 0, z: 0.6 },
+      leftForeArm: { x: 2.5, y: 0, z: -0.3 },
+      leftHand: { x: 0, y: 0, z: 0 },
     },
-    lookAt: { x: -0.1, y: 0.3 },
+    lookAt: { x: 0.3, y: -0.3 },
+    tilt: -0.08,
   },
 ];
 
@@ -182,12 +189,34 @@ export default function AvatarWindow() {
   const animIdRef = useRef<number>(0);
   const mouseRef = useRef({ x: 0, y: 0 });
 
+  useEffect(() => {
+    const fetchGestures = async () => {
+      try {
+        const gestures = await invoke<any[]>("get_avatar_gestures");
+        if (gestures && gestures.length > 0) {
+          GESTURES = gestures.map(g => ({
+            name: g.name,
+            duration: g.duration,
+            lookAt: { x: g.lookAtX, y: g.lookAtY },
+            tilt: g.tilt,
+            target: JSON.parse(g.targetJson || "{}"),
+            greeting: g.name === "initialGreeting" ? "你好呀！" : undefined,
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to load gestures", e);
+      }
+    };
+    fetchGestures();
+  }, []);
+
   const bonesRef = useRef<{
     head: THREE.Object3D | null;
     leftUpperArm: THREE.Object3D | null;
     rightUpperArm: THREE.Object3D | null;
     leftForeArm: THREE.Object3D | null;
     rightForeArm: THREE.Object3D | null;
+    leftHand: THREE.Object3D | null;
     rightHand: THREE.Object3D | null;
     rightThumb1: THREE.Object3D | null;
     rightThumb2: THREE.Object3D | null;
@@ -204,15 +233,17 @@ export default function AvatarWindow() {
     rightLittle1: THREE.Object3D | null;
     rightLittle2: THREE.Object3D | null;
     rightLittle3: THREE.Object3D | null;
-  }>({ head: null, leftUpperArm: null, rightUpperArm: null, leftForeArm: null, rightForeArm: null, rightHand: null, rightThumb1: null, rightThumb2: null, rightThumb3: null, rightIndex1: null, rightIndex2: null, rightIndex3: null, rightMiddle1: null, rightMiddle2: null, rightMiddle3: null, rightRing1: null, rightRing2: null, rightRing3: null, rightLittle1: null, rightLittle2: null, rightLittle3: null });
+  }>({ head: null, leftUpperArm: null, rightUpperArm: null, leftForeArm: null, rightForeArm: null, leftHand: null, rightHand: null, rightThumb1: null, rightThumb2: null, rightThumb3: null, rightIndex1: null, rightIndex2: null, rightIndex3: null, rightMiddle1: null, rightMiddle2: null, rightMiddle3: null, rightRing1: null, rightRing2: null, rightRing3: null, rightLittle1: null, rightLittle2: null, rightLittle3: null });
 
   const gestureRef = useRef<{ index: number; start: number; active: boolean }>({ index: -1, start: 0, active: false });
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+
   const [inputText, setInputText] = useState("");
   const [isHovering, setIsHovering] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const isThinkingRef = useRef(false);
   const [isWaitingResponse, setIsWaitingResponse] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatWindowRef = useRef<WebviewWindow | null>(null);
@@ -392,6 +423,7 @@ export default function AvatarWindow() {
     };
 
     setIsThinking(true);
+    isThinkingRef.current = true;
     setIsWaitingResponse(true);
 
     try {
@@ -439,6 +471,7 @@ export default function AvatarWindow() {
       };
 
       setIsThinking(false);
+      isThinkingRef.current = false;
       setIsWaitingResponse(false);
       applyExpression("happy", 0.8, 3000);
 
@@ -452,6 +485,7 @@ export default function AvatarWindow() {
     } catch (err) {
       console.error("[Avatar] Chat error:", err);
       setIsThinking(false);
+      isThinkingRef.current = false;
       setIsWaitingResponse(false);
       applyExpression("sad", 0.5, 2000);
 
@@ -526,6 +560,7 @@ export default function AvatarWindow() {
         b.rightUpperArm = getHumanoidBone(vrm, VRMHumanBoneName.RightUpperArm) || findBoneInScene(vrm, "RightUpperArm") || findBoneInScene(vrm, "RightArm");
         b.leftForeArm = getHumanoidBone(vrm, VRMHumanBoneName.LeftLowerArm) || findBoneInScene(vrm, "LeftForeArm") || findBoneInScene(vrm, "LeftLowerArm");
         b.rightForeArm = getHumanoidBone(vrm, VRMHumanBoneName.RightLowerArm) || findBoneInScene(vrm, "RightForeArm") || findBoneInScene(vrm, "RightLowerArm");
+        b.leftHand = getHumanoidBone(vrm, VRMHumanBoneName.LeftHand) || findBoneInScene(vrm, "LeftHand") || findBoneInScene(vrm, "J_Bip_L_Hand");
         b.rightHand = getHumanoidBone(vrm, VRMHumanBoneName.RightHand) || findBoneInScene(vrm, "RightHand") || findBoneInScene(vrm, "J_Bip_R_Hand");
         b.rightThumb1 = findBoneInScene(vrm, "J_Bip_R_Thumb1");
         b.rightThumb2 = findBoneInScene(vrm, "J_Bip_R_Thumb2");
@@ -640,14 +675,21 @@ export default function AvatarWindow() {
 
             let targetRotX = -mouseRef.current.y * 0.2;
             let targetRotY = mouseRef.current.x * 0.35;
+            let targetRotZ = 0;
             const g = GESTURES[gestureRef.current.index];
             if (g?.lookAt && gestureRef.current.active) {
               targetRotX += g.lookAt.y * 0.3;
               targetRotY += g.lookAt.x * 0.3;
+              if ((g as any).tilt) targetRotZ = (g as any).tilt;
             }
+            if (g?.name === "think" && isThinkingRef.current) {
+              targetRotY += Math.sin(now * 0.001) * 0.15;
+            }
+
             if (bonesRef.current.head) {
               bonesRef.current.head.rotation.x = lerp(bonesRef.current.head.rotation.x, targetRotX, 0.06);
               bonesRef.current.head.rotation.y = lerp(bonesRef.current.head.rotation.y, targetRotY, 0.06);
+              bonesRef.current.head.rotation.z = lerp(bonesRef.current.head.rotation.z, targetRotZ, 0.06);
             }
 
             if (vrm.update) vrm.update(delta);
@@ -663,6 +705,7 @@ export default function AvatarWindow() {
               setBoneRotation(bonesRef.current.rightUpperArm, REST_POSE.rightUpperArm);
               setBoneRotation(bonesRef.current.leftForeArm, REST_POSE.leftForeArm);
               setBoneRotation(bonesRef.current.rightForeArm, REST_POSE.rightForeArm);
+              setBoneRotation(bonesRef.current.leftHand, REST_POSE.leftHand);
               setBoneRotation(bonesRef.current.rightHand, REST_POSE.rightHand);
               setBoneRotation(bonesRef.current.rightThumb1, REST_POSE.rightThumb1);
               setBoneRotation(bonesRef.current.rightThumb2, REST_POSE.rightThumb2);
@@ -789,22 +832,60 @@ export default function AvatarWindow() {
                   setBoneRotation(bonesRef.current.rightForeArm, REST_POSE.rightForeArm);
                 }
               } else if (g.name === "think") {
-                const leftUA = lerpPose(REST_POSE.leftUpperArm, g.target.leftUpperArm, e);
-                const rightUA = lerpPose(REST_POSE.rightUpperArm, g.target.rightUpperArm, e);
-                const leftFA = lerpPose(REST_POSE.leftForeArm, g.target.leftForeArm, e);
-                const forearmE = easeInOut(Math.min(1, t * 1.8));
-                const rightFA = lerpPose(REST_POSE.rightForeArm, g.target.rightForeArm, forearmE);
-
-                if (bonesRef.current.head) {
-                  bonesRef.current.head.rotation.y = lerp(bonesRef.current.head.rotation.y, Math.sin(now * 0.001) * 0.15, 0.05);
+                let currentT = (now - gestureRef.current.start) / g.duration;
+                if (isThinkingRef.current && currentT >= 0.8) {
+                  gestureRef.current.start = now - g.duration * 0.8;
+                  currentT = 0.8;
                 }
+                const thinkE = easeInOut(Math.min(1, currentT));
+                const forearmE = easeInOut(Math.min(1, currentT * 1.8));
+
+                const leftUA = lerpPose(REST_POSE.leftUpperArm, g.target.leftUpperArm || REST_POSE.leftUpperArm, thinkE);
+                const rightUA = lerpPose(REST_POSE.rightUpperArm, g.target.rightUpperArm || REST_POSE.rightUpperArm, thinkE);
+                const leftFA = lerpPose(REST_POSE.leftForeArm, g.target.leftForeArm || REST_POSE.leftForeArm, thinkE);
+                const rightFA = lerpPose(REST_POSE.rightForeArm, g.target.rightForeArm || REST_POSE.rightForeArm, forearmE);
+
+                const rightH = lerpPose(REST_POSE.rightHand, g.target.rightHand || REST_POSE.rightHand, forearmE);
+                const rightT1 = lerpPose(REST_POSE.rightThumb1, g.target.rightThumb1 || REST_POSE.rightThumb1, thinkE);
+                const rightT2 = lerpPose(REST_POSE.rightThumb2, g.target.rightThumb2 || REST_POSE.rightThumb2, thinkE);
+                const rightT3 = lerpPose(REST_POSE.rightThumb3, g.target.rightThumb3 || REST_POSE.rightThumb3, thinkE);
+                const rightI1 = lerpPose(REST_POSE.rightIndex1, g.target.rightIndex1 || REST_POSE.rightIndex1, thinkE);
+                const rightI2 = lerpPose(REST_POSE.rightIndex2, g.target.rightIndex2 || REST_POSE.rightIndex2, thinkE);
+                const rightI3 = lerpPose(REST_POSE.rightIndex3, g.target.rightIndex3 || REST_POSE.rightIndex3, thinkE);
+                const rightM1 = lerpPose(REST_POSE.rightMiddle1, g.target.rightMiddle1 || REST_POSE.rightMiddle1, thinkE);
+                const rightM2 = lerpPose(REST_POSE.rightMiddle2, g.target.rightMiddle2 || REST_POSE.rightMiddle2, thinkE);
+                const rightM3 = lerpPose(REST_POSE.rightMiddle3, g.target.rightMiddle3 || REST_POSE.rightMiddle3, thinkE);
+                const rightR1 = lerpPose(REST_POSE.rightRing1, g.target.rightRing1 || REST_POSE.rightRing1, thinkE);
+                const rightR2 = lerpPose(REST_POSE.rightRing2, g.target.rightRing2 || REST_POSE.rightRing2, thinkE);
+                const rightR3 = lerpPose(REST_POSE.rightRing3, g.target.rightRing3 || REST_POSE.rightRing3, thinkE);
+                const rightL1 = lerpPose(REST_POSE.rightLittle1, g.target.rightLittle1 || REST_POSE.rightLittle1, thinkE);
+                const rightL2 = lerpPose(REST_POSE.rightLittle2, g.target.rightLittle2 || REST_POSE.rightLittle2, thinkE);
+                const rightL3 = lerpPose(REST_POSE.rightLittle3, g.target.rightLittle3 || REST_POSE.rightLittle3, thinkE);
+                const leftH = lerpPose(REST_POSE.leftHand, g.target.leftHand || REST_POSE.leftHand, thinkE);
 
                 setBoneRotation(bonesRef.current.leftUpperArm, leftUA);
                 setBoneRotation(bonesRef.current.rightUpperArm, rightUA);
                 setBoneRotation(bonesRef.current.leftForeArm, leftFA);
                 setBoneRotation(bonesRef.current.rightForeArm, rightFA);
+                setBoneRotation(bonesRef.current.rightHand, rightH);
+                setBoneRotation(bonesRef.current.leftHand, leftH);
+                setBoneRotation(bonesRef.current.rightThumb1, rightT1);
+                setBoneRotation(bonesRef.current.rightThumb2, rightT2);
+                setBoneRotation(bonesRef.current.rightThumb3, rightT3);
+                setBoneRotation(bonesRef.current.rightIndex1, rightI1);
+                setBoneRotation(bonesRef.current.rightIndex2, rightI2);
+                setBoneRotation(bonesRef.current.rightIndex3, rightI3);
+                setBoneRotation(bonesRef.current.rightMiddle1, rightM1);
+                setBoneRotation(bonesRef.current.rightMiddle2, rightM2);
+                setBoneRotation(bonesRef.current.rightMiddle3, rightM3);
+                setBoneRotation(bonesRef.current.rightRing1, rightR1);
+                setBoneRotation(bonesRef.current.rightRing2, rightR2);
+                setBoneRotation(bonesRef.current.rightRing3, rightR3);
+                setBoneRotation(bonesRef.current.rightLittle1, rightL1);
+                setBoneRotation(bonesRef.current.rightLittle2, rightL2);
+                setBoneRotation(bonesRef.current.rightLittle3, rightL3);
 
-                if (t >= 1) {
+                if (currentT >= 1) {
                   gestureRef.current.active = false;
                   waveOscillator = 0;
                   vrm.scene.position.y = 0;
@@ -813,6 +894,8 @@ export default function AvatarWindow() {
                   setBoneRotation(bonesRef.current.rightUpperArm, REST_POSE.rightUpperArm);
                   setBoneRotation(bonesRef.current.leftForeArm, REST_POSE.leftForeArm);
                   setBoneRotation(bonesRef.current.rightForeArm, REST_POSE.rightForeArm);
+                  setBoneRotation(bonesRef.current.leftHand, REST_POSE.leftHand);
+                  setBoneRotation(bonesRef.current.rightHand, REST_POSE.rightHand);
                 }
               }
             }

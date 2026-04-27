@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import GestureEditor from "./GestureEditor";
 import "./MainWindow.css";
 
 type Tab = "home" | "chat" | "settings" | "skills";
@@ -158,6 +159,7 @@ export default function MainWindow() {
       setConversations((prev) => [result, ...prev]);
       setCurrentConversationId(result.id);
       setMessages([]);
+      setInput("");
       setActiveTab("chat");
     } catch (err) {
       console.error("Failed to create conversation:", err);
@@ -756,6 +758,18 @@ interface HermesConfigData {
   env_path: string;
 }
 
+interface AvatarGesture {
+  id: string;
+  name: string;
+  duration: number;
+  lookAtX: number;
+  lookAtY: number;
+  tilt: number;
+  targetJson: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 function SettingsPanel() {
   const [config, setConfig] = useState<HermesConfigData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -778,13 +792,240 @@ function SettingsPanel() {
   // 跟踪哪些字段被修改了
   const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set());
 
+  // 折叠状态
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+
+  // 供应商管理
+  interface Provider {
+    id: string;
+    name: string;
+    value: string;
+    baseUrl: string;
+    apiKeyEnv: string;
+    apiKey: string;
+    isBuiltin: boolean;
+    sortOrder: number;
+    createdAt: number;
+    updatedAt: number;
+  }
+
+  interface ModelItem {
+    id: string;
+    ownedBy?: string;
+  }
+
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [showProviderModal, setShowProviderModal] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
+  const [providerForm, setProviderForm] = useState({ name: "", value: "", baseUrl: "", apiKeyEnv: "", apiKey: "" });
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [modelList, setModelList] = useState<ModelItem[]>([]);
+  const [modelListLoading, setModelListLoading] = useState(false);
+
+  const [gestures, setGestures] = useState<AvatarGesture[]>([]);
+  const [showGestureModal, setShowGestureModal] = useState(false);
+  const [editingGesture, setEditingGesture] = useState<AvatarGesture | null>(null);
+  const [gestureForm, setGestureForm] = useState({
+    name: "", duration: 1000, lookAtX: 0, lookAtY: 0, tilt: 0, targetJson: "{}"
+  });
+
   const markDirty = (field: string) => {
     setDirtyFields((prev) => new Set(prev).add(field));
   };
 
+  const loadProviders = async () => {
+    try {
+      const list = await invoke<Provider[]>("list_providers");
+      setProviders(list);
+    } catch (err) {
+      console.error("Failed to load providers:", err);
+    }
+  };
+
+  const fetchModelList = async (providerValue: string) => {
+    setModelList([]);
+    setModelListLoading(true);
+    try {
+      const list = await invoke<ModelItem[]>("list_models", { providerValue });
+      setModelList(list);
+    } catch (err) {
+      console.error("Failed to fetch model list:", err);
+      setModelList([]);
+    } finally {
+      setModelListLoading(false);
+    }
+  };
+
+  const handleProviderChange = (newProvider: string) => {
+    setProvider(newProvider);
+    markDirty("provider");
+    const found = providers.find(p => p.value === newProvider);
+    if (found) {
+      setBaseUrl(found.baseUrl);
+      markDirty("baseUrl");
+    }
+    fetchModelList(newProvider);
+  };
+
+  const handleSaveProvider = async () => {
+    try {
+      if (editingProvider && editingProvider.id) {
+        await invoke("update_provider", {
+          req: {
+            id: editingProvider.id,
+            name: providerForm.name,
+            baseUrl: providerForm.baseUrl,
+            apiKeyEnv: providerForm.apiKeyEnv,
+            apiKey: providerForm.apiKey,
+          }
+        });
+      } else {
+        await invoke("create_provider", {
+          req: {
+            name: providerForm.name,
+            value: providerForm.value,
+            baseUrl: providerForm.baseUrl,
+            apiKeyEnv: providerForm.apiKeyEnv,
+            apiKey: providerForm.apiKey,
+          }
+        });
+      }
+      setShowProviderModal(false);
+      setEditingProvider(null);
+      loadProviders();
+    } catch (e) {
+      alert("保存供应商失败: " + String(e));
+    }
+  };
+
+  const handleDeleteProvider = async (id: string) => {
+    if (!confirm("确定删除该供应商吗？")) return;
+    try {
+      await invoke("delete_provider", { id });
+      loadProviders();
+    } catch (e) {
+      alert("删除供应商失败: " + String(e));
+    }
+  };
+
+  const openEditProvider = (p: Provider) => {
+    setEditingProvider(p);
+    setProviderForm({
+      name: p.name,
+      value: p.value,
+      baseUrl: p.baseUrl,
+      apiKeyEnv: p.apiKeyEnv,
+      apiKey: p.apiKey,
+    });
+    setShowApiKey(false);
+  };
+
+  const openNewProvider = () => {
+    setEditingProvider({ id: "", name: "", value: "", baseUrl: "", apiKeyEnv: "", apiKey: "", isBuiltin: false, sortOrder: 0, createdAt: 0, updatedAt: 0 });
+    setProviderForm({ name: "", value: "", baseUrl: "", apiKeyEnv: "", apiKey: "" });
+    setShowApiKey(false);
+  };
+
+  const closeProviderModal = () => {
+    setShowProviderModal(false);
+    setEditingProvider(null);
+  };
+
+  const toggleSection = (section: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) next.delete(section);
+      else next.add(section);
+      return next;
+    });
+  };
+
+  // 按分区定义字段归属
+  const SECTION_FIELDS: Record<string, string[]> = {
+    model: ["model", "provider", "baseUrl", "maxTurns"],
+    display: ["personality", "showReasoning", "ttsProvider"],
+    terminal: ["terminalBackend", "terminalTimeout", "compressionEnabled", "memoryEnabled"],
+  };
+
+  const sectionDirtyCount = (section: string) => {
+    return (SECTION_FIELDS[section] || []).filter(f => dirtyFields.has(f)).length;
+  };
+
+  const saveSectionConfig = async (section: string) => {
+    const sectionFields = SECTION_FIELDS[section] || [];
+    const fieldsToSave = sectionFields.filter(f => dirtyFields.has(f));
+    if (fieldsToSave.length === 0) {
+      setSaveMessage({ text: "没有修改需要保存", type: "success" });
+      setTimeout(() => setSaveMessage(null), 2000);
+      return;
+    }
+
+    setSaving(true);
+    setSaveMessage(null);
+
+    try {
+      const configKeyMap: Record<string, string> = {
+        model: "model",
+        provider: "model.provider",
+        baseUrl: "model.base_url",
+        maxTurns: "agent.max_turns",
+        personality: "display.personality",
+        showReasoning: "display.show_reasoning",
+        terminalBackend: "terminal.backend",
+        terminalTimeout: "terminal.timeout",
+        compressionEnabled: "compression.enabled",
+        memoryEnabled: "memory.memory_enabled",
+        ttsProvider: "tts.provider",
+      };
+      const fieldValueMap: Record<string, string> = {
+        model, provider, baseUrl,
+        maxTurns: String(maxTurns),
+        personality,
+        showReasoning: String(showReasoning),
+        terminalBackend,
+        terminalTimeout: String(terminalTimeout),
+        compressionEnabled: String(compressionEnabled),
+        memoryEnabled: String(memoryEnabled),
+        ttsProvider,
+      };
+
+      for (const field of fieldsToSave) {
+        const configKey = configKeyMap[field];
+        const value = fieldValueMap[field];
+        if (configKey && value !== undefined) {
+          await invoke<string>("set_hermes_config", { key: configKey, value });
+        }
+      }
+
+      setSaveMessage({ text: `已保存 ${fieldsToSave.length} 项配置`, type: "success" });
+      setDirtyFields((prev) => {
+        const next = new Set(prev);
+        fieldsToSave.forEach(f => next.delete(f));
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to save config:", err);
+      setSaveMessage({ text: `保存失败: ${err}`, type: "error" });
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveMessage(null), 3000);
+    }
+  };
+
   useEffect(() => {
     loadConfig();
+    loadGestures();
+    loadProviders();
   }, []);
+
+  const loadGestures = async () => {
+    try {
+      const list = await invoke<AvatarGesture[]>("get_avatar_gestures");
+      setGestures(list);
+    } catch (err) {
+      console.error("Failed to load gestures:", err);
+    }
+  };
 
   const loadConfig = async () => {
     setLoading(true);
@@ -803,6 +1044,9 @@ function SettingsPanel() {
       setMemoryEnabled(result.memory_enabled);
       setTtsProvider(result.tts_provider);
       setDirtyFields(new Set());
+      if (result.provider) {
+        fetchModelList(result.provider);
+      }
     } catch (err) {
       console.error("Failed to load hermes config:", err);
     } finally {
@@ -810,65 +1054,7 @@ function SettingsPanel() {
     }
   };
 
-  const saveConfig = async () => {
-    if (dirtyFields.size === 0) {
-      setSaveMessage({ text: "没有修改需要保存", type: "success" });
-      setTimeout(() => setSaveMessage(null), 2000);
-      return;
-    }
 
-    setSaving(true);
-    setSaveMessage(null);
-
-    try {
-      const fieldMap: Record<string, string> = {
-        model: model,
-        "model.provider": provider,
-        "model.base_url": baseUrl,
-        "agent.max_turns": String(maxTurns),
-        "display.personality": personality,
-        "display.show_reasoning": String(showReasoning),
-        "terminal.backend": terminalBackend,
-        "terminal.timeout": String(terminalTimeout),
-        "compression.enabled": String(compressionEnabled),
-        "memory.memory_enabled": String(memoryEnabled),
-        "tts.provider": ttsProvider,
-      };
-
-      const configKeyMap: Record<string, string> = {
-        model: "model",
-        provider: "model.provider",
-        baseUrl: "model.base_url",
-        maxTurns: "agent.max_turns",
-        personality: "display.personality",
-        showReasoning: "display.show_reasoning",
-        terminalBackend: "terminal.backend",
-        terminalTimeout: "terminal.timeout",
-        compressionEnabled: "compression.enabled",
-        memoryEnabled: "memory.memory_enabled",
-        ttsProvider: "tts.provider",
-      };
-
-      for (const field of dirtyFields) {
-        const configKey = configKeyMap[field];
-        const value = fieldMap[configKey];
-        if (configKey && value !== undefined) {
-          await invoke<string>("set_hermes_config", { key: configKey, value });
-        }
-      }
-
-      setSaveMessage({ text: `已保存 ${dirtyFields.size} 项配置`, type: "success" });
-      setDirtyFields(new Set());
-      // 重新加载以确认
-      await loadConfig();
-    } catch (err) {
-      console.error("Failed to save config:", err);
-      setSaveMessage({ text: `保存失败: ${err}`, type: "error" });
-    } finally {
-      setSaving(false);
-      setTimeout(() => setSaveMessage(null), 3000);
-    }
-  };
 
   if (loading) {
     return (
@@ -907,188 +1093,424 @@ function SettingsPanel() {
 
       <div className="settings-sections">
         {/* 模型配置 */}
-        <div className="settings-section">
-          <h3>🤖 模型配置</h3>
-          <div className="settings-form">
-            <div className="form-group">
-              <label>
-                模型名称
-                {dirtyFields.has("model") && <span className="dirty-badge">已修改</span>}
-              </label>
-              <input
-                type="text"
-                value={model}
-                onChange={(e) => { setModel(e.target.value); markDirty("model"); }}
-                placeholder="anthropic/claude-sonnet-4"
-              />
+        <div className={`settings-group ${collapsedSections.has("model") ? "collapsed" : ""}`}>
+          <div className="settings-group-header" onClick={() => toggleSection("model")}>
+            <h3>🤖 模型配置
+              {sectionDirtyCount("model") > 0 && <span className="dirty-badge">{sectionDirtyCount("model")} 项已修改</span>}
+            </h3>
+            <span className="collapse-arrow">▾</span>
+          </div>
+          <div className="settings-group-body">
+            <div className="settings-form">
+              <div className="form-group">
+                <label>
+                  供应商
+                  {dirtyFields.has("provider") && <span className="dirty-badge">已修改</span>}
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select style={{ flex: 1 }} value={provider} onChange={(e) => handleProviderChange(e.target.value)}>
+                    <option value="">请选择供应商</option>
+                    {providers.map(p => (
+                      <option key={p.id} value={p.value}>{p.name}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="save-btn" style={{ padding: '4px 10px', whiteSpace: 'nowrap' }} onClick={() => { openNewProvider(); setShowProviderModal(true); }}>管理供应商</button>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>
+                  模型名称
+                  {dirtyFields.has("model") && <span className="dirty-badge">已修改</span>}
+                </label>
+                <div className="model-select-row">
+                  {modelList.length > 0 ? (
+                    <select value={model} onChange={(e) => { setModel(e.target.value); markDirty("model"); }}>
+                      <option value="">请选择模型</option>
+                      {model && !modelList.some(m => m.id === model) && (
+                        <option value={model}>{model} (当前)</option>
+                      )}
+                      {modelList.map(m => (
+                        <option key={m.id} value={m.id}>{m.id}{m.ownedBy ? ` (${m.ownedBy})` : ''}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={model}
+                      onChange={(e) => { setModel(e.target.value); markDirty("model"); }}
+                      placeholder="选择供应商后加载模型列表，或手动输入模型ID"
+                    />
+                  )}
+                  {modelListLoading && <span style={{ fontSize: '12px', color: '#999' }}>⏳ 加载模型列表中...</span>}
+                  {modelList.length === 0 && !modelListLoading && provider && (
+                    <button type="button" className="save-btn" style={{ padding: '2px 8px', fontSize: '12px' }} onClick={() => fetchModelList(provider)}>刷新模型列表</button>
+                  )}
+                </div>
+              </div>
+              <div className="form-group">
+                <label>
+                  API Base URL
+                  {dirtyFields.has("baseUrl") && <span className="dirty-badge">已修改</span>}
+                </label>
+                <input
+                  type="text"
+                  value={baseUrl}
+                  readOnly
+                  placeholder="根据供应商自动填充"
+                  style={{ background: '#F5F5F7', color: '#666' }}
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  最大轮次 (Max Turns): {maxTurns}
+                  {dirtyFields.has("maxTurns") && <span className="dirty-badge">已修改</span>}
+                </label>
+                <input
+                  type="range"
+                  min="10"
+                  max="200"
+                  step="10"
+                  value={maxTurns}
+                  onChange={(e) => { setMaxTurns(parseInt(e.target.value)); markDirty("maxTurns"); }}
+                />
+              </div>
             </div>
-            <div className="form-group">
-              <label>
-                Provider
-                {dirtyFields.has("provider") && <span className="dirty-badge">已修改</span>}
-              </label>
-              <select value={provider} onChange={(e) => { setProvider(e.target.value); markDirty("provider"); }}>
-                <option value="nvidia">NVIDIA NIM</option>
-                <option value="openrouter">OpenRouter</option>
-                <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="nous">Nous</option>
-                <option value="deepseek">DeepSeek</option>
-                <option value="ollama">Ollama (本地)</option>
-                <option value="minimax">MiniMax</option>
-                <option value="minimax-cn">MiniMax (中国)</option>
-                <option value="zai">Z.AI / GLM</option>
-                <option value="kimi">Kimi</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>
-                API Base URL
-                {dirtyFields.has("baseUrl") && <span className="dirty-badge">已修改</span>}
-              </label>
-              <input
-                type="text"
-                value={baseUrl}
-                onChange={(e) => { setBaseUrl(e.target.value); markDirty("baseUrl"); }}
-                placeholder="https://api.openai.com/v1"
-              />
-            </div>
-            <div className="form-group">
-              <label>
-                最大轮次 (Max Turns): {maxTurns}
-                {dirtyFields.has("maxTurns") && <span className="dirty-badge">已修改</span>}
-              </label>
-              <input
-                type="range"
-                min="10"
-                max="200"
-                step="10"
-                value={maxTurns}
-                onChange={(e) => { setMaxTurns(parseInt(e.target.value)); markDirty("maxTurns"); }}
-              />
+            <div className="section-save-bar">
+              <button
+                className="section-save-btn"
+                onClick={() => saveSectionConfig("model")}
+                disabled={saving || sectionDirtyCount("model") === 0}
+              >
+                {saving ? "保存中..." : "💾 保存模型配置"}
+              </button>
             </div>
           </div>
         </div>
 
         {/* 显示与交互 */}
-        <div className="settings-section">
-          <h3>🎨 显示与交互</h3>
-          <div className="settings-form">
-            <div className="form-group">
-              <label>
-                人格风格
-                {dirtyFields.has("personality") && <span className="dirty-badge">已修改</span>}
-              </label>
-              <select value={personality} onChange={(e) => { setPersonality(e.target.value); markDirty("personality"); }}>
-                <option value="default">默认</option>
-                <option value="kawaii">Kawaii</option>
-                <option value="professional">专业</option>
-                <option value="pirate">海盗</option>
-                <option value="zen">禅意</option>
-              </select>
+        <div className={`settings-group ${collapsedSections.has("display") ? "collapsed" : ""}`}>
+          <div className="settings-group-header" onClick={() => toggleSection("display")}>
+            <h3>🎨 显示与交互
+              {sectionDirtyCount("display") > 0 && <span className="dirty-badge">{sectionDirtyCount("display")} 项已修改</span>}
+            </h3>
+            <span className="collapse-arrow">▾</span>
+          </div>
+          <div className="settings-group-body">
+            <div className="settings-form">
+              <div className="form-group">
+                <label>
+                  人格风格
+                  {dirtyFields.has("personality") && <span className="dirty-badge">已修改</span>}
+                </label>
+                <select value={personality} onChange={(e) => { setPersonality(e.target.value); markDirty("personality"); }}>
+                  <option value="default">默认</option>
+                  <option value="kawaii">Kawaii</option>
+                  <option value="professional">专业</option>
+                  <option value="pirate">海盗</option>
+                  <option value="zen">禅意</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="toggle-label">
+                  <span>
+                    显示推理过程
+                    {dirtyFields.has("showReasoning") && <span className="dirty-badge">已修改</span>}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={showReasoning}
+                    onChange={(e) => { setShowReasoning(e.target.checked); markDirty("showReasoning"); }}
+                  />
+                </label>
+              </div>
+              <div className="form-group">
+                <label>
+                  TTS 语音引擎
+                  {dirtyFields.has("ttsProvider") && <span className="dirty-badge">已修改</span>}
+                </label>
+                <select value={ttsProvider} onChange={(e) => { setTtsProvider(e.target.value); markDirty("ttsProvider"); }}>
+                  <option value="edge">Edge TTS</option>
+                  <option value="elevenlabs">ElevenLabs</option>
+                  <option value="openai">OpenAI TTS</option>
+                  <option value="xai">xAI</option>
+                  <option value="mistral">Mistral</option>
+                </select>
+              </div>
             </div>
-            <div className="form-group">
-              <label className="toggle-label">
-                <span>
-                  显示推理过程
-                  {dirtyFields.has("showReasoning") && <span className="dirty-badge">已修改</span>}
-                </span>
-                <input
-                  type="checkbox"
-                  checked={showReasoning}
-                  onChange={(e) => { setShowReasoning(e.target.checked); markDirty("showReasoning"); }}
-                />
-              </label>
-            </div>
-            <div className="form-group">
-              <label>
-                TTS 语音引擎
-                {dirtyFields.has("ttsProvider") && <span className="dirty-badge">已修改</span>}
-              </label>
-              <select value={ttsProvider} onChange={(e) => { setTtsProvider(e.target.value); markDirty("ttsProvider"); }}>
-                <option value="edge">Edge TTS</option>
-                <option value="elevenlabs">ElevenLabs</option>
-                <option value="openai">OpenAI TTS</option>
-                <option value="xai">xAI</option>
-                <option value="mistral">Mistral</option>
-              </select>
+            <div className="section-save-bar">
+              <button
+                className="section-save-btn"
+                onClick={() => saveSectionConfig("display")}
+                disabled={saving || sectionDirtyCount("display") === 0}
+              >
+                {saving ? "保存中..." : "💾 保存显示配置"}
+              </button>
             </div>
           </div>
         </div>
 
         {/* 终端 & 系统 */}
-        <div className="settings-section">
-          <h3>🖥️ 终端与系统</h3>
-          <div className="settings-form">
-            <div className="form-group">
-              <label>
-                终端后端
-                {dirtyFields.has("terminalBackend") && <span className="dirty-badge">已修改</span>}
-              </label>
-              <select value={terminalBackend} onChange={(e) => { setTerminalBackend(e.target.value); markDirty("terminalBackend"); }}>
-                <option value="local">本地 (local)</option>
-                <option value="docker">Docker</option>
-                <option value="modal">Modal</option>
-                <option value="daytona">Daytona</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>
-                命令超时 (秒): {terminalTimeout}
-                {dirtyFields.has("terminalTimeout") && <span className="dirty-badge">已修改</span>}
-              </label>
-              <input
-                type="range"
-                min="30"
-                max="600"
-                step="30"
-                value={terminalTimeout}
-                onChange={(e) => { setTerminalTimeout(parseInt(e.target.value)); markDirty("terminalTimeout"); }}
-              />
-            </div>
-            <div className="form-group">
-              <label className="toggle-label">
-                <span>
-                  上下文压缩
-                  {dirtyFields.has("compressionEnabled") && <span className="dirty-badge">已修改</span>}
-                </span>
+        <div className={`settings-group ${collapsedSections.has("terminal") ? "collapsed" : ""}`}>
+          <div className="settings-group-header" onClick={() => toggleSection("terminal")}>
+            <h3>🖥️ 终端与系统
+              {sectionDirtyCount("terminal") > 0 && <span className="dirty-badge">{sectionDirtyCount("terminal")} 项已修改</span>}
+            </h3>
+            <span className="collapse-arrow">▾</span>
+          </div>
+          <div className="settings-group-body">
+            <div className="settings-form">
+              <div className="form-group">
+                <label>
+                  终端后端
+                  {dirtyFields.has("terminalBackend") && <span className="dirty-badge">已修改</span>}
+                </label>
+                <select value={terminalBackend} onChange={(e) => { setTerminalBackend(e.target.value); markDirty("terminalBackend"); }}>
+                  <option value="local">本地 (local)</option>
+                  <option value="docker">Docker</option>
+                  <option value="modal">Modal</option>
+                  <option value="daytona">Daytona</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>
+                  命令超时 (秒): {terminalTimeout}
+                  {dirtyFields.has("terminalTimeout") && <span className="dirty-badge">已修改</span>}
+                </label>
                 <input
-                  type="checkbox"
-                  checked={compressionEnabled}
-                  onChange={(e) => { setCompressionEnabled(e.target.checked); markDirty("compressionEnabled"); }}
+                  type="range"
+                  min="30"
+                  max="600"
+                  step="30"
+                  value={terminalTimeout}
+                  onChange={(e) => { setTerminalTimeout(parseInt(e.target.value)); markDirty("terminalTimeout"); }}
                 />
-              </label>
+              </div>
+              <div className="form-group">
+                <label className="toggle-label">
+                  <span>
+                    上下文压缩
+                    {dirtyFields.has("compressionEnabled") && <span className="dirty-badge">已修改</span>}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={compressionEnabled}
+                    onChange={(e) => { setCompressionEnabled(e.target.checked); markDirty("compressionEnabled"); }}
+                  />
+                </label>
+              </div>
+              <div className="form-group">
+                <label className="toggle-label">
+                  <span>
+                    记忆功能
+                    {dirtyFields.has("memoryEnabled") && <span className="dirty-badge">已修改</span>}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={memoryEnabled}
+                    onChange={(e) => { setMemoryEnabled(e.target.checked); markDirty("memoryEnabled"); }}
+                  />
+                </label>
+              </div>
             </div>
-            <div className="form-group">
-              <label className="toggle-label">
-                <span>
-                  记忆功能
-                  {dirtyFields.has("memoryEnabled") && <span className="dirty-badge">已修改</span>}
-                </span>
-                <input
-                  type="checkbox"
-                  checked={memoryEnabled}
-                  onChange={(e) => { setMemoryEnabled(e.target.checked); markDirty("memoryEnabled"); }}
-                />
-              </label>
+            <div className="section-save-bar">
+              <button
+                className="section-save-btn"
+                onClick={() => saveSectionConfig("terminal")}
+                disabled={saving || sectionDirtyCount("terminal") === 0}
+              >
+                {saving ? "保存中..." : "💾 保存终端配置"}
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 保存按钮 */}
-      <div className="settings-save-bar">
-        <span className="dirty-count">
-          {dirtyFields.size > 0 ? `${dirtyFields.size} 项待保存` : "无修改"}
-        </span>
-        <button
-          className="save-btn"
-          onClick={saveConfig}
-          disabled={saving || dirtyFields.size === 0}
-        >
-          {saving ? "保存中..." : "💾 保存配置"}
-        </button>
+      <div className={`settings-group ${collapsedSections.has("gesture") ? "collapsed" : ""}`}>
+        <div className="settings-group-header gesture-section-header" onClick={() => toggleSection("gesture")}>
+          <h3>💃 数字人动作管理</h3>
+          <div className="gesture-header-right">
+            <button className="gesture-add-btn" onClick={(e) => {
+              e.stopPropagation();
+              setEditingGesture(null);
+              setGestureForm({ name: "", duration: 1000, lookAtX: 0, lookAtY: 0, tilt: 0, targetJson: "{}" });
+              setShowGestureModal(true);
+            }}>
+              <span className="gesture-add-icon">+</span>
+              新增动作
+            </button>
+            <span className="collapse-arrow">▾</span>
+          </div>
+        </div>
+
+        <div className="settings-group-body">
+          {gestures.length === 0 && (
+            <div className="gesture-empty">
+              <span className="gesture-empty-icon">🎭</span>
+              <p>暂无动作，点击上方按钮新增</p>
+            </div>
+          )}
+
+          <div className="gesture-card-list">
+            {gestures.map((g, index) => (
+              <div key={g.id} className="gesture-card" style={{ animationDelay: `${index * 0.05}s` }}>
+                <div className="gesture-card-left">
+                  <div className="gesture-card-icon">
+                    {g.name === "initialGreeting" ? "👋" : g.name === "think" ? "🤔" : "🎭"}
+                  </div>
+                  <div className="gesture-card-info">
+                    <span className="gesture-card-name">{g.name}</span>
+                    <div className="gesture-card-tags">
+                      <span className="gesture-tag gesture-tag-duration">⏱ {g.duration}ms</span>
+                      {(g.lookAtX !== 0 || g.lookAtY !== 0) && (
+                        <span className="gesture-tag gesture-tag-lookat">👁 {g.lookAtX},{g.lookAtY}</span>
+                      )}
+                      {g.tilt !== 0 && (
+                        <span className="gesture-tag gesture-tag-tilt">↗ {g.tilt}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="gesture-card-actions">
+                  <button className="gesture-action-btn gesture-action-edit" onClick={() => {
+                    setEditingGesture(g);
+                    setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
+                    setShowGestureModal(true);
+                  }} title="编辑动作">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                    编辑
+                  </button>
+                  <button className="gesture-action-btn gesture-action-delete" onClick={async () => {
+                    if (confirm(`删除动作「${g.name}」吗？`)) {
+                      await invoke("delete_avatar_gesture", { id: g.id });
+                      loadGestures();
+                    }
+                  }} title="删除动作">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                    删除
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
+
+      {showGestureModal && (
+        <GestureEditor
+          gestureName={editingGesture ? gestureForm.name : ""}
+          initialTargetJson={gestureForm.targetJson}
+          duration={gestureForm.duration}
+          lookAtX={gestureForm.lookAtX}
+          lookAtY={gestureForm.lookAtY}
+          tilt={gestureForm.tilt}
+          onCancel={() => setShowGestureModal(false)}
+          onSave={async (params) => {
+            try {
+              if (editingGesture) {
+                await invoke("update_avatar_gesture", { req: { id: editingGesture.id, ...params } });
+              } else {
+                await invoke("create_avatar_gesture", { req: params });
+              }
+              setShowGestureModal(false);
+              loadGestures();
+            } catch (e) {
+              alert("保存失败: " + String(e));
+            }
+          }}
+        />
+      )}
+
+      {showProviderModal && (
+        <div className="modal-overlay" onClick={closeProviderModal}>
+          <div className="modal-content" style={{ width: '480px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{editingProvider && editingProvider.id ? `编辑供应商: ${editingProvider.name}` : editingProvider ? "添加新供应商" : "供应商管理"}</h3>
+              <button className="modal-close-btn" onClick={closeProviderModal}>✕</button>
+            </div>
+
+            {editingProvider ? (
+              <div className="provider-form">
+                <div className="form-group">
+                  <label>名称</label>
+                  <input type="text" value={providerForm.name} onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })} placeholder="如: OpenAI" />
+                </div>
+                {editingProvider.isBuiltin ? (
+                  <div className="form-group">
+                    <label>标识 (内置，不可修改)</label>
+                    <input type="text" value={editingProvider.value} readOnly style={{ background: '#F5F5F7', color: '#999' }} />
+                  </div>
+                ) : (
+                  <div className="form-group">
+                    <label>标识 (value)</label>
+                    <input type="text" value={providerForm.value} onChange={(e) => setProviderForm({ ...providerForm, value: e.target.value })} placeholder="如: openai" />
+                  </div>
+                )}
+                <div className="form-group">
+                  <label>API Base URL</label>
+                  <input type="text" value={providerForm.baseUrl} onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" />
+                </div>
+                <div className="form-group">
+                  <label>API Key 环境变量名</label>
+                  <input type="text" value={providerForm.apiKeyEnv} onChange={(e) => setProviderForm({ ...providerForm, apiKeyEnv: e.target.value })} placeholder="OPENAI_API_KEY" />
+                </div>
+                <div className="form-group">
+                  <label>API Key</label>
+                  <div className="api-key-input-row">
+                    <input
+                      type={showApiKey ? "text" : "password"}
+                      value={providerForm.apiKey}
+                      onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
+                      placeholder="sk-..."
+                    />
+                    <button type="button" className="api-key-toggle-btn" onClick={() => setShowApiKey(!showApiKey)}>
+                      {showApiKey ? "🙈" : "👁"}
+                    </button>
+                  </div>
+                </div>
+                <div className="provider-form-actions">
+                  <button className="provider-cancel-btn" onClick={() => { setEditingProvider(null); }}>← 返回列表</button>
+                  <button className="provider-save-btn" onClick={handleSaveProvider}>保存</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="provider-list">
+                  {providers.map(p => (
+                    <div key={p.id} className="provider-item">
+                      <div className="provider-item-info">
+                        <div className="provider-item-name">
+                          {p.name}
+                          {p.isBuiltin && <span style={{ fontSize: '10px', color: '#999', marginLeft: '4px' }}>[内置]</span>}
+                          <span className={`api-key-badge ${p.apiKey ? 'configured' : 'missing'}`}>
+                            {p.apiKey ? '密钥已配置' : '未配置密钥'}
+                          </span>
+                        </div>
+                        <div className="provider-item-value">{p.value}</div>
+                        {p.baseUrl && <div className="provider-item-url">{p.baseUrl}</div>}
+                      </div>
+                      <div className="provider-item-actions">
+                        <button className="provider-edit-btn" onClick={() => openEditProvider(p)} title="编辑">✏️</button>
+                        {!p.isBuiltin && (
+                          <button className="provider-delete-btn" onClick={() => handleDeleteProvider(p.id)} title="删除">🗑️</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button className="provider-add-btn" onClick={() => { openNewProvider(); }}>
+                  + 添加新供应商
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
