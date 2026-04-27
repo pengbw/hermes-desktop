@@ -158,7 +158,7 @@ pub async fn list_models(
 pub async fn sync_provider_keys(app: AppHandle) -> Result<i64, String> {
     let pool = get_pool(&app)?;
 
-    let env_path_output = std::process::Command::new("hermes")
+    let env_path_output = std::process::Command::new(hermes_bin())
         .args(&["config", "env-path"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -167,6 +167,10 @@ pub async fn sync_provider_keys(app: AppHandle) -> Result<i64, String> {
     let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
 
     if env_path.is_empty() {
+        return Ok(0);
+    }
+
+    if !std::path::Path::new(&env_path).exists() {
         return Ok(0);
     }
 
@@ -598,8 +602,31 @@ pub async fn update_provider(
     Ok(())
 }
 
+fn hermes_bin() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates = [
+        format!("{}/.hermes/hermes-agent/venv/bin/hermes", home),
+        format!("{}/.local/bin/hermes", home),
+        "/usr/local/bin/hermes".to_string(),
+    ];
+    for path in &candidates {
+        if std::path::Path::new(path).exists() {
+            return path.clone();
+        }
+    }
+    if let Ok(output) = std::process::Command::new("which").arg("hermes").output() {
+        if output.status.success() {
+            let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !p.is_empty() {
+                return p;
+            }
+        }
+    }
+    "hermes".to_string()
+}
+
 fn write_hermes_env(key: &str, value: &str) -> Result<(), String> {
-    let env_path_output = std::process::Command::new("hermes")
+    let env_path_output = std::process::Command::new(hermes_bin())
         .args(&["config", "env-path"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -609,6 +636,14 @@ fn write_hermes_env(key: &str, value: &str) -> Result<(), String> {
 
     if env_path.is_empty() {
         return Err("无法获取 Hermes env 文件路径".to_string());
+    }
+
+    if !std::path::Path::new(&env_path).exists() {
+        if let Some(parent) = std::path::Path::new(&env_path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        std::fs::write(&env_path, "")
+            .map_err(|e| format!("创建 env 文件失败: {}", e))?;
     }
 
     let env_content = std::fs::read_to_string(&env_path)

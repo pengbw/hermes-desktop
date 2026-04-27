@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import GestureEditor from "./GestureEditor";
+import InstallGuidePanel from "./InstallGuide";
 import "./MainWindow.css";
 
 type Tab = "home" | "chat" | "settings" | "skills";
@@ -44,6 +45,23 @@ const DEFAULT_CHAT_STATE: ChatSessionState = {
 export default function MainWindow() {
   const [activeTab, setActiveTab] = useState<Tab>(DEFAULT_TAB);
   const [showAvatar, setShowAvatar] = useState(false);
+  const [hermesInstalled, setHermesInstalled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const checkInstall = async () => {
+      try {
+        const result = await invoke<{ installed: boolean; version: string; python: string }>("check_hermes_installed");
+        setHermesInstalled(result.installed);
+      } catch {
+        setHermesInstalled(false);
+      }
+    };
+    checkInstall();
+  }, []);
+
+  const handleInstalled = () => {
+    setHermesInstalled(true);
+  };
 
   // 控制 Avatar 独立窗口
   const toggleAvatarWindow = async () => {
@@ -352,6 +370,15 @@ export default function MainWindow() {
 
   return (
     <div className="main-window">
+      {hermesInstalled === null ? (
+        <div className="loading-screen">
+          <div className="spinner" />
+          <p>正在检测 Hermes Agent...</p>
+        </div>
+      ) : !hermesInstalled ? (
+        <InstallGuidePanel onInstalled={handleInstalled} />
+      ) : (
+      <>
       {/* 工具栏：菜单 + 数字人按钮 */}
       <div className="toolbar">
         <nav className="toolbar-nav">
@@ -402,6 +429,8 @@ export default function MainWindow() {
         {activeTab === "settings" && <SettingsPanel />}
         {activeTab === "skills" && <SkillsPanel />}
       </div>
+      </>
+      )}
     </div>
   );
 }
