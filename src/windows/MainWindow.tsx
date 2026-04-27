@@ -682,7 +682,7 @@ function ChatPanel({
           {messages.map((msg) => (
             <div key={msg.id} className={`message-row ${msg.role}`}>
               <div className="message-avatar">
-                {msg.role === "user" ? "👤" : "🤖"}
+                {msg.role === "user" ? "👤" : <img src="/bot.svg" alt="bot" className="message-avatar-img" />}
               </div>
               <div className="message-bubble">
                 {msg.thinking && (
@@ -697,7 +697,7 @@ function ChatPanel({
           ))}
           {isStreaming && streamedContent && (
             <div className="message-row assistant">
-              <div className="message-avatar">🤖</div>
+              <div className="message-avatar"><img src="/bot.svg" alt="bot" className="message-avatar-img" /></div>
               <div className="message-bubble">
                 <div className="message-text">{streamedContent}</div>
                 <span className="streaming-cursor">▊</span>
@@ -706,7 +706,7 @@ function ChatPanel({
           )}
           {isThinking && (
             <div className="message-row assistant">
-              <div className="message-avatar">🤖</div>
+              <div className="message-avatar"><img src="/bot.svg" alt="bot" className="message-avatar-img" /></div>
               <div className="message-bubble">
                 <div className="thinking-block">
                   <span className="thinking-label">🤔 思考中...</span>
@@ -965,7 +965,7 @@ function SettingsPanel() {
 
     try {
       const configKeyMap: Record<string, string> = {
-        model: "model",
+        model: "model.default",
         provider: "model.provider",
         baseUrl: "model.base_url",
         maxTurns: "agent.max_turns",
@@ -1107,14 +1107,19 @@ function SettingsPanel() {
                   供应商
                   {dirtyFields.has("provider") && <span className="dirty-badge">已修改</span>}
                 </label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <select style={{ flex: 1 }} value={provider} onChange={(e) => handleProviderChange(e.target.value)}>
+                <div className="provider-select-row">
+                  <select value={provider} onChange={(e) => handleProviderChange(e.target.value)}>
                     <option value="">请选择供应商</option>
                     {providers.map(p => (
                       <option key={p.id} value={p.value}>{p.name}</option>
                     ))}
                   </select>
-                  <button type="button" className="save-btn" style={{ padding: '4px 10px', whiteSpace: 'nowrap' }} onClick={() => { openNewProvider(); setShowProviderModal(true); }}>管理供应商</button>
+                  <button type="button" className="provider-manage-btn" onClick={() => { setEditingProvider(null); setShowProviderModal(true); }} title="管理供应商">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="3"/>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
               <div className="form-group">
@@ -1323,80 +1328,91 @@ function SettingsPanel() {
             </div>
           </div>
         </div>
-      </div>
 
-      <div className={`settings-group ${collapsedSections.has("gesture") ? "collapsed" : ""}`}>
-        <div className="settings-group-header gesture-section-header" onClick={() => toggleSection("gesture")}>
-          <h3>💃 数字人动作管理</h3>
-          <div className="gesture-header-right">
-            <button className="gesture-add-btn" onClick={(e) => {
-              e.stopPropagation();
-              setEditingGesture(null);
-              setGestureForm({ name: "", duration: 1000, lookAtX: 0, lookAtY: 0, tilt: 0, targetJson: "{}" });
-              setShowGestureModal(true);
-            }}>
-              <span className="gesture-add-icon">+</span>
-              新增动作
-            </button>
-            <span className="collapse-arrow">▾</span>
-          </div>
-        </div>
-
-        <div className="settings-group-body">
-          {gestures.length === 0 && (
-            <div className="gesture-empty">
-              <span className="gesture-empty-icon">🎭</span>
-              <p>暂无动作，点击上方按钮新增</p>
+        <div className={`settings-group ${collapsedSections.has("gesture") ? "collapsed" : ""}`}>
+          <div className="settings-group-header gesture-section-header" onClick={() => toggleSection("gesture")}>
+            <h3>💃 数字人动作管理</h3>
+            <div className="gesture-header-right">
+              <button className="gesture-add-btn" onClick={(e) => {
+                e.stopPropagation();
+                setEditingGesture(null);
+                setGestureForm({ name: "", duration: 1000, lookAtX: 0, lookAtY: 0, tilt: 0, targetJson: "{}" });
+                setShowGestureModal(true);
+              }}>
+                <span className="gesture-add-icon">+</span>
+                新增动作
+              </button>
+              <span className="collapse-arrow">▾</span>
             </div>
-          )}
+          </div>
 
-          <div className="gesture-card-list">
-            {gestures.map((g, index) => (
-              <div key={g.id} className="gesture-card" style={{ animationDelay: `${index * 0.05}s` }}>
-                <div className="gesture-card-left">
-                  <div className="gesture-card-icon">
-                    {g.name === "initialGreeting" ? "👋" : g.name === "think" ? "🤔" : "🎭"}
-                  </div>
-                  <div className="gesture-card-info">
-                    <span className="gesture-card-name">{g.name}</span>
-                    <div className="gesture-card-tags">
-                      <span className="gesture-tag gesture-tag-duration">⏱ {g.duration}ms</span>
-                      {(g.lookAtX !== 0 || g.lookAtY !== 0) && (
-                        <span className="gesture-tag gesture-tag-lookat">👁 {g.lookAtX},{g.lookAtY}</span>
-                      )}
-                      {g.tilt !== 0 && (
-                        <span className="gesture-tag gesture-tag-tilt">↗ {g.tilt}</span>
-                      )}
+          <div className="settings-group-body">
+            {gestures.length === 0 && (
+              <div className="gesture-empty">
+                <span className="gesture-empty-icon">🎭</span>
+                <p>暂无动作，点击上方按钮新增</p>
+              </div>
+            )}
+
+            <div className="gesture-card-list">
+              {gestures.map((g, index) => (
+                <div key={g.id} className="gesture-card" style={{ animationDelay: `${index * 0.05}s` }}>
+                  <div className="gesture-card-left">
+                    <div className="gesture-card-icon">
+                      {g.name === "initialGreeting" ? "👋" : g.name === "think" ? "🤔" : "🎭"}
+                    </div>
+                    <div className="gesture-card-info">
+                      <span className="gesture-card-name">{g.name}</span>
+                      <div className="gesture-card-tags">
+                        <span className="gesture-tag gesture-tag-duration">⏱ {g.duration}ms</span>
+                        {(g.lookAtX !== 0 || g.lookAtY !== 0) && (
+                          <span className="gesture-tag gesture-tag-lookat">👁 {g.lookAtX},{g.lookAtY}</span>
+                        )}
+                        {g.tilt !== 0 && (
+                          <span className="gesture-tag gesture-tag-tilt">↗ {g.tilt}</span>
+                        )}
+                        {(() => {
+                          try {
+                            const bones = JSON.parse(g.targetJson || "{}");
+                            const activeBones = Object.entries(bones).filter(([, v]: [string, any]) =>
+                              v && (v.x !== 0 || v.y !== 0 || v.z !== 0)
+                            );
+                            return activeBones.map(([key]: [string, any]) => (
+                              <span key={key} className="gesture-tag gesture-tag-bone">🦴 {key}</span>
+                            ));
+                          } catch { return null; }
+                        })()}
+                      </div>
                     </div>
                   </div>
+                  <div className="gesture-card-actions">
+                    <button className="gesture-action-btn gesture-action-edit" onClick={() => {
+                      setEditingGesture(g);
+                      setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
+                      setShowGestureModal(true);
+                    }} title="编辑动作">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                      编辑
+                    </button>
+                    <button className="gesture-action-btn gesture-action-delete" onClick={async () => {
+                      if (confirm(`删除动作「${g.name}」吗？`)) {
+                        await invoke("delete_avatar_gesture", { id: g.id });
+                        loadGestures();
+                      }
+                    }} title="删除动作">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                      </svg>
+                      删除
+                    </button>
+                  </div>
                 </div>
-                <div className="gesture-card-actions">
-                  <button className="gesture-action-btn gesture-action-edit" onClick={() => {
-                    setEditingGesture(g);
-                    setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
-                    setShowGestureModal(true);
-                  }} title="编辑动作">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                    编辑
-                  </button>
-                  <button className="gesture-action-btn gesture-action-delete" onClick={async () => {
-                    if (confirm(`删除动作「${g.name}」吗？`)) {
-                      await invoke("delete_avatar_gesture", { id: g.id });
-                      loadGestures();
-                    }
-                  }} title="删除动作">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                    删除
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>

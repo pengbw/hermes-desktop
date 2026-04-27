@@ -3,7 +3,7 @@
 .gesture-editor-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -21,9 +21,9 @@
   width: 920px;
   max-width: 95vw;
   max-height: 90vh;
-  background: linear-gradient(135deg, #1a1d23 0%, #22262e 100%);
+  background: #ffffff;
   border-radius: 16px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -40,14 +40,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid #E8E8ED;
 }
 
 .gesture-editor-header h3 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #f0f0f0;
+  color: #1A1A1A;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -62,8 +62,8 @@
   height: 32px;
   border-radius: 8px;
   border: none;
-  background: rgba(255, 255, 255, 0.06);
-  color: #aaa;
+  background: #F5F5F7;
+  color: #666;
   font-size: 16px;
   cursor: pointer;
   display: flex;
@@ -73,8 +73,8 @@
 }
 
 .gesture-editor-close:hover {
-  background: rgba(255, 80, 80, 0.2);
-  color: #ff6b6b;
+  background: #FFE5E5;
+  color: #E53935;
 }
 
 .gesture-editor-body {
@@ -90,13 +90,13 @@
   min-width: 380px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid #E8E8ED;
 }
 
 .gesture-preview-canvas-wrap {
   flex: 1;
   position: relative;
-  background: linear-gradient(180deg, #2a2d35 0%, #1e2028 100%);
+  background: linear-gradient(180deg, #F0F2F8 0%, #E8EAF0 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -117,14 +117,14 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  color: #888;
+  color: #999;
   font-size: 14px;
 }
 
 .gesture-preview-loading .spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
+  border: 3px solid #E0E0E0;
   border-top-color: #7c6fff;
   border-radius: 50%;
   animation: gestureSpin 0.8s linear infinite;
@@ -137,11 +137,11 @@
 /* ── 基础参数行 ── */
 .gesture-meta-bar {
   padding: 12px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid #E8E8ED;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  background: rgba(0, 0, 0, 0.15);
+  background: #FAFAFA;
 }
 
 .gesture-meta-bar .meta-field {
@@ -165,9 +165,9 @@
   width: 100%;
   padding: 4px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: #e0e0e0;
+  border: 1px solid #E0E0E0;
+  background: #fff;
+  color: #333;
   font-size: 13px;
   font-family: 'SF Mono', 'Menlo', monospace;
   outline: none;
@@ -175,7 +175,7 @@
 }
 
 .gesture-meta-bar input:focus {
-  border-color: rgba(124, 111, 255, 0.5);
+  border-color: #7c6fff;
 }
 
 /* ── 右侧：lil-gui 容器 ── */
@@ -193,16 +193,19 @@
   overflow-y: auto;
 }
 
-/* lil-gui 样式覆盖，使其融入暗色主题 */
+/* lil-gui 样式覆盖，亮色主题 */
 .gesture-gui-mount .lil-gui {
   --background-color: transparent !important;
-  --widget-color: rgba(255, 255, 255, 0.06) !important;
-  --hover-color: rgba(124, 111, 255, 0.15) !important;
-  --focus-color: rgba(124, 111, 255, 0.3) !important;
-  --number-color: #7c6fff !important;
-  --string-color: #66d9ef !important;
+  --widget-color: #F0F0F4 !important;
+  --hover-color: rgba(124, 111, 255, 0.08) !important;
+  --focus-color: rgba(124, 111, 255, 0.15) !important;
+  --number-color: #5b4fd4 !important;
+  --string-color: #0D9488 !important;
   --font-size: 11px !important;
   --font-family: 'Inter', -apple-system, sans-serif !important;
+  --text-color: #333 !important;
+  --title-background-color: #F5F5F9 !important;
+  --title-text-color: #555 !important;
   width: 100% !important;
   border: none !important;
   box-shadow: none !important;
@@ -210,7 +213,7 @@
 
 .gesture-gui-mount .lil-gui .title {
   font-weight: 600 !important;
-  color: #c0c0c0 !important;
+  color: #555 !important;
   font-size: 11px !important;
   text-transform: uppercase !important;
   letter-spacing: 0.5px !important;
@@ -227,24 +230,24 @@
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.15);
+  border-top: 1px solid #E8E8ED;
+  background: #FAFAFA;
 }
 
 .gesture-btn-cancel {
   padding: 8px 20px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: transparent;
-  color: #aaa;
+  border: 1px solid #E0E0E0;
+  background: #fff;
+  color: #666;
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .gesture-btn-cancel:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #ddd;
+  background: #F5F5F7;
+  color: #333;
 }
 
 .gesture-btn-save {
@@ -257,21 +260,21 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: 0 2px 12px rgba(124, 111, 255, 0.3);
+  box-shadow: 0 2px 12px rgba(124, 111, 255, 0.25);
 }
 
 .gesture-btn-save:hover {
   background: linear-gradient(135deg, #8b7fff, #6a5fe3);
-  box-shadow: 0 4px 20px rgba(124, 111, 255, 0.4);
+  box-shadow: 0 4px 20px rgba(124, 111, 255, 0.35);
   transform: translateY(-1px);
 }
 
 .gesture-btn-reset {
   padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 165, 0, 0.2);
-  background: transparent;
-  color: #ffaa44;
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  background: #fff;
+  color: #E68A00;
   font-size: 12px;
   cursor: pointer;
   margin-right: auto;
@@ -279,7 +282,7 @@
 }
 
 .gesture-btn-reset:hover {
-  background: rgba(255, 165, 0, 0.08);
+  background: #FFF8EE;
 }
 
 /* ── 名称输入 ── */
@@ -293,14 +296,14 @@
 .gesture-name-input input {
   padding: 4px 10px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: #e0e0e0;
+  border: 1px solid #E0E0E0;
+  background: #fff;
+  color: #333;
   font-size: 14px;
   outline: none;
   width: 140px;
 }
 
 .gesture-name-input input:focus {
-  border-color: rgba(124, 111, 255, 0.5);
+  border-color: #7c6fff;
 }
