@@ -105,6 +105,20 @@ npm run tauri build
 
 ---
 
+## ❓ 常见问题
+
+### macOS 提示"已损坏，无法打开"
+
+由于应用未经过 Apple 公证签名，macOS Gatekeeper 会阻止打开并提示"已损坏"。在终端中执行以下命令移除隔离属性即可：
+
+```bash
+xattr -cr "/Applications/Hermes Desktop.app"
+```
+
+或者前往 **系统设置 > 隐私与安全性**，找到被阻止的应用，点击"仍要打开"。
+
+---
+
 ## 📄 开源协议
 
 Apache License 2.0
