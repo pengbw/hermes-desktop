@@ -721,7 +721,7 @@ function ChatPanel({
               <div className="message-bubble">
                 {msg.thinking && (
                   <div className="thinking-block">
-                    <span className="thinking-label">🤔 思考中...</span>
+                    <span className="thinking-label thinking-label-done">思考过程</span>
                     <pre className="thinking-content">{msg.thinking}</pre>
                   </div>
                 )}
@@ -741,11 +741,16 @@ function ChatPanel({
           {isThinking && (
             <div className="message-row assistant">
               <div className="message-avatar"><img src="/bot.svg" alt="bot" className="message-avatar-img" /></div>
-              <div className="message-bubble">
-                <div className="thinking-block">
-                  <span className="thinking-label">🤔 思考中...</span>
-                  <pre className="thinking-content">{thinkingContent || "..."}</pre>
-                </div>
+              <div className="thinking-block">
+                <span className="thinking-label">
+                    思考中
+                    <span className="thinking-dots">
+                      <span className="thinking-dot" />
+                      <span className="thinking-dot" />
+                      <span className="thinking-dot" />
+                    </span>
+                  </span>
+                {thinkingContent && <pre className="thinking-content">{thinkingContent}</pre>}
               </div>
             </div>
           )}
@@ -800,6 +805,7 @@ interface AvatarGesture {
   lookAtY: number;
   tilt: number;
   targetJson: string;
+  source: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -859,9 +865,11 @@ function SettingsPanel() {
   const [gestures, setGestures] = useState<AvatarGesture[]>([]);
   const [showGestureModal, setShowGestureModal] = useState(false);
   const [editingGesture, setEditingGesture] = useState<AvatarGesture | null>(null);
+  const [gestureReadOnly, setGestureReadOnly] = useState(false);
   const [gestureForm, setGestureForm] = useState({
     name: "", duration: 1000, lookAtX: 0, lookAtY: 0, tilt: 0, targetJson: "{}"
   });
+  const gestureFileInputRef = useRef<HTMLInputElement>(null);
 
   const markDirty = (field: string) => {
     setDirtyFields((prev) => new Set(prev).add(field));
@@ -1059,6 +1067,60 @@ function SettingsPanel() {
     } catch (err) {
       console.error("Failed to load gestures:", err);
     }
+  };
+
+  const handleImportGestureJson = async () => {
+    const fileInput = gestureFileInputRef.current;
+    if (!fileInput) return;
+    fileInput.value = '';
+    fileInput.accept = '.json';
+    fileInput.onchange = async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const imported = JSON.parse(text);
+
+        let poseData: Record<string, { position: number[]; rotation: number[] }> = {};
+
+        if (imported.pose && imported.vrmMetaVersion !== undefined) {
+          poseData = imported.pose;
+        } else {
+          for (const [key, val] of Object.entries(imported)) {
+            if (val && typeof val === 'object') {
+              const v = val as any;
+              if (Array.isArray(v.rotation) && v.rotation.length === 4) {
+                poseData[key] = { position: v.position || [0, 0, 0], rotation: v.rotation };
+              } else if (typeof v.w === 'number') {
+                poseData[key] = { position: [0, 0, 0], rotation: [v.x ?? 0, v.y ?? 0, v.z ?? 0, v.w] };
+              }
+            }
+          }
+        }
+
+        if (Object.keys(poseData).length === 0) {
+          alert('未识别到有效的骨骼姿势数据，请检查 JSON 格式');
+          return;
+        }
+
+        const gestureName = imported.name || file.name.replace(/\.json$/i, '') || '导入的动作';
+        const duration = imported.duration || 5000;
+        const lookAtX = imported.lookAtX ?? (imported.gages?.yaw ?? 0);
+        const lookAtY = imported.lookAtY ?? (imported.gages?.pitch ?? 0);
+        const tilt = imported.tilt ?? 0;
+        const targetJson = JSON.stringify(poseData);
+
+        await invoke("create_avatar_gesture", {
+          req: { name: gestureName, targetJson, duration, lookAtX, lookAtY, tilt }
+        });
+        await loadGestures();
+        alert(`成功导入动作: ${gestureName}`);
+      } catch (e) {
+        console.error('导入失败:', e);
+        alert('导入失败: ' + String(e));
+      }
+    };
+    fileInput.click();
   };
 
   const loadConfig = async () => {
@@ -1376,6 +1438,14 @@ function SettingsPanel() {
                 <span className="gesture-add-icon">+</span>
                 新增动作
               </button>
+              <button className="gesture-add-btn gesture-import-btn" onClick={(e) => {
+                e.stopPropagation();
+                handleImportGestureJson();
+              }} title="从 JSON 文件导入动作姿势数据">
+                <span className="gesture-add-icon">📥</span>
+                导入
+              </button>
+              <input type="file" ref={gestureFileInputRef} style={{ display: 'none' }} />
               <span className="collapse-arrow">▾</span>
             </div>
           </div>
@@ -1389,14 +1459,21 @@ function SettingsPanel() {
             )}
 
             <div className="gesture-card-list">
-              {gestures.map((g, index) => (
+              {gestures.map((g, index) => {
+                const isSystem = g.source === "system";
+                return (
                 <div key={g.id} className="gesture-card" style={{ animationDelay: `${index * 0.05}s` }}>
                   <div className="gesture-card-left">
                     <div className="gesture-card-icon">
-                      {g.name === "initialGreeting" ? "👋" : g.name === "think" ? "🤔" : "🎭"}
+                      {g.name === "greeting" ? "👋" : g.name === "think" ? "🤔" : "🎭"}
                     </div>
                     <div className="gesture-card-info">
-                      <span className="gesture-card-name">{g.name}</span>
+                      <div className="gesture-card-name-row">
+                        <span className="gesture-card-name">{g.name}</span>
+                        <span className={`gesture-source-tag ${isSystem ? "gesture-source-system" : "gesture-source-custom"}`}>
+                          {isSystem ? "系统" : "自定义"}
+                        </span>
+                      </div>
                       <div className="gesture-card-tags">
                         <span className="gesture-tag gesture-tag-duration">⏱ {g.duration}ms</span>
                         {(g.lookAtX !== 0 || g.lookAtY !== 0) && (
@@ -1408,9 +1485,16 @@ function SettingsPanel() {
                         {(() => {
                           try {
                             const bones = JSON.parse(g.targetJson || "{}");
-                            const activeBones = Object.entries(bones).filter(([, v]: [string, any]) =>
-                              v && (v.x !== 0 || v.y !== 0 || v.z !== 0)
-                            );
+                            const activeBones = Object.entries(bones).filter(([, v]: [string, any]) => {
+                              if (!v) return false;
+                              if (Array.isArray(v.rotation) && v.rotation.length === 4) {
+                                return v.rotation[0] !== 0 || v.rotation[1] !== 0 || v.rotation[2] !== 0 || v.rotation[3] !== 1;
+                              }
+                              if (typeof v.w === 'number') {
+                                return v.x !== 0 || v.y !== 0 || v.z !== 0 || v.w !== 1;
+                              }
+                              return false;
+                            });
                             return activeBones.map(([key]: [string, any]) => (
                               <span key={key} className="gesture-tag gesture-tag-bone">🦴 {key}</span>
                             ));
@@ -1420,23 +1504,36 @@ function SettingsPanel() {
                     </div>
                   </div>
                   <div className="gesture-card-actions">
-                    <button className="gesture-action-btn gesture-action-edit" onClick={() => {
+                    <button className="gesture-action-btn gesture-action-view" onClick={() => {
                       setEditingGesture(g);
                       setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
+                      setGestureReadOnly(true);
                       setShowGestureModal(true);
-                    }} title="编辑动作">
+                    }} title="查看动作">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                      查看
+                    </button>
+                    <button className="gesture-action-btn gesture-action-edit" disabled={isSystem} onClick={() => {
+                      setEditingGesture(g);
+                      setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
+                      setGestureReadOnly(false);
+                      setShowGestureModal(true);
+                    }} title={isSystem ? "系统动作不可编辑" : "编辑动作"}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                       </svg>
                       编辑
                     </button>
-                    <button className="gesture-action-btn gesture-action-delete" onClick={async () => {
+                    <button className="gesture-action-btn gesture-action-delete" disabled={isSystem} onClick={async () => {
                       if (confirm(`删除动作「${g.name}」吗？`)) {
                         await invoke("delete_avatar_gesture", { id: g.id });
                         loadGestures();
                       }
-                    }} title="删除动作">
+                    }} title={isSystem ? "系统动作不可删除" : "删除动作"}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="3 6 5 6 21 6"/>
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -1445,7 +1542,27 @@ function SettingsPanel() {
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className={`settings-group ${collapsedSections.has("about") ? "collapsed" : ""}`}>
+          <div className="settings-group-header" onClick={() => toggleSection("about")}>
+            <h3>ℹ️ 关于</h3>
+            <span className="settings-toggle-icon">{collapsedSections.has("about") ? "▸" : "▾"}</span>
+          </div>
+          <div className="settings-group-content">
+            <div className="about-info">
+              <div className="about-logo"><img src="/bot.svg" alt="Hermes" /></div>
+              <div className="about-name">Hermes Desktop</div>
+              <div className="about-version">版本 0.1.0</div>
+              <div className="about-desc">AI 智能助手桌面客户端</div>
+              <div className="about-meta">
+                <div className="about-author">作者：西安跃行信息有限公司</div>
+                <div className="about-email">邮箱：leapgo@yeah.net</div>
+              </div>
             </div>
           </div>
         </div>
@@ -1459,7 +1576,8 @@ function SettingsPanel() {
           lookAtX={gestureForm.lookAtX}
           lookAtY={gestureForm.lookAtY}
           tilt={gestureForm.tilt}
-          onCancel={() => setShowGestureModal(false)}
+          readOnly={gestureReadOnly}
+          onCancel={() => { setShowGestureModal(false); setGestureReadOnly(false); }}
           onSave={async (params) => {
             try {
               if (editingGesture) {

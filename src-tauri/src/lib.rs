@@ -1120,110 +1120,114 @@ async fn start_hermes_agent(_app: AppHandle, state: State<'_, AgentProcess>) -> 
 async fn chat_with_hermes(message: String, session_id: Option<String>) -> Result<ChatResponse, String> {
     log::info!("[chat] 开始: message={}, session_id={:?}", message, session_id);
 
-    // 使用 zsh -lc 确保加载用户的 shell 环境（PATH 等）
-    let resume_arg = match &session_id {
-        Some(sid) => format!(" --resume '{}'", sid.replace('\'', "'\"'\"'")),
-        None => String::new(),
-    };
     let bin = hermes_bin();
-    let shell_cmd = format!(
-        "{} chat -q '{}' -Q{}",
-        bin,
-        message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
-        resume_arg
-    );
-    log::info!("[chat] 执行命令: zsh -lc {}", shell_cmd);
-
     let new_path = path_with_local_bin();
+    let mut last_session_id = session_id.clone();
 
-    let output = match tokio::time::timeout(
-        tokio::time::Duration::from_secs(60),
-        tokio::process::Command::new("zsh")
-            .args(["-lc", &shell_cmd])
-            .env("PATH", &new_path)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .output(),
-    )
-    .await
-    {
-        Ok(Ok(o)) => {
-            log::info!("[chat] 命令完成, exit={:?}", o.status.code());
-            o
-        }
-        Ok(Err(e)) => {
-            log::error!("[chat] 启动失败: {}", e);
-            return Err(format!("启动 hermes chat 失败: {}", e));
-        }
-        Err(_) => {
-            log::error!("[chat] 超时");
-            return Err("请求超时，请检查网络或模型配置".to_string());
-        }
-    };
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    log::info!("[chat] stdout 长度={}, stderr 长度={}", stdout.len(), stderr.len());
-
-    if !output.status.success() {
-        let err_text = if stderr.trim().is_empty() {
-            stdout.trim().to_string()
-        } else {
-            stderr.trim().to_string()
+    for attempt in 0..2 {
+        let resume_arg = match &last_session_id {
+            Some(sid) => format!(" --resume '{}'", sid.replace('\'', "'\"'\"'")),
+            None => String::new(),
         };
-        log::error!("[chat] 命令失败: {}", err_text);
-        return Err(format!("hermes chat 出错: {}", err_text));
-    }
+        let shell_cmd = format!(
+            "{} chat -q '{}' -Q{}",
+            bin,
+            message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
+            resume_arg
+        );
+        log::info!("[chat] 执行命令(attempt={}): zsh -lc {}", attempt, shell_cmd);
 
-    // 提取 session_id（可能在 stdout 或 stderr 中）和内容
-    let mut new_session_id: Option<String> = None;
+        let output = match tokio::time::timeout(
+            tokio::time::Duration::from_secs(60),
+            tokio::process::Command::new("zsh")
+                .args(["-lc", &shell_cmd])
+                .env("PATH", &new_path)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output(),
+        )
+        .await
+        {
+            Ok(Ok(o)) => {
+                log::info!("[chat] 命令完成, exit={:?}", o.status.code());
+                o
+            }
+            Ok(Err(e)) => {
+                log::error!("[chat] 启动失败: {}", e);
+                return Err(format!("启动 hermes chat 失败: {}", e));
+            }
+            Err(_) => {
+                log::error!("[chat] 超时");
+                return Err("请求超时，请检查网络或模型配置".to_string());
+            }
+        };
 
-    // 先从 stderr 中找 session_id
-    for line in stderr.lines() {
-        let line = line.trim();
-        if line.starts_with("session_id:") {
-            new_session_id = Some(line.replace("session_id:", "").trim().to_string());
-            break;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::info!("[chat] stdout 长度={}, stderr 长度={}", stdout.len(), stderr.len());
+
+        if !output.status.success() {
+            let err_text = if stderr.trim().is_empty() {
+                stdout.trim().to_string()
+            } else {
+                stderr.trim().to_string()
+            };
+            if attempt == 0 && last_session_id.is_some() && err_text.contains("Session not found") {
+                log::warn!("[chat] Session 无效，去掉 resume 重试");
+                last_session_id = None;
+                continue;
+            }
+            log::error!("[chat] 命令失败: {}", err_text);
+            return Err(format!("hermes chat 出错: {}", err_text));
         }
-    }
 
-    // 从 stdout 中提取内容（同时检查是否有 session_id，过滤 resume 提示行）
-    let content: String = stdout
-        .lines()
-        .filter(|line| {
+        let mut new_session_id: Option<String> = None;
+
+        for line in stderr.lines() {
             let line = line.trim();
             if line.starts_with("session_id:") {
-                if new_session_id.is_none() {
-                    new_session_id = Some(line.replace("session_id:", "").trim().to_string());
-                }
-                false
-            } else if line.starts_with("↻ Resumed session") {
-                // 过滤掉 resume 提示行
-                false
-            } else {
-                true
+                new_session_id = Some(line.replace("session_id:", "").trim().to_string());
+                break;
             }
-        })
-        .collect::<Vec<&str>>()
-        .join("\n")
-        .trim()
-        .to_string();
+        }
 
-    if content.is_empty() {
+        let content: String = stdout
+            .lines()
+            .filter(|line| {
+                let line = line.trim();
+                if line.starts_with("session_id:") {
+                    if new_session_id.is_none() {
+                        new_session_id = Some(line.replace("session_id:", "").trim().to_string());
+                    }
+                    false
+                } else if line.starts_with("↻ Resumed session") {
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect::<Vec<&str>>()
+            .join("\n")
+            .trim()
+            .to_string();
+
+        if content.is_empty() {
+            return Ok(ChatResponse {
+                content: "无法获取响应".to_string(),
+                thinking: None,
+                session_id: new_session_id,
+            });
+        }
+
+        log::info!("[chat] 返回内容长度={}, session_id={:?}", content.len(), new_session_id);
         return Ok(ChatResponse {
-            content: "无法获取响应".to_string(),
+            content,
             thinking: None,
             session_id: new_session_id,
         });
     }
 
-    log::info!("[chat] 返回内容长度={}, session_id={:?}", content.len(), new_session_id);
-    let response = ChatResponse {
-        content,
-        thinking: None,
-        session_id: new_session_id,
-    };
-    Ok(response)
+    Err("hermes chat 出错: 重试失败".to_string())
 }
 
 /// 与 Avatar 数字人对话（简化版，直接返回文本）
@@ -1231,105 +1235,116 @@ async fn chat_with_hermes(message: String, session_id: Option<String>) -> Result
 async fn chat_with_agent(_app: AppHandle, message: String, session_id: Option<String>) -> Result<ChatResponse, String> {
     log::info!("[avatar_chat] 开始: message={}, session_id={:?}", message, session_id);
 
-    let resume_arg = match &session_id {
-        Some(sid) => format!(" --resume '{}'", sid.replace('\'', "'\"'\"'")),
-        None => String::new(),
-    };
     let bin = hermes_bin();
-    let shell_cmd = format!(
-        "{} chat -q '{}' -Q{}",
-        bin,
-        message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
-        resume_arg
-    );
-    log::info!("[avatar_chat] 执行命令: zsh -lc {}", shell_cmd);
-
     let new_path = path_with_local_bin();
 
-    let output = match tokio::time::timeout(
-        tokio::time::Duration::from_secs(120),
-        tokio::process::Command::new("zsh")
-            .args(["-lc", &shell_cmd])
-            .env("PATH", &new_path)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .output(),
-    )
-    .await
-    {
-        Ok(Ok(o)) => {
-            log::info!("[avatar_chat] 命令完成, exit={:?}, stdout_len={}, stderr_len={}", 
-                o.status.code(), o.stdout.len(), o.stderr.len());
-            o
-        }
-        Ok(Err(e)) => {
-            log::error!("[avatar_chat] 启动失败: {}", e);
-            return Err(format!("启动 hermes chat 失败: {}", e));
-        }
-        Err(_) => {
-            log::error!("[avatar_chat] 超时");
-            return Err("请求超时，请检查网络或模型配置".to_string());
-        }
-    };
+    let mut last_session_id = session_id.clone();
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    log::info!("[avatar_chat] stdout 长度={}, stderr 长度={}", stdout.len(), stderr.len());
-
-    if !output.status.success() {
-        let err_text = if stderr.trim().is_empty() {
-            stdout.trim().to_string()
-        } else {
-            stderr.trim().to_string()
+    for attempt in 0..2 {
+        let resume_arg = match &last_session_id {
+            Some(sid) => format!(" --resume '{}'", sid.replace('\'', "'\"'\"'")),
+            None => String::new(),
         };
-        log::error!("[avatar_chat] 命令失败: {}", err_text);
-        return Err(format!("hermes chat 出错: {}", err_text));
-    }
+        let shell_cmd = format!(
+            "{} chat -q '{}' -Q{}",
+            bin,
+            message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
+            resume_arg
+        );
+        log::info!("[avatar_chat] 执行命令(attempt={}): zsh -lc {}", attempt, shell_cmd);
 
-    let mut new_session_id: Option<String> = None;
+        let output = match tokio::time::timeout(
+            tokio::time::Duration::from_secs(120),
+            tokio::process::Command::new("zsh")
+                .args(["-lc", &shell_cmd])
+                .env("PATH", &new_path)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output(),
+        )
+        .await
+        {
+            Ok(Ok(o)) => {
+                log::info!("[avatar_chat] 命令完成, exit={:?}, stdout_len={}, stderr_len={}", 
+                    o.status.code(), o.stdout.len(), o.stderr.len());
+                o
+            }
+            Ok(Err(e)) => {
+                log::error!("[avatar_chat] 启动失败: {}", e);
+                return Err(format!("启动 hermes chat 失败: {}", e));
+            }
+            Err(_) => {
+                log::error!("[avatar_chat] 超时");
+                return Err("请求超时，请检查网络或模型配置".to_string());
+            }
+        };
 
-    for line in stderr.lines() {
-        let line = line.trim();
-        if line.starts_with("session_id:") {
-            new_session_id = Some(line.replace("session_id:", "").trim().to_string());
-            break;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        log::info!("[avatar_chat] stdout 长度={}, stderr 长度={}", stdout.len(), stderr.len());
+
+        if !output.status.success() {
+            let err_text = if stderr.trim().is_empty() {
+                stdout.trim().to_string()
+            } else {
+                stderr.trim().to_string()
+            };
+            if attempt == 0 && last_session_id.is_some() && err_text.contains("Session not found") {
+                log::warn!("[avatar_chat] Session 无效，去掉 resume 重试");
+                last_session_id = None;
+                continue;
+            }
+            log::error!("[avatar_chat] 命令失败: {}", err_text);
+            return Err(format!("hermes chat 出错: {}", err_text));
         }
-    }
 
-    let content: String = stdout
-        .lines()
-        .filter(|line| {
+        let mut new_session_id: Option<String> = None;
+
+        for line in stderr.lines() {
             let line = line.trim();
             if line.starts_with("session_id:") {
-                if new_session_id.is_none() {
-                    new_session_id = Some(line.replace("session_id:", "").trim().to_string());
-                }
-                false
-            } else if line.starts_with("↻ Resumed session") {
-                false
-            } else {
-                true
+                new_session_id = Some(line.replace("session_id:", "").trim().to_string());
+                break;
             }
-        })
-        .collect::<Vec<&str>>()
-        .join("\n")
-        .trim()
-        .to_string();
+        }
 
-    if content.is_empty() {
+        let content: String = stdout
+            .lines()
+            .filter(|line| {
+                let line = line.trim();
+                if line.starts_with("session_id:") {
+                    if new_session_id.is_none() {
+                        new_session_id = Some(line.replace("session_id:", "").trim().to_string());
+                    }
+                    false
+                } else if line.starts_with("↻ Resumed session") {
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect::<Vec<&str>>()
+            .join("\n")
+            .trim()
+            .to_string();
+
+        if content.is_empty() {
+            return Ok(ChatResponse {
+                content: "抱歉，我没有理解你的意思，能再说一遍吗？".to_string(),
+                thinking: None,
+                session_id: new_session_id,
+            });
+        }
+
+        log::info!("[avatar_chat] 返回内容长度={}, session_id={:?}", content.len(), new_session_id);
         return Ok(ChatResponse {
-            content: "抱歉，我没有理解你的意思，能再说一遍吗？".to_string(),
+            content,
             thinking: None,
             session_id: new_session_id,
         });
     }
 
-    log::info!("[avatar_chat] 返回内容长度={}, session_id={:?}", content.len(), new_session_id);
-    Ok(ChatResponse {
-        content,
-        thinking: None,
-        session_id: new_session_id,
-    })
+    Err("hermes chat 出错: 重试失败".to_string())
 }
 
 /// 流式对话 - 通过事件发送数据到前端（使用 hermes chat -q）

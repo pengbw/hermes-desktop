@@ -19,118 +19,27 @@ interface ChatMessage {
 // VRM 模型路径
 const MODEL_PATH = "/vrm/miko.vrm";
 
-// 角色自然站立时的默认骨骼姿势（欧拉角旋转值，单位：弧度）
+// 角色自然站立时的默认骨骼姿势（四元数旋转值）
 // 包含右臂、右手及五指骨骼的初始位置
-const REST_POSE = {
-  // 左大臂
-  leftUpperArm: { x: 0, y: 0, z: 1.30 },
-  // 右大臂
-  rightUpperArm: { x: 0, y: 0, z: -1.30 },
-  // 左前臂
-  leftForeArm: { x: 0, y: 0, z: 0.1 },
-  // 右前臂
-  rightForeArm: { x: 0, y: 0, z: -0.1 },
-  // 右手腕
-  rightHand: { x: 0, y: 0.1, z: -0.2 },
-  // 左手腕
-  leftHand: { x: 0, y: 0.1, z: 0.2 },
-  // 右手拇指三节骨骼
-  rightThumb1: { x: 0, y: 0, z: 0 },
-  rightThumb2: { x: 0, y: 0, z: 0 },
-  rightThumb3: { x: 0, y: 0, z: 0 },
-  // 右手食指三节骨骼
-  rightIndex1: { x: 0, y: 0, z: 0 },
-  rightIndex2: { x: 0, y: 0, z: 0 },
-  rightIndex3: { x: 0, y: 0, z: 0 },
-  // 右手中指三节骨骼
-  rightMiddle1: { x: 0, y: 0, z: 0 },
-  rightMiddle2: { x: 0, y: 0, z: 0 },
-  rightMiddle3: { x: 0, y: 0, z: 0 },
-  // 右手无名指三节骨骼
-  rightRing1: { x: 0, y: 0, z: 0 },
-  rightRing2: { x: 0, y: 0, z: 0 },
-  rightRing3: { x: 0, y: 0, z: 0 },
-  // 右手小指三节骨骼
-  rightLittle1: { x: 0, y: 0, z: 0 },
-  rightLittle2: { x: 0, y: 0, z: 0 },
-  rightLittle3: { x: 0, y: 0, z: 0 },
-};
+let GESTURES: any[] = [];
 
-// 角色动作定义数组
-// 每个动作包含：名称、持续时间、目标骨骼姿势、视线方向、问候语等
-let GESTURES: any[] = [
-  {
-    name: "initialGreeting",
-    duration: 6000,
-    target: {
-      // --- 核心修改：直接复制了 think 动作的托腮参数 ---
-    leftUpperArm: { x: 0, y: 0, z: 1.30 },   // 左大臂保持基础位置（不乱动）
-    rightUpperArm: { x: -1, y: 1, z: 0.5 },  // 右大臂：抬起向脸部靠拢
-    leftForeArm: { x: 0, y: 0, z: 0.1 },     // 左前臂保持
-    rightForeArm: { x: 2, y: 2, z: 0 },      // 右前臂：大幅弯曲（关键！让手肘向后）
-    rightHand: { x: -0.2, y: 0.1, z: -0.2 }, // 右手：手掌贴向脸颊
-    
-    // --- 手指姿势：保持自然或微握 ---
-    // （保留了原本 think 动作里手指微握的参数，看起来更像托腮）
-    rightThumb1: { x: 0.3, y: 0.3, z: 0.2 },
-    rightThumb2: { x: 0.2, y: 0, z: 0 },
-    rightThumb3: { x: 0.2, y: 0, z: 0 },
-    rightIndex1: { x: 0, y: 0, z: -0.3 },
-    rightIndex2: { x: 0, y: 0, z: -0.2 },
-    rightIndex3: { x: 0, y: 0, z: -0.2 },
-    rightMiddle1: { x: 0, y: 0, z: -0.3 },
-    rightMiddle2: { x: 0, y: 0, z: -0.2 },
-    rightMiddle3: { x: 0, y: 0, z: -0.2 },
-    rightRing1: { x: 0, y: 0, z: -0.3 },
-    rightRing2: { x: 0, y: 0, z: -0.2 },
-    rightRing3: { x: 0, y: 0, z: -0.2 },
-    rightLittle1: { x: 0, y: 0, z: -0.3 },
-    rightLittle2: { x: 0, y: 0, z: -0.2 },
-    rightLittle3: { x: 0, y: 0, z: -0.2 },
-    },
-    lookAt: { x: 0, y: 0 },
-    greeting: "你好呀！",
-  },
-  {
-    name: "think",
-    duration: 5000,
-    target: {
-      // --- 右臂：抬起，前臂大幅度弯曲，使手部靠近下巴 ---
-      rightUpperArm: { x: -0.4, y: 0.2, z: -0.2 },
-      rightForeArm: { x: 2.2, y: 0.2, z: 0.2 },
-      rightHand: { x: -0.3, y: 0, z: -0.2 },
-      
-      // --- 右手手指：收拢形成微握拳状，贴合下巴 ---
-      rightThumb1: { x: 0.3, y: -0.1, z: 0.2 },
-      rightThumb2: { x: 0.2, y: 0, z: 0 },
-      rightThumb3: { x: 0.2, y: 0, z: 0 },
-      
-      rightIndex1: { x: 0.5, y: 0, z: -0.1 },
-      rightIndex2: { x: 0.4, y: 0, z: 0 },
-      rightIndex3: { x: 0.3, y: 0, z: 0 },
-      
-      rightMiddle1: { x: 0.5, y: 0, z: 0.1 },
-      rightMiddle2: { x: 0.4, y: 0, z: 0 },
-      rightMiddle3: { x: 0.3, y: 0, z: 0 },
-      
-      rightRing1: { x: 0.5, y: 0, z: 0.2 },
-      rightRing2: { x: 0.4, y: 0, z: 0 },
-      rightRing3: { x: 0.3, y: 0, z: 0 },
-      
-      rightLittle1: { x: 0.5, y: 0, z: 0.3 },
-      rightLittle2: { x: 0.4, y: 0, z: 0 },
-      rightLittle3: { x: 0.3, y: 0, z: 0 },
+function findGesture(name: string) {
+  return GESTURES.find(g => g.name === name);
+}
 
-      // --- 左臂：横跨腹部/胸下，手部托住右臂手肘 ---
-      leftUpperArm: { x: 0.2, y: 0.4, z: 0.4 },
-      leftForeArm: { x: 1.8, y: -0.2, z: -0.2 },
-      leftHand: { x: 0.1, y: 0.2, z: 0.1 },
-    },
-    // 眼神微侧下方，头部微微倾斜，增加沉思感
-    lookAt: { x: 0.2, y: -0.2 }, 
-    tilt: -0.1,
-  },
-];
+function getSilentTarget(): Record<string, { x: number; y: number; z: number; w: number }> {
+  const silent = findGesture("silent");
+  return silent?.target || {};
+}
+
+function applySilentPose(bones: Record<string, THREE.Object3D | null>) {
+  const target = getSilentTarget();
+  if (Object.keys(target).length > 0) {
+    applyGestureSlerp(bones, target, 1);
+  } else {
+    applyRestPose(bones);
+  }
+}
 
 function easeInOut(t: number) {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
@@ -140,18 +49,17 @@ function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
 
-function lerpPose(base: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }, t: number) {
-  return {
-    x: lerp(base.x, target.x, t),
-    y: lerp(base.y, target.y, t),
-    z: lerp(base.z, target.z, t),
-  };
+function slerpPose(base: { x: number; y: number; z: number; w: number }, target: { x: number; y: number; z: number; w: number }, t: number) {
+  const qa = new THREE.Quaternion(base.x, base.y, base.z, base.w);
+  const qb = new THREE.Quaternion(target.x, target.y, target.z, target.w);
+  const result = new THREE.Quaternion().slerpQuaternions(qa, qb, t);
+  return { x: result.x, y: result.y, z: result.z, w: result.w };
 }
 
 function getHumanoidBone(vrm: any, boneName: VRMHumanBoneName): THREE.Object3D | null {
   try {
     if (vrm.humanoid) {
-      const node = vrm.humanoid.getRawBoneNode(boneName);
+      const node = vrm.humanoid.getNormalizedBoneNode(boneName);
       if (node) return node;
     }
   } catch { }
@@ -168,8 +76,35 @@ function findBoneInScene(vrm: any, namePart: string): THREE.Object3D | null {
   return found;
 }
 
-function setBoneRotation(bone: THREE.Object3D | null, rot: { x: number; y: number; z: number }) {
-  if (bone) bone.rotation.set(rot.x, rot.y, rot.z);
+function setBoneRotation(bone: THREE.Object3D | null, rot: { x: number; y: number; z: number; w: number }) {
+  if (bone) bone.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+}
+
+function applyRestPose(bones: Record<string, THREE.Object3D | null>) {
+  const silentTarget = getSilentTarget();
+  if (Object.keys(silentTarget).length > 0) {
+    for (const [key, rot] of Object.entries(silentTarget)) {
+      setBoneRotation(bones[key], rot as { x: number; y: number; z: number; w: number });
+    }
+  } else {
+    for (const [, bone] of Object.entries(bones)) {
+      if (bone) bone.quaternion.set(0, 0, 0, 1);
+    }
+  }
+}
+
+function applyGestureSlerp(
+  bones: Record<string, THREE.Object3D | null>,
+  target: Record<string, { x: number; y: number; z: number; w: number }>,
+  t: number,
+) {
+  const silentTarget = getSilentTarget();
+  const allKeys = new Set([...Object.keys(silentTarget), ...Object.keys(target)]);
+  for (const key of allKeys) {
+    const restRot = (silentTarget[key] as { x: number; y: number; z: number; w: number }) || { x: 0, y: 0, z: 0, w: 1 };
+    const targetRot = target[key] || restRot;
+    setBoneRotation(bones[key], slerpPose(restRot, targetRot, t));
+  }
 }
 
 const typewriterEffect = (element: HTMLElement, text: string, speed = 50) => {
@@ -198,51 +133,7 @@ export default function AvatarWindow() {
   const animIdRef = useRef<number>(0);
   const mouseRef = useRef({ x: 0, y: 0 });
 
-  useEffect(() => {
-    const fetchGestures = async () => {
-      try {
-        const gestures = await invoke<any[]>("get_avatar_gestures");
-        if (gestures && gestures.length > 0) {
-          GESTURES = gestures.map(g => ({
-            name: g.name,
-            duration: g.duration,
-            lookAt: { x: g.lookAtX, y: g.lookAtY },
-            tilt: g.tilt,
-            target: JSON.parse(g.targetJson || "{}"),
-            greeting: g.name === "initialGreeting" ? "你好呀！" : undefined,
-          }));
-        }
-      } catch (e) {
-        console.error("Failed to load gestures", e);
-      }
-    };
-    fetchGestures();
-  }, []);
-
-  const bonesRef = useRef<{
-    head: THREE.Object3D | null;
-    leftUpperArm: THREE.Object3D | null;
-    rightUpperArm: THREE.Object3D | null;
-    leftForeArm: THREE.Object3D | null;
-    rightForeArm: THREE.Object3D | null;
-    leftHand: THREE.Object3D | null;
-    rightHand: THREE.Object3D | null;
-    rightThumb1: THREE.Object3D | null;
-    rightThumb2: THREE.Object3D | null;
-    rightThumb3: THREE.Object3D | null;
-    rightIndex1: THREE.Object3D | null;
-    rightIndex2: THREE.Object3D | null;
-    rightIndex3: THREE.Object3D | null;
-    rightMiddle1: THREE.Object3D | null;
-    rightMiddle2: THREE.Object3D | null;
-    rightMiddle3: THREE.Object3D | null;
-    rightRing1: THREE.Object3D | null;
-    rightRing2: THREE.Object3D | null;
-    rightRing3: THREE.Object3D | null;
-    rightLittle1: THREE.Object3D | null;
-    rightLittle2: THREE.Object3D | null;
-    rightLittle3: THREE.Object3D | null;
-  }>({ head: null, leftUpperArm: null, rightUpperArm: null, leftForeArm: null, rightForeArm: null, leftHand: null, rightHand: null, rightThumb1: null, rightThumb2: null, rightThumb3: null, rightIndex1: null, rightIndex2: null, rightIndex3: null, rightMiddle1: null, rightMiddle2: null, rightMiddle3: null, rightRing1: null, rightRing2: null, rightRing3: null, rightLittle1: null, rightLittle2: null, rightLittle3: null });
+  const bonesRef = useRef<Record<string, THREE.Object3D | null>>({});
 
   const gestureRef = useRef<{ index: number; start: number; active: boolean }>({ index: -1, start: 0, active: false });
   const [isLoaded, setIsLoaded] = useState(false);
@@ -269,10 +160,8 @@ export default function AvatarWindow() {
 
   const hasGreetedRef = useRef(false);
 
-  const triggerNextGesture = useCallback(() => {
-    // 打过招呼后不再自动触发动作
-    if (hasGreetedRef.current) return;
-    const greetIdx = GESTURES.findIndex(g => g.name === "initialGreeting");
+  const triggerGreeting = useCallback(() => {
+    const greetIdx = GESTURES.findIndex(g => g.name === "greeting");
     if (greetIdx >= 0) {
       gestureRef.current = { index: greetIdx, start: performance.now(), active: true };
       hasGreetedRef.current = true;
@@ -528,6 +417,34 @@ export default function AvatarWindow() {
 
     const init = async () => {
       try {
+        try {
+          const gestures = await invoke<any[]>("get_avatar_gestures");
+          if (gestures && gestures.length > 0) {
+            GESTURES = gestures.map(g => {
+              const rawTarget = JSON.parse(g.targetJson || "{}");
+              const target: Record<string, { x: number; y: number; z: number; w: number }> = {};
+              for (const [boneName, boneData] of Object.entries(rawTarget)) {
+                const v = boneData as any;
+                if (v && Array.isArray(v.rotation) && v.rotation.length === 4) {
+                  target[boneName] = { x: v.rotation[0], y: v.rotation[1], z: v.rotation[2], w: v.rotation[3] };
+                } else if (v && typeof v.w === 'number') {
+                  target[boneName] = { x: v.x ?? 0, y: v.y ?? 0, z: v.z ?? 0, w: v.w };
+                }
+              }
+              return {
+                name: g.name,
+                duration: g.duration,
+                lookAt: { x: g.lookAtX, y: g.lookAtY },
+                tilt: g.tilt,
+                target,
+                greeting: g.name === "greeting" ? "你好呀！" : undefined,
+              };
+            });
+          }
+        } catch (e) {
+          console.error("Failed to load gestures from DB", e);
+        }
+
         const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.setSize(350, 500);
@@ -564,35 +481,79 @@ export default function AvatarWindow() {
         vrm.userData = vrm.userData || {};
 
         const b = bonesRef.current;
-        b.head = getHumanoidBone(vrm, VRMHumanBoneName.Head) || findBoneInScene(vrm, "Head");
-        b.leftUpperArm = getHumanoidBone(vrm, VRMHumanBoneName.LeftUpperArm) || findBoneInScene(vrm, "LeftUpperArm") || findBoneInScene(vrm, "LeftArm");
-        b.rightUpperArm = getHumanoidBone(vrm, VRMHumanBoneName.RightUpperArm) || findBoneInScene(vrm, "RightUpperArm") || findBoneInScene(vrm, "RightArm");
-        b.leftForeArm = getHumanoidBone(vrm, VRMHumanBoneName.LeftLowerArm) || findBoneInScene(vrm, "LeftForeArm") || findBoneInScene(vrm, "LeftLowerArm");
-        b.rightForeArm = getHumanoidBone(vrm, VRMHumanBoneName.RightLowerArm) || findBoneInScene(vrm, "RightForeArm") || findBoneInScene(vrm, "RightLowerArm");
-        b.leftHand = getHumanoidBone(vrm, VRMHumanBoneName.LeftHand) || findBoneInScene(vrm, "LeftHand") || findBoneInScene(vrm, "J_Bip_L_Hand");
-        b.rightHand = getHumanoidBone(vrm, VRMHumanBoneName.RightHand) || findBoneInScene(vrm, "RightHand") || findBoneInScene(vrm, "J_Bip_R_Hand");
-        b.rightThumb1 = findBoneInScene(vrm, "J_Bip_R_Thumb1");
-        b.rightThumb2 = findBoneInScene(vrm, "J_Bip_R_Thumb2");
-        b.rightThumb3 = findBoneInScene(vrm, "J_Bip_R_Thumb3");
-        b.rightIndex1 = findBoneInScene(vrm, "J_Bip_R_Index1");
-        b.rightIndex2 = findBoneInScene(vrm, "J_Bip_R_Index2");
-        b.rightIndex3 = findBoneInScene(vrm, "J_Bip_R_Index3");
-        b.rightMiddle1 = findBoneInScene(vrm, "J_Bip_R_Middle1");
-        b.rightMiddle2 = findBoneInScene(vrm, "J_Bip_R_Middle2");
-        b.rightMiddle3 = findBoneInScene(vrm, "J_Bip_R_Middle3");
-        b.rightRing1 = findBoneInScene(vrm, "J_Bip_R_Ring1");
-        b.rightRing2 = findBoneInScene(vrm, "J_Bip_R_Ring2");
-        b.rightRing3 = findBoneInScene(vrm, "J_Bip_R_Ring3");
-        b.rightLittle1 = findBoneInScene(vrm, "J_Bip_R_Little1");
-        b.rightLittle2 = findBoneInScene(vrm, "J_Bip_R_Little2");
-        b.rightLittle3 = findBoneInScene(vrm, "J_Bip_R_Little3");
+        const boneMap: Record<string, VRMHumanBoneName> = {
+          hips: VRMHumanBoneName.Hips,
+          spine: VRMHumanBoneName.Spine,
+          chest: VRMHumanBoneName.Chest,
+          upperChest: VRMHumanBoneName.UpperChest,
+          neck: VRMHumanBoneName.Neck,
+          head: VRMHumanBoneName.Head,
+          leftEye: VRMHumanBoneName.LeftEye,
+          rightEye: VRMHumanBoneName.RightEye,
+          leftUpperLeg: VRMHumanBoneName.LeftUpperLeg,
+          leftLowerLeg: VRMHumanBoneName.LeftLowerLeg,
+          leftFoot: VRMHumanBoneName.LeftFoot,
+          leftToes: VRMHumanBoneName.LeftToes,
+          rightUpperLeg: VRMHumanBoneName.RightUpperLeg,
+          rightLowerLeg: VRMHumanBoneName.RightLowerLeg,
+          rightFoot: VRMHumanBoneName.RightFoot,
+          rightToes: VRMHumanBoneName.RightToes,
+          leftShoulder: VRMHumanBoneName.LeftShoulder,
+          leftUpperArm: VRMHumanBoneName.LeftUpperArm,
+          leftLowerArm: VRMHumanBoneName.LeftLowerArm,
+          leftHand: VRMHumanBoneName.LeftHand,
+          rightShoulder: VRMHumanBoneName.RightShoulder,
+          rightUpperArm: VRMHumanBoneName.RightUpperArm,
+          rightLowerArm: VRMHumanBoneName.RightLowerArm,
+          rightHand: VRMHumanBoneName.RightHand,
+          leftThumbMetacarpal: VRMHumanBoneName.LeftThumbMetacarpal,
+          leftThumbProximal: VRMHumanBoneName.LeftThumbProximal,
+          leftThumbDistal: VRMHumanBoneName.LeftThumbDistal,
+          leftIndexProximal: VRMHumanBoneName.LeftIndexProximal,
+          leftIndexIntermediate: VRMHumanBoneName.LeftIndexIntermediate,
+          leftIndexDistal: VRMHumanBoneName.LeftIndexDistal,
+          leftMiddleProximal: VRMHumanBoneName.LeftMiddleProximal,
+          leftMiddleIntermediate: VRMHumanBoneName.LeftMiddleIntermediate,
+          leftMiddleDistal: VRMHumanBoneName.LeftMiddleDistal,
+          leftRingProximal: VRMHumanBoneName.LeftRingProximal,
+          leftRingIntermediate: VRMHumanBoneName.LeftRingIntermediate,
+          leftRingDistal: VRMHumanBoneName.LeftRingDistal,
+          leftLittleProximal: VRMHumanBoneName.LeftLittleProximal,
+          leftLittleIntermediate: VRMHumanBoneName.LeftLittleIntermediate,
+          leftLittleDistal: VRMHumanBoneName.LeftLittleDistal,
+          rightThumbMetacarpal: VRMHumanBoneName.RightThumbMetacarpal,
+          rightThumbProximal: VRMHumanBoneName.RightThumbProximal,
+          rightThumbDistal: VRMHumanBoneName.RightThumbDistal,
+          rightIndexProximal: VRMHumanBoneName.RightIndexProximal,
+          rightIndexIntermediate: VRMHumanBoneName.RightIndexIntermediate,
+          rightIndexDistal: VRMHumanBoneName.RightIndexDistal,
+          rightMiddleProximal: VRMHumanBoneName.RightMiddleProximal,
+          rightMiddleIntermediate: VRMHumanBoneName.RightMiddleIntermediate,
+          rightMiddleDistal: VRMHumanBoneName.RightMiddleDistal,
+          rightRingProximal: VRMHumanBoneName.RightRingProximal,
+          rightRingIntermediate: VRMHumanBoneName.RightRingIntermediate,
+          rightRingDistal: VRMHumanBoneName.RightRingDistal,
+          rightLittleProximal: VRMHumanBoneName.RightLittleProximal,
+          rightLittleIntermediate: VRMHumanBoneName.RightLittleIntermediate,
+          rightLittleDistal: VRMHumanBoneName.RightLittleDistal,
+        };
+        for (const [key, boneName] of Object.entries(boneMap)) {
+          b[key] = getHumanoidBone(vrm, boneName);
+        }
+        b.head = b.head || findBoneInScene(vrm, "Head");
+        b.leftUpperArm = b.leftUpperArm || findBoneInScene(vrm, "LeftArm");
+        b.rightUpperArm = b.rightUpperArm || findBoneInScene(vrm, "RightArm");
+        b.leftLowerArm = b.leftLowerArm || findBoneInScene(vrm, "LeftForeArm");
+        b.rightLowerArm = b.rightLowerArm || findBoneInScene(vrm, "RightForeArm");
+        b.leftHand = b.leftHand || findBoneInScene(vrm, "J_Bip_L_Hand");
+        b.rightHand = b.rightHand || findBoneInScene(vrm, "J_Bip_R_Hand");
 
         console.log("[Avatar] bones:", {
           head: b.head?.name ?? "NULL",
           leftUpperArm: b.leftUpperArm?.name ?? "NULL",
           rightUpperArm: b.rightUpperArm?.name ?? "NULL",
-          leftForeArm: b.leftForeArm?.name ?? "NULL",
-          rightForeArm: b.rightForeArm?.name ?? "NULL",
+          leftLowerArm: b.leftLowerArm?.name ?? "NULL",
+          rightLowerArm: b.rightLowerArm?.name ?? "NULL",
           rightHand: b.rightHand?.name ?? "NULL",
         });
 
@@ -621,27 +582,7 @@ export default function AvatarWindow() {
           }
         }, 100);
 
-        // 初始设置为自然下垂姿势
-        setBoneRotation(bonesRef.current.leftUpperArm, REST_POSE.leftUpperArm);
-        setBoneRotation(bonesRef.current.rightUpperArm, REST_POSE.rightUpperArm);
-        setBoneRotation(bonesRef.current.leftForeArm, REST_POSE.leftForeArm);
-        setBoneRotation(bonesRef.current.rightForeArm, REST_POSE.rightForeArm);
-        setBoneRotation(bonesRef.current.rightHand, REST_POSE.rightHand);
-        setBoneRotation(bonesRef.current.rightThumb1, REST_POSE.rightThumb1);
-        setBoneRotation(bonesRef.current.rightThumb2, REST_POSE.rightThumb2);
-        setBoneRotation(bonesRef.current.rightThumb3, REST_POSE.rightThumb3);
-        setBoneRotation(bonesRef.current.rightIndex1, REST_POSE.rightIndex1);
-        setBoneRotation(bonesRef.current.rightIndex2, REST_POSE.rightIndex2);
-        setBoneRotation(bonesRef.current.rightIndex3, REST_POSE.rightIndex3);
-        setBoneRotation(bonesRef.current.rightMiddle1, REST_POSE.rightMiddle1);
-        setBoneRotation(bonesRef.current.rightMiddle2, REST_POSE.rightMiddle2);
-        setBoneRotation(bonesRef.current.rightMiddle3, REST_POSE.rightMiddle3);
-        setBoneRotation(bonesRef.current.rightRing1, REST_POSE.rightRing1);
-        setBoneRotation(bonesRef.current.rightRing2, REST_POSE.rightRing2);
-        setBoneRotation(bonesRef.current.rightRing3, REST_POSE.rightRing3);
-        setBoneRotation(bonesRef.current.rightLittle1, REST_POSE.rightLittle1);
-        setBoneRotation(bonesRef.current.rightLittle2, REST_POSE.rightLittle2);
-        setBoneRotation(bonesRef.current.rightLittle3, REST_POSE.rightLittle3);
+        applySilentPose(bonesRef.current);
 
         let lastFrameTime = performance.now();
         let breathElapsed = 0;
@@ -650,17 +591,9 @@ export default function AvatarWindow() {
         let blinkProgress = 0;
         let waveOscillator = 0;
         let bubbleShown = false;
-
-        setTimeout(() => {
-          if (!destroyed) {
-            const initialGreetingIdx = GESTURES.findIndex(g => g.name === "initialGreeting");
-            if (initialGreetingIdx >= 0) {
-              gestureRef.current = { index: initialGreetingIdx, start: performance.now(), active: true };
-              hasGreetedRef.current = true;
-              applyExpression("happy", 0.8);
-            }
-          }
-        }, 500);
+        let greetingScheduled = false;
+        const greetingDelay = 800;
+        const initTime = performance.now();
 
         const animate = () => {
           if (destroyed) return;
@@ -670,6 +603,16 @@ export default function AvatarWindow() {
           const delta = Math.min((now - lastFrameTime) / 1000, 0.1);
           lastFrameTime = now;
           const elapsed = clockRef.current.elapsedTime;
+
+          if (!greetingScheduled && !hasGreetedRef.current && (now - initTime) >= greetingDelay) {
+            greetingScheduled = true;
+            const greetingIdx = GESTURES.findIndex(g => g.name === "greeting");
+            if (greetingIdx >= 0) {
+              gestureRef.current = { index: greetingIdx, start: now, active: true };
+              hasGreetedRef.current = true;
+              applyExpression("happy", 0.8);
+            }
+          }
 
           breathElapsed += delta;
 
@@ -704,100 +647,52 @@ export default function AvatarWindow() {
 
             if (vrm.update) vrm.update(delta);
 
-            if (!gestureRef.current.active || (g && g.name !== "initialGreeting")) {
+            if (!gestureRef.current.active || (g && g.name !== "greeting")) {
               applyExpression("happy", 0.5);
             }
 
             // 手臂姿势控制
             if (!gestureRef.current.active) {
-              // 空闲状态：自然下垂
-              setBoneRotation(bonesRef.current.leftUpperArm, REST_POSE.leftUpperArm);
-              setBoneRotation(bonesRef.current.rightUpperArm, REST_POSE.rightUpperArm);
-              setBoneRotation(bonesRef.current.leftForeArm, REST_POSE.leftForeArm);
-              setBoneRotation(bonesRef.current.rightForeArm, REST_POSE.rightForeArm);
-              setBoneRotation(bonesRef.current.leftHand, REST_POSE.leftHand);
-              setBoneRotation(bonesRef.current.rightHand, REST_POSE.rightHand);
-              setBoneRotation(bonesRef.current.rightThumb1, REST_POSE.rightThumb1);
-              setBoneRotation(bonesRef.current.rightThumb2, REST_POSE.rightThumb2);
-              setBoneRotation(bonesRef.current.rightThumb3, REST_POSE.rightThumb3);
-              setBoneRotation(bonesRef.current.rightIndex1, REST_POSE.rightIndex1);
-              setBoneRotation(bonesRef.current.rightIndex2, REST_POSE.rightIndex2);
-              setBoneRotation(bonesRef.current.rightIndex3, REST_POSE.rightIndex3);
-              setBoneRotation(bonesRef.current.rightMiddle1, REST_POSE.rightMiddle1);
-              setBoneRotation(bonesRef.current.rightMiddle2, REST_POSE.rightMiddle2);
-              setBoneRotation(bonesRef.current.rightMiddle3, REST_POSE.rightMiddle3);
-              setBoneRotation(bonesRef.current.rightRing1, REST_POSE.rightRing1);
-              setBoneRotation(bonesRef.current.rightRing2, REST_POSE.rightRing2);
-              setBoneRotation(bonesRef.current.rightRing3, REST_POSE.rightRing3);
-              setBoneRotation(bonesRef.current.rightLittle1, REST_POSE.rightLittle1);
-              setBoneRotation(bonesRef.current.rightLittle2, REST_POSE.rightLittle2);
-              setBoneRotation(bonesRef.current.rightLittle3, REST_POSE.rightLittle3);
+              applySilentPose(bonesRef.current);
             } else if (g) {
               const t = Math.min(1, (now - gestureRef.current.start) / g.duration);
               const e = easeInOut(t);
 
-              if (g.name === "initialGreeting") {
+              if (g.name === "greeting") {
                 let talkIntensity = 0;
                 let waveIntensity = 1;
 
-                if (t < 0.2) {
-                  waveIntensity = t / 0.2;
-                } else if (t > 0.8) {
-                  waveIntensity = (1 - t) / 0.2;
+                if (t < 0.1) {
+                  waveIntensity = t / 0.1;
+                } else if (t > 0.85) {
+                  waveIntensity = (1 - t) / 0.15;
                 }
 
-                if (t > 0.1 && t < 0.9) {
+                if (t > 0.08 && t < 0.92) {
                   talkIntensity = 1;
                 }
 
-                const leftUA = lerpPose(REST_POSE.leftUpperArm, g.target.leftUpperArm, e);
-                const rightUA = lerpPose(REST_POSE.rightUpperArm, g.target.rightUpperArm, e);
-                const leftFA = lerpPose(REST_POSE.leftForeArm, g.target.leftForeArm, e);
-                const forearmE = easeInOut(Math.min(1, t * 1.8));
-                const rightFA = lerpPose(REST_POSE.rightForeArm, g.target.rightForeArm, forearmE);
-                const rightH = lerpPose(REST_POSE.rightHand, g.target.rightHand, forearmE);
-                const rightT1 = lerpPose(REST_POSE.rightThumb1, g.target.rightThumb1, e);
-                const rightT2 = lerpPose(REST_POSE.rightThumb2, g.target.rightThumb2, e);
-                const rightT3 = lerpPose(REST_POSE.rightThumb3, g.target.rightThumb3, e);
-                const rightI1 = lerpPose(REST_POSE.rightIndex1, g.target.rightIndex1, e);
-                const rightI2 = lerpPose(REST_POSE.rightIndex2, g.target.rightIndex2, e);
-                const rightI3 = lerpPose(REST_POSE.rightIndex3, g.target.rightIndex3, e);
-                const rightM1 = lerpPose(REST_POSE.rightMiddle1, g.target.rightMiddle1, e);
-                const rightM2 = lerpPose(REST_POSE.rightMiddle2, g.target.rightMiddle2, e);
-                const rightM3 = lerpPose(REST_POSE.rightMiddle3, g.target.rightMiddle3, e);
-                const rightR1 = lerpPose(REST_POSE.rightRing1, g.target.rightRing1, e);
-                const rightR2 = lerpPose(REST_POSE.rightRing2, g.target.rightRing2, e);
-                const rightR3 = lerpPose(REST_POSE.rightRing3, g.target.rightRing3, e);
-                const rightL1 = lerpPose(REST_POSE.rightLittle1, g.target.rightLittle1, e);
-                const rightL2 = lerpPose(REST_POSE.rightLittle2, g.target.rightLittle2, e);
-                const rightL3 = lerpPose(REST_POSE.rightLittle3, g.target.rightLittle3, e);
+                const enterE = Math.min(1, t / 0.15);
+                const exitE = t > 0.85 ? Math.max(0, (1 - t) / 0.15) : 1;
+                const greetE = enterE * exitE;
+                applyGestureSlerp(bonesRef.current, g.target, greetE);
 
                 waveOscillator += delta * 6;
                 const waveAmt = Math.sin(waveOscillator) * 0.3 * waveIntensity;
-                rightUA.z += waveAmt * 0.1;
-                rightFA.x += waveAmt * 0.4;
-                rightFA.z += waveAmt * 0.15;
-
-                setBoneRotation(bonesRef.current.leftUpperArm, leftUA);
-                setBoneRotation(bonesRef.current.rightUpperArm, rightUA);
-                setBoneRotation(bonesRef.current.leftForeArm, leftFA);
-                setBoneRotation(bonesRef.current.rightForeArm, rightFA);
-                setBoneRotation(bonesRef.current.rightHand, rightH);
-                setBoneRotation(bonesRef.current.rightThumb1, rightT1);
-                setBoneRotation(bonesRef.current.rightThumb2, rightT2);
-                setBoneRotation(bonesRef.current.rightThumb3, rightT3);
-                setBoneRotation(bonesRef.current.rightIndex1, rightI1);
-                setBoneRotation(bonesRef.current.rightIndex2, rightI2);
-                setBoneRotation(bonesRef.current.rightIndex3, rightI3);
-                setBoneRotation(bonesRef.current.rightMiddle1, rightM1);
-                setBoneRotation(bonesRef.current.rightMiddle2, rightM2);
-                setBoneRotation(bonesRef.current.rightMiddle3, rightM3);
-                setBoneRotation(bonesRef.current.rightRing1, rightR1);
-                setBoneRotation(bonesRef.current.rightRing2, rightR2);
-                setBoneRotation(bonesRef.current.rightRing3, rightR3);
-                setBoneRotation(bonesRef.current.rightLittle1, rightL1);
-                setBoneRotation(bonesRef.current.rightLittle2, rightL2);
-                setBoneRotation(bonesRef.current.rightLittle3, rightL3);
+                const waveRotX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), waveAmt * 0.4);
+                const waveRotZ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), waveAmt * 0.15);
+                const rightUABone = bonesRef.current.rightUpperArm;
+                const rightFABone = bonesRef.current.rightLowerArm;
+                if (rightUABone) {
+                  const q = rightUABone.quaternion.clone();
+                  q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), waveAmt * 0.1));
+                  rightUABone.quaternion.copy(q);
+                }
+                if (rightFABone) {
+                  const q = rightFABone.quaternion.clone();
+                  q.multiply(waveRotX).multiply(waveRotZ);
+                  rightFABone.quaternion.copy(q);
+                }
 
                 applyExpression("fun", 0.6);
                 applyExpression("winkLeft", 0.8);
@@ -809,14 +704,14 @@ export default function AvatarWindow() {
 
                 const bubble = bubbleRef.current;
                 if (g.greeting && bubble) {
-                  if (t > 0.1 && !bubbleShown) {
+                  if (t > 0.08 && !bubbleShown) {
                     bubbleShown = true;
                     bubble.textContent = g.greeting;
                     bubble.style.opacity = "1";
                     bubble.style.transform = "translateX(-50%) scale(1)";
                     typewriterEffect(bubble, g.greeting, 40);
                   }
-                  if (t > 0.9 && bubbleShown) {
+                  if (t > 0.6 && bubbleShown) {
                     bubbleShown = false;
                     bubble.style.opacity = "0";
                     bubble.style.transform = "translateX(-50%) scale(0.7)";
@@ -831,15 +726,12 @@ export default function AvatarWindow() {
                   applyExpression("fun", 0);
                   applyExpression("winkLeft", 0);
                   applyExpression("happy", 0.5);
-                  if (bubbleShown && bubble) {
+                  if (bubble) {
                     bubbleShown = false;
                     bubble.style.opacity = "0";
                     bubble.style.transform = "translateX(-50%) scale(0.7)";
                   }
-                  setBoneRotation(bonesRef.current.leftUpperArm, REST_POSE.leftUpperArm);
-                  setBoneRotation(bonesRef.current.rightUpperArm, REST_POSE.rightUpperArm);
-                  setBoneRotation(bonesRef.current.leftForeArm, REST_POSE.leftForeArm);
-                  setBoneRotation(bonesRef.current.rightForeArm, REST_POSE.rightForeArm);
+                  applySilentPose(bonesRef.current);
                 }
               } else if (g.name === "think") {
                 let currentT = (now - gestureRef.current.start) / g.duration;
@@ -847,65 +739,25 @@ export default function AvatarWindow() {
                   gestureRef.current.start = now - g.duration * 0.8;
                   currentT = 0.8;
                 }
-                const thinkE = easeInOut(Math.min(1, currentT));
-                const forearmE = easeInOut(Math.min(1, currentT * 1.8));
-
-                const leftUA = lerpPose(REST_POSE.leftUpperArm, g.target.leftUpperArm || REST_POSE.leftUpperArm, thinkE);
-                const rightUA = lerpPose(REST_POSE.rightUpperArm, g.target.rightUpperArm || REST_POSE.rightUpperArm, thinkE);
-                const leftFA = lerpPose(REST_POSE.leftForeArm, g.target.leftForeArm || REST_POSE.leftForeArm, thinkE);
-                const rightFA = lerpPose(REST_POSE.rightForeArm, g.target.rightForeArm || REST_POSE.rightForeArm, forearmE);
-
-                const rightH = lerpPose(REST_POSE.rightHand, g.target.rightHand || REST_POSE.rightHand, forearmE);
-                const rightT1 = lerpPose(REST_POSE.rightThumb1, g.target.rightThumb1 || REST_POSE.rightThumb1, thinkE);
-                const rightT2 = lerpPose(REST_POSE.rightThumb2, g.target.rightThumb2 || REST_POSE.rightThumb2, thinkE);
-                const rightT3 = lerpPose(REST_POSE.rightThumb3, g.target.rightThumb3 || REST_POSE.rightThumb3, thinkE);
-                const rightI1 = lerpPose(REST_POSE.rightIndex1, g.target.rightIndex1 || REST_POSE.rightIndex1, thinkE);
-                const rightI2 = lerpPose(REST_POSE.rightIndex2, g.target.rightIndex2 || REST_POSE.rightIndex2, thinkE);
-                const rightI3 = lerpPose(REST_POSE.rightIndex3, g.target.rightIndex3 || REST_POSE.rightIndex3, thinkE);
-                const rightM1 = lerpPose(REST_POSE.rightMiddle1, g.target.rightMiddle1 || REST_POSE.rightMiddle1, thinkE);
-                const rightM2 = lerpPose(REST_POSE.rightMiddle2, g.target.rightMiddle2 || REST_POSE.rightMiddle2, thinkE);
-                const rightM3 = lerpPose(REST_POSE.rightMiddle3, g.target.rightMiddle3 || REST_POSE.rightMiddle3, thinkE);
-                const rightR1 = lerpPose(REST_POSE.rightRing1, g.target.rightRing1 || REST_POSE.rightRing1, thinkE);
-                const rightR2 = lerpPose(REST_POSE.rightRing2, g.target.rightRing2 || REST_POSE.rightRing2, thinkE);
-                const rightR3 = lerpPose(REST_POSE.rightRing3, g.target.rightRing3 || REST_POSE.rightRing3, thinkE);
-                const rightL1 = lerpPose(REST_POSE.rightLittle1, g.target.rightLittle1 || REST_POSE.rightLittle1, thinkE);
-                const rightL2 = lerpPose(REST_POSE.rightLittle2, g.target.rightLittle2 || REST_POSE.rightLittle2, thinkE);
-                const rightL3 = lerpPose(REST_POSE.rightLittle3, g.target.rightLittle3 || REST_POSE.rightLittle3, thinkE);
-                const leftH = lerpPose(REST_POSE.leftHand, g.target.leftHand || REST_POSE.leftHand, thinkE);
-
-                setBoneRotation(bonesRef.current.leftUpperArm, leftUA);
-                setBoneRotation(bonesRef.current.rightUpperArm, rightUA);
-                setBoneRotation(bonesRef.current.leftForeArm, leftFA);
-                setBoneRotation(bonesRef.current.rightForeArm, rightFA);
-                setBoneRotation(bonesRef.current.rightHand, rightH);
-                setBoneRotation(bonesRef.current.leftHand, leftH);
-                setBoneRotation(bonesRef.current.rightThumb1, rightT1);
-                setBoneRotation(bonesRef.current.rightThumb2, rightT2);
-                setBoneRotation(bonesRef.current.rightThumb3, rightT3);
-                setBoneRotation(bonesRef.current.rightIndex1, rightI1);
-                setBoneRotation(bonesRef.current.rightIndex2, rightI2);
-                setBoneRotation(bonesRef.current.rightIndex3, rightI3);
-                setBoneRotation(bonesRef.current.rightMiddle1, rightM1);
-                setBoneRotation(bonesRef.current.rightMiddle2, rightM2);
-                setBoneRotation(bonesRef.current.rightMiddle3, rightM3);
-                setBoneRotation(bonesRef.current.rightRing1, rightR1);
-                setBoneRotation(bonesRef.current.rightRing2, rightR2);
-                setBoneRotation(bonesRef.current.rightRing3, rightR3);
-                setBoneRotation(bonesRef.current.rightLittle1, rightL1);
-                setBoneRotation(bonesRef.current.rightLittle2, rightL2);
-                setBoneRotation(bonesRef.current.rightLittle3, rightL3);
+                const thinkE = Math.min(1, currentT * 2);
+                applyGestureSlerp(bonesRef.current, g.target, thinkE);
 
                 if (currentT >= 1) {
                   gestureRef.current.active = false;
                   waveOscillator = 0;
                   vrm.scene.position.y = 0;
                   vrm.scene.rotation.y = Math.PI;
-                  setBoneRotation(bonesRef.current.leftUpperArm, REST_POSE.leftUpperArm);
-                  setBoneRotation(bonesRef.current.rightUpperArm, REST_POSE.rightUpperArm);
-                  setBoneRotation(bonesRef.current.leftForeArm, REST_POSE.leftForeArm);
-                  setBoneRotation(bonesRef.current.rightForeArm, REST_POSE.rightForeArm);
-                  setBoneRotation(bonesRef.current.leftHand, REST_POSE.leftHand);
-                  setBoneRotation(bonesRef.current.rightHand, REST_POSE.rightHand);
+                  applySilentPose(bonesRef.current);
+                }
+              } else {
+                applyGestureSlerp(bonesRef.current, g.target, e);
+
+                if (t >= 1) {
+                  gestureRef.current.active = false;
+                  waveOscillator = 0;
+                  vrm.scene.position.y = 0;
+                  vrm.scene.rotation.y = Math.PI;
+                  applySilentPose(bonesRef.current);
                 }
               }
             }
@@ -962,7 +814,7 @@ export default function AvatarWindow() {
         rendererRef.current = null;
       }
     };
-  }, [handleMouseMove, triggerNextGesture, applyExpression]);
+  }, [handleMouseMove, triggerGreeting, applyExpression]);
 
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -974,6 +826,20 @@ export default function AvatarWindow() {
       }
     }, 50);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused && !gestureRef.current.active) {
+        hasGreetedRef.current = false;
+        const greetIdx = GESTURES.findIndex(g => g.name === "greeting");
+        if (greetIdx >= 0) {
+          gestureRef.current = { index: greetIdx, start: performance.now(), active: true };
+          hasGreetedRef.current = true;
+        }
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -1007,10 +873,10 @@ export default function AvatarWindow() {
       <div ref={bubbleRef} className="speech-bubble" />
 
       {isThinking && (
-        <div className="thinking-bubble">
-          <span className="thinking-dot">.</span>
-          <span className="thinking-dot">.</span>
-          <span className="thinking-dot">.</span>
+        <div className="thinking-bubbles">
+          <div className="thinking-bubble-sm" />
+          <div className="thinking-bubble-md" />
+          <div className="thinking-bubble-lg">?</div>
         </div>
       )}
 

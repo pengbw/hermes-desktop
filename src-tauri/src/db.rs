@@ -112,6 +112,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             look_at_y REAL NOT NULL DEFAULT 0.0,
             tilt REAL NOT NULL DEFAULT 0.0,
             target_json TEXT NOT NULL DEFAULT '{}',
+            source TEXT NOT NULL DEFAULT 'custom',
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         )
@@ -122,6 +123,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
 
     for alter in [
         "ALTER TABLE providers ADD COLUMN api_key TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE avatar_gestures ADD COLUMN source TEXT NOT NULL DEFAULT 'custom'",
     ] {
         let _ = sqlx::query(alter).execute(pool).await;
     }
@@ -161,28 +163,50 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
 
     let builtin_gestures = [
         (
-            "initialGreeting",
-            6000_i64,
+            "silent",
+            0_i64,
             0.0_f64,
             0.0_f64,
             0.0_f64,
-            r#"{"leftUpperArm":{"x":0,"y":0,"z":1.30},"rightUpperArm":{"x":-1,"y":1,"z":0.5},"leftForeArm":{"x":0,"y":0,"z":0.1},"rightForeArm":{"x":2,"y":2,"z":0},"rightHand":{"x":-0.2,"y":0.1,"z":-0.2},"rightThumb1":{"x":0.3,"y":0.3,"z":0.2},"rightThumb2":{"x":0.2,"y":0,"z":0},"rightThumb3":{"x":0.2,"y":0,"z":0},"rightIndex1":{"x":0,"y":0,"z":-0.3},"rightIndex2":{"x":0,"y":0,"z":-0.2},"rightIndex3":{"x":0,"y":0,"z":-0.2},"rightMiddle1":{"x":0,"y":0,"z":-0.3},"rightMiddle2":{"x":0,"y":0,"z":-0.2},"rightMiddle3":{"x":0,"y":0,"z":-0.2},"rightRing1":{"x":0,"y":0,"z":-0.3},"rightRing2":{"x":0,"y":0,"z":-0.2},"rightRing3":{"x":0,"y":0,"z":-0.2},"rightLittle1":{"x":0,"y":0,"z":-0.3},"rightLittle2":{"x":0,"y":0,"z":-0.2},"rightLittle3":{"x":0,"y":0,"z":-0.2}}"#,
+            r#"{}"#,
+        ),
+        (
+            "greeting",
+            8000_i64,
+            0.0_f64,
+            0.0_f64,
+            0.0_f64,
+            r#"{"leftUpperArm":{"position":[0,0,0],"rotation":[0,0,0.605186,0.796084]},"rightUpperArm":{"position":[0,0,0],"rotation":[-0.303564,0.511747,-0.032165,0.803075]},"leftLowerArm":{"position":[0,0,0],"rotation":[0,0,0.049979,0.99875]},"rightLowerArm":{"position":[0,0,0],"rotation":[0.454649,0.454649,0.708073,0.291927]},"rightHand":{"position":[0,0,0],"rotation":[-0.104175,0.039527,-0.104175,0.988298]},"rightThumbMetacarpal":{"position":[0,0,0],"rotation":[0.161773,0.132271,0.119824,0.970555]},"rightThumbProximal":{"position":[0,0,0],"rotation":[0.099833,0,0,0.995004]},"rightThumbDistal":{"position":[0,0,0],"rotation":[0.099833,0,0,0.995004]},"rightIndexProximal":{"position":[0,0,0],"rotation":[0,0,-0.149438,0.988771]},"rightIndexIntermediate":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightIndexDistal":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightMiddleProximal":{"position":[0,0,0],"rotation":[0,0,-0.149438,0.988771]},"rightMiddleIntermediate":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightMiddleDistal":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightRingProximal":{"position":[0,0,0],"rotation":[0,0,-0.149438,0.988771]},"rightRingIntermediate":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightRingDistal":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightLittleProximal":{"position":[0,0,0],"rotation":[0,0,-0.149438,0.988771]},"rightLittleIntermediate":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightLittleDistal":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]}}"#,
         ),
         (
             "think",
             5000_i64,
-            0.2_f64,
-            -0.2_f64,
-            -0.1_f64,
-            r#"{"rightUpperArm":{"x":-0.4,"y":0.2,"z":-0.2},"rightForeArm":{"x":2.2,"y":0.2,"z":0.2},"rightHand":{"x":-0.3,"y":0,"z":-0.2},"rightThumb1":{"x":0.3,"y":-0.1,"z":0.2},"rightThumb2":{"x":0.2,"y":0,"z":0},"rightThumb3":{"x":0.2,"y":0,"z":0},"rightIndex1":{"x":0.5,"y":0,"z":-0.1},"rightIndex2":{"x":0.4,"y":0,"z":0},"rightIndex3":{"x":0.3,"y":0,"z":0},"rightMiddle1":{"x":0.5,"y":0,"z":0.1},"rightMiddle2":{"x":0.4,"y":0,"z":0},"rightMiddle3":{"x":0.3,"y":0,"z":0},"rightRing1":{"x":0.5,"y":0,"z":0.2},"rightRing2":{"x":0.4,"y":0,"z":0},"rightRing3":{"x":0.3,"y":0,"z":0},"rightLittle1":{"x":0.5,"y":0,"z":0.3},"rightLittle2":{"x":0.4,"y":0,"z":0},"rightLittle3":{"x":0.3,"y":0,"z":0},"leftUpperArm":{"x":0.2,"y":0.4,"z":0.4},"leftForeArm":{"x":1.8,"y":-0.2,"z":-0.2},"leftHand":{"x":0.1,"y":0.2,"z":0.1}}"#,
+            0.3_f64,
+            -0.3_f64,
+            -0.08_f64,
+            r#"{"hips":{"position":[0,0,0],"rotation":[0,0,0,1]},"spine":{"position":[0,0,0],"rotation":[0,0,0,1]},"chest":{"position":[0,0,0],"rotation":[0,0,0,1]},"upperChest":{"position":[0,0,0],"rotation":[0,0,0,1]},"neck":{"position":[0,0,0],"rotation":[0.00858609197003729,-0.10388657662891106,0.021573862350766193,0.9943180711846074]},"head":{"position":[0,0,0],"rotation":[0.08345126655993985,0.0002492061031117632,0.10551524183241544,0.9909098635834176]},"leftEye":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightEye":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftUpperLeg":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftLowerLeg":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftFoot":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftToes":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightUpperLeg":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightLowerLeg":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightFoot":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightToes":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftShoulder":{"position":[0,0,0],"rotation":[0.10962026202597093,0.043166549335375996,0.061320421791995185,0.9911406827706579]},"leftUpperArm":{"position":[0,0,0],"rotation":[0.12851175634296264,-0.18954069849938737,0.5631267213387391,0.7940071459428395]},"leftLowerArm":{"position":[0,0,0],"rotation":[-0.412089952600085,-0.5094295288093464,0.538231329277798,0.5300664697252615]},"leftHand":{"position":[0,0,0],"rotation":[0.1035218740803728,-0.003866041239642172,0.2669691652636122,0.9581209423191163]},"rightShoulder":{"position":[0,0,0],"rotation":[0.008859390483535335,0.07251303666101228,-0.012103436329397876,0.9972546703543078]},"rightUpperArm":{"position":[0,0,0],"rotation":[0.11919197561956842,0.10165827989205732,-0.5886242552333382,0.7930828161221819]},"rightLowerArm":{"position":[0,0,0],"rotation":[0,0.9598211130776013,0,0.2806125993081466]},"rightHand":{"position":[0,0,0],"rotation":[0.2054241973541633,0.14666635184503019,-0.18085714238946418,0.9505685532483099]},"leftThumbMetacarpal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftThumbProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftThumbDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftIndexProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftIndexIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftIndexDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftMiddleProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftMiddleIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftMiddleDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftRingProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftRingIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftRingDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftLittleProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftLittleIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftLittleDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightThumbMetacarpal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightThumbProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightThumbDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightIndexProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightIndexIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightIndexDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightMiddleProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightMiddleIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightMiddleDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightRingProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightRingIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightRingDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightLittleProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightLittleIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightLittleDistal":{"position":[0,0,0],"rotation":[0,0,0,1]}}"#,
         ),
     ];
 
     for (name, duration, look_at_x, look_at_y, tilt, target_json) in builtin_gestures.iter() {
         let id = format!("gesture_{}", name);
         let now = chrono::Utc::now().timestamp_millis();
+        let exists: bool = sqlx::query_scalar("SELECT COUNT(*) FROM avatar_gestures WHERE name = ?")
+            .bind(name)
+            .fetch_one(pool)
+            .await
+            .map(|count: i64| count > 0)
+            .unwrap_or(false);
+        if exists {
+            sqlx::query("UPDATE avatar_gestures SET source = 'system' WHERE name = ?")
+                .bind(name)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string()).ok();
+            continue;
+        }
         sqlx::query(
-            "INSERT OR IGNORE INTO avatar_gestures (id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO avatar_gestures (id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'system', ?, ?)"
         )
         .bind(&id)
         .bind(name)
@@ -193,20 +217,6 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         .bind(target_json)
         .bind(now)
         .bind(now)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string()).ok();
-
-        sqlx::query(
-            "UPDATE avatar_gestures SET duration = ?, look_at_x = ?, look_at_y = ?, tilt = ?, target_json = ?, updated_at = ? WHERE id = ?"
-        )
-        .bind(duration)
-        .bind(look_at_x)
-        .bind(look_at_y)
-        .bind(tilt)
-        .bind(target_json)
-        .bind(now)
-        .bind(&id)
         .execute(pool)
         .await
         .map_err(|e| e.to_string()).ok();
@@ -308,6 +318,7 @@ pub struct AvatarGesture {
     pub look_at_y: f64,
     pub tilt: f64,
     pub target_json: String,
+    pub source: String,
     pub created_at: i64,
     pub updated_at: i64,
 }

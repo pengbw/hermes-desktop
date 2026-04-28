@@ -702,15 +702,15 @@ pub async fn delete_provider(
 #[tauri::command]
 pub async fn get_avatar_gestures(app: AppHandle) -> Result<Vec<db::AvatarGesture>, String> {
     let pool = get_pool(&app)?;
-    let gestures = sqlx::query_as::<_, (String, String, i64, f64, f64, f64, String, i64, i64)>(
-        "SELECT id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at FROM avatar_gestures ORDER BY updated_at DESC"
+    let gestures = sqlx::query_as::<_, (String, String, i64, f64, f64, f64, String, String, i64, i64)>(
+        "SELECT id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at FROM avatar_gestures ORDER BY updated_at DESC"
     )
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?
     .into_iter()
-    .map(|(id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at)| db::AvatarGesture {
-        id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at
+    .map(|(id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at)| db::AvatarGesture {
+        id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at
     })
     .collect();
 
@@ -726,7 +726,7 @@ pub async fn create_avatar_gesture(
     let id = format!("gesture_{}", uuid::Uuid::new_v4());
     let now = chrono::Utc::now().timestamp_millis();
 
-    sqlx::query("INSERT INTO avatar_gestures (id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    sqlx::query("INSERT INTO avatar_gestures (id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'custom', ?, ?)")
         .bind(&id)
         .bind(&req.name)
         .bind(req.duration)
@@ -740,14 +740,14 @@ pub async fn create_avatar_gesture(
         .await
         .map_err(|e| e.to_string())?;
 
-    let gesture = sqlx::query_as::<_, (String, String, i64, f64, f64, f64, String, i64, i64)>(
-        "SELECT id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at FROM avatar_gestures WHERE id = ?"
+    let gesture = sqlx::query_as::<_, (String, String, i64, f64, f64, f64, String, String, i64, i64)>(
+        "SELECT id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at FROM avatar_gestures WHERE id = ?"
     )
     .bind(&id)
     .fetch_one(&pool)
     .await
-    .map(|(id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at)| db::AvatarGesture {
-        id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at
+    .map(|(id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at)| db::AvatarGesture {
+        id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at
     })
     .map_err(|e| e.to_string())?;
 
@@ -799,14 +799,14 @@ pub async fn update_avatar_gesture(
         .await
         .map_err(|e| e.to_string())?;
 
-    let gesture = sqlx::query_as::<_, (String, String, i64, f64, f64, f64, String, i64, i64)>(
-        "SELECT id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at FROM avatar_gestures WHERE id = ?"
+    let gesture = sqlx::query_as::<_, (String, String, i64, f64, f64, f64, String, String, i64, i64)>(
+        "SELECT id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at FROM avatar_gestures WHERE id = ?"
     )
     .bind(&req.id)
     .fetch_one(&pool)
     .await
-    .map(|(id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at)| db::AvatarGesture {
-        id, name, duration, look_at_x, look_at_y, tilt, target_json, created_at, updated_at
+    .map(|(id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at)| db::AvatarGesture {
+        id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at
     })
     .map_err(|e| e.to_string())?;
 

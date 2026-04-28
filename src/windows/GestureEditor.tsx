@@ -7,41 +7,166 @@ import "./GestureEditor.css";
 
 const MODEL_PATH = "/vrm/miko.vrm";
 
-// 骨骼名称映射到 VRM 人形骨骼
 const BONE_MAP: Record<string, VRMHumanBoneName> = {
+  hips: VRMHumanBoneName.Hips,
+  spine: VRMHumanBoneName.Spine,
+  chest: VRMHumanBoneName.Chest,
+  upperChest: VRMHumanBoneName.UpperChest,
+  neck: VRMHumanBoneName.Neck,
+  head: VRMHumanBoneName.Head,
+  leftEye: VRMHumanBoneName.LeftEye,
+  rightEye: VRMHumanBoneName.RightEye,
+  leftUpperLeg: VRMHumanBoneName.LeftUpperLeg,
+  leftLowerLeg: VRMHumanBoneName.LeftLowerLeg,
+  leftFoot: VRMHumanBoneName.LeftFoot,
+  leftToes: VRMHumanBoneName.LeftToes,
+  rightUpperLeg: VRMHumanBoneName.RightUpperLeg,
+  rightLowerLeg: VRMHumanBoneName.RightLowerLeg,
+  rightFoot: VRMHumanBoneName.RightFoot,
+  rightToes: VRMHumanBoneName.RightToes,
+  leftShoulder: VRMHumanBoneName.LeftShoulder,
   leftUpperArm: VRMHumanBoneName.LeftUpperArm,
-  rightUpperArm: VRMHumanBoneName.RightUpperArm,
-  leftForeArm: VRMHumanBoneName.LeftLowerArm,
-  rightForeArm: VRMHumanBoneName.RightLowerArm,
+  leftLowerArm: VRMHumanBoneName.LeftLowerArm,
   leftHand: VRMHumanBoneName.LeftHand,
+  rightShoulder: VRMHumanBoneName.RightShoulder,
+  rightUpperArm: VRMHumanBoneName.RightUpperArm,
+  rightLowerArm: VRMHumanBoneName.RightLowerArm,
   rightHand: VRMHumanBoneName.RightHand,
-  rightThumb1: VRMHumanBoneName.RightThumbMetacarpal,
-  rightThumb2: VRMHumanBoneName.RightThumbProximal,
-  rightThumb3: VRMHumanBoneName.RightThumbDistal,
-  rightIndex1: VRMHumanBoneName.RightIndexProximal,
-  rightIndex2: VRMHumanBoneName.RightIndexIntermediate,
-  rightIndex3: VRMHumanBoneName.RightIndexDistal,
-  rightMiddle1: VRMHumanBoneName.RightMiddleProximal,
-  rightMiddle2: VRMHumanBoneName.RightMiddleIntermediate,
-  rightMiddle3: VRMHumanBoneName.RightMiddleDistal,
-  rightRing1: VRMHumanBoneName.RightRingProximal,
-  rightRing2: VRMHumanBoneName.RightRingIntermediate,
-  rightRing3: VRMHumanBoneName.RightRingDistal,
-  rightLittle1: VRMHumanBoneName.RightLittleProximal,
-  rightLittle2: VRMHumanBoneName.RightLittleIntermediate,
-  rightLittle3: VRMHumanBoneName.RightLittleDistal,
+  leftThumbMetacarpal: VRMHumanBoneName.LeftThumbMetacarpal,
+  leftThumbProximal: VRMHumanBoneName.LeftThumbProximal,
+  leftThumbDistal: VRMHumanBoneName.LeftThumbDistal,
+  leftIndexProximal: VRMHumanBoneName.LeftIndexProximal,
+  leftIndexIntermediate: VRMHumanBoneName.LeftIndexIntermediate,
+  leftIndexDistal: VRMHumanBoneName.LeftIndexDistal,
+  leftMiddleProximal: VRMHumanBoneName.LeftMiddleProximal,
+  leftMiddleIntermediate: VRMHumanBoneName.LeftMiddleIntermediate,
+  leftMiddleDistal: VRMHumanBoneName.LeftMiddleDistal,
+  leftRingProximal: VRMHumanBoneName.LeftRingProximal,
+  leftRingIntermediate: VRMHumanBoneName.LeftRingIntermediate,
+  leftRingDistal: VRMHumanBoneName.LeftRingDistal,
+  leftLittleProximal: VRMHumanBoneName.LeftLittleProximal,
+  leftLittleIntermediate: VRMHumanBoneName.LeftLittleIntermediate,
+  leftLittleDistal: VRMHumanBoneName.LeftLittleDistal,
+  rightThumbMetacarpal: VRMHumanBoneName.RightThumbMetacarpal,
+  rightThumbProximal: VRMHumanBoneName.RightThumbProximal,
+  rightThumbDistal: VRMHumanBoneName.RightThumbDistal,
+  rightIndexProximal: VRMHumanBoneName.RightIndexProximal,
+  rightIndexIntermediate: VRMHumanBoneName.RightIndexIntermediate,
+  rightIndexDistal: VRMHumanBoneName.RightIndexDistal,
+  rightMiddleProximal: VRMHumanBoneName.RightMiddleProximal,
+  rightMiddleIntermediate: VRMHumanBoneName.RightMiddleIntermediate,
+  rightMiddleDistal: VRMHumanBoneName.RightMiddleDistal,
+  rightRingProximal: VRMHumanBoneName.RightRingProximal,
+  rightRingIntermediate: VRMHumanBoneName.RightRingIntermediate,
+  rightRingDistal: VRMHumanBoneName.RightRingDistal,
+  rightLittleProximal: VRMHumanBoneName.RightLittleProximal,
+  rightLittleIntermediate: VRMHumanBoneName.RightLittleIntermediate,
+  rightLittleDistal: VRMHumanBoneName.RightLittleDistal,
 };
 
-// 骨骼分组（用于 GUI 折叠）
+const BONE_KEYS = Object.keys(BONE_MAP);
+
 const BONE_GROUPS: Record<string, string[]> = {
-  "左臂 Left Arm": ["leftUpperArm", "leftForeArm", "leftHand"],
-  "右臂 Right Arm": ["rightUpperArm", "rightForeArm", "rightHand"],
-  "右手拇指 Thumb": ["rightThumb1", "rightThumb2", "rightThumb3"],
-  "右手食指 Index": ["rightIndex1", "rightIndex2", "rightIndex3"],
-  "右手中指 Middle": ["rightMiddle1", "rightMiddle2", "rightMiddle3"],
-  "右手无名指 Ring": ["rightRing1", "rightRing2", "rightRing3"],
-  "右手小指 Little": ["rightLittle1", "rightLittle2", "rightLittle3"],
+  "躯干 Torso": ["hips", "spine", "chest", "upperChest"],
+  "头部 Head": ["neck", "head", "leftEye", "rightEye"],
+  "左臂 Left Arm": ["leftShoulder", "leftUpperArm", "leftLowerArm", "leftHand"],
+  "右臂 Right Arm": ["rightShoulder", "rightUpperArm", "rightLowerArm", "rightHand"],
+  "左腿 Left Leg": ["leftUpperLeg", "leftLowerLeg", "leftFoot", "leftToes"],
+  "右腿 Right Leg": ["rightUpperLeg", "rightLowerLeg", "rightFoot", "rightToes"],
+  "左手拇指 L.Thumb": ["leftThumbMetacarpal", "leftThumbProximal", "leftThumbDistal"],
+  "左手食指 L.Index": ["leftIndexProximal", "leftIndexIntermediate", "leftIndexDistal"],
+  "左手中指 L.Middle": ["leftMiddleProximal", "leftMiddleIntermediate", "leftMiddleDistal"],
+  "左手无名指 L.Ring": ["leftRingProximal", "leftRingIntermediate", "leftRingDistal"],
+  "左手小指 L.Little": ["leftLittleProximal", "leftLittleIntermediate", "leftLittleDistal"],
+  "右手拇指 R.Thumb": ["rightThumbMetacarpal", "rightThumbProximal", "rightThumbDistal"],
+  "右手食指 R.Index": ["rightIndexProximal", "rightIndexIntermediate", "rightIndexDistal"],
+  "右手中指 R.Middle": ["rightMiddleProximal", "rightMiddleIntermediate", "rightMiddleDistal"],
+  "右手无名指 R.Ring": ["rightRingProximal", "rightRingIntermediate", "rightRingDistal"],
+  "右手小指 R.Little": ["rightLittleProximal", "rightLittleIntermediate", "rightLittleDistal"],
 };
+
+const OLD_TO_NEW_BONE_MAP: Record<string, string> = {
+  leftForeArm: "leftLowerArm",
+  rightForeArm: "rightLowerArm",
+  rightThumb1: "rightThumbMetacarpal",
+  rightThumb2: "rightThumbProximal",
+  rightThumb3: "rightThumbDistal",
+  rightIndex1: "rightIndexProximal",
+  rightIndex2: "rightIndexIntermediate",
+  rightIndex3: "rightIndexDistal",
+  rightMiddle1: "rightMiddleProximal",
+  rightMiddle2: "rightMiddleIntermediate",
+  rightMiddle3: "rightMiddleDistal",
+  rightRing1: "rightRingProximal",
+  rightRing2: "rightRingIntermediate",
+  rightRing3: "rightRingDistal",
+  rightLittle1: "rightLittleProximal",
+  rightLittle2: "rightLittleIntermediate",
+  rightLittle3: "rightLittleDistal",
+  leftThumb1: "leftThumbMetacarpal",
+  leftThumb2: "leftThumbProximal",
+  leftThumb3: "leftThumbDistal",
+  leftIndex1: "leftIndexProximal",
+  leftIndex2: "leftIndexIntermediate",
+  leftIndex3: "leftIndexDistal",
+  leftMiddle1: "leftMiddleProximal",
+  leftMiddle2: "leftMiddleIntermediate",
+  leftMiddle3: "leftMiddleDistal",
+  leftRing1: "leftRingProximal",
+  leftRing2: "leftRingIntermediate",
+  leftRing3: "leftRingDistal",
+  leftLittle1: "leftLittleProximal",
+  leftLittle2: "leftLittleIntermediate",
+  leftLittle3: "leftLittleDistal",
+};
+
+function eulerToQuat(euler: { x: number; y: number; z: number }): { x: number; y: number; z: number; w: number } {
+  const e = new THREE.Euler(euler.x, euler.y, euler.z, 'XYZ');
+  const q = new THREE.Quaternion().setFromEuler(e);
+  return { x: q.x, y: q.y, z: q.z, w: q.w };
+}
+
+function quatToEuler(quat: { x: number; y: number; z: number; w: number }): { x: number; y: number; z: number } {
+  const q = new THREE.Quaternion(quat.x, quat.y, quat.z, quat.w);
+  const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
+  return { x: e.x, y: e.y, z: e.z };
+}
+
+function isPoseFormat(v: any): boolean {
+  return v && Array.isArray(v.rotation) && v.rotation.length === 4;
+}
+
+function isOldQuatFormat(v: any): boolean {
+  return v && typeof v.w === 'number' && !Array.isArray(v.rotation);
+}
+
+function parseTargetJson(json: string): Record<string, { x: number; y: number; z: number }> {
+  let parsed: any;
+  try { parsed = JSON.parse(json || "{}"); } catch { return {}; }
+
+  const result: Record<string, { x: number; y: number; z: number }> = {};
+  for (const key of BONE_KEYS) {
+    let v = parsed[key];
+    if (!v) {
+      const oldKey = Object.entries(OLD_TO_NEW_BONE_MAP).find(([, nk]) => nk === key)?.[0];
+      if (oldKey) v = parsed[oldKey];
+    }
+    if (v) {
+      if (isPoseFormat(v)) {
+        result[key] = quatToEuler({ x: v.rotation[0], y: v.rotation[1], z: v.rotation[2], w: v.rotation[3] });
+      } else if (isOldQuatFormat(v)) {
+        result[key] = quatToEuler(v);
+      } else if (typeof v.x === 'number') {
+        result[key] = { x: v.x ?? 0, y: v.y ?? 0, z: v.z ?? 0 };
+      } else {
+        result[key] = { x: 0, y: 0, z: 0 };
+      }
+    } else {
+      result[key] = { x: 0, y: 0, z: 0 };
+    }
+  }
+  return result;
+}
 
 interface GestureEditorProps {
   gestureName: string;
@@ -50,6 +175,7 @@ interface GestureEditorProps {
   lookAtX: number;
   lookAtY: number;
   tilt: number;
+  readOnly?: boolean;
   onSave: (params: {
     name: string;
     targetJson: string;
@@ -68,6 +194,7 @@ export default function GestureEditor({
   lookAtX: initLookAtX,
   lookAtY: initLookAtY,
   tilt: initTilt,
+  readOnly = false,
   onSave,
   onCancel,
 }: GestureEditorProps) {
@@ -79,29 +206,18 @@ export default function GestureEditor({
   const animRef = useRef<number>(0);
   const [loading, setLoading] = useState(true);
 
-  // 可变参数
   const [name, setName] = useState(gestureName);
   const [duration, setDuration] = useState(initDuration);
   const [lookAtX, setLookAtX] = useState(initLookAtX);
   const [lookAtY, setLookAtY] = useState(initLookAtY);
   const [tilt, setTilt] = useState(initTilt);
 
-  // 骨骼参数（可变 ref，供 lil-gui 直接操作）
   const boneParamsRef = useRef<Record<string, { x: number; y: number; z: number }>>({});
 
-  // 初始化骨骼参数
   useEffect(() => {
-    const parsed = (() => {
-      try { return JSON.parse(initialTargetJson || "{}"); } catch { return {}; }
-    })();
-    const params: Record<string, { x: number; y: number; z: number }> = {};
-    for (const key of Object.keys(BONE_MAP)) {
-      params[key] = parsed[key] ? { ...parsed[key] } : { x: 0, y: 0, z: 0 };
-    }
-    boneParamsRef.current = params;
+    boneParamsRef.current = parseTargetJson(initialTargetJson);
   }, []);
 
-  // 3D 场景 + lil-gui
   useEffect(() => {
     const canvas = canvasRef.current;
     const guiMount = guiMountRef.current;
@@ -109,7 +225,6 @@ export default function GestureEditor({
 
     let destroyed = false;
 
-    // ── 场景 ──
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(22, canvas.clientWidth / canvas.clientHeight, 0.1, 20);
     camera.position.set(0, 1.3, 3.5);
@@ -121,7 +236,6 @@ export default function GestureEditor({
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     rendererRef.current = renderer;
 
-    // 灯光
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
     scene.add(ambientLight);
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -131,7 +245,6 @@ export default function GestureEditor({
     backLight.position.set(-2, 1, -2);
     scene.add(backLight);
 
-    // ── 加载 VRM ──
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMLoaderPlugin(parser));
     loader.load(
@@ -145,10 +258,8 @@ export default function GestureEditor({
         vrm.scene.rotation.y = Math.PI;
         setLoading(false);
 
-        // 应用初始骨骼姿态
         applyBonesToModel(vrm);
 
-        // ── 创建 lil-gui ──
         const gui = new GUI({ container: guiMount, title: "骨骼参数" });
         guiRef.current = gui;
 
@@ -165,8 +276,9 @@ export default function GestureEditor({
             sub.add(params[key], "z", -PI, PI, 0.01).onChange(() => applyBonesToModel(vrm));
             sub.close();
           }
-          // 手指分组默认折叠
-          if (groupName.includes("Thumb") || groupName.includes("Index") || groupName.includes("Middle") || groupName.includes("Ring") || groupName.includes("Little")) {
+          const isFinger = groupName.includes("Thumb") || groupName.includes("Index") || groupName.includes("Middle") || groupName.includes("Ring") || groupName.includes("Little");
+          const isLeg = groupName.includes("Leg");
+          if (isFinger || isLeg) {
             folder.close();
           }
         }
@@ -178,7 +290,6 @@ export default function GestureEditor({
       }
     );
 
-    // ── 渲染循环 ──
     const animate = () => {
       if (destroyed) return;
       animRef.current = requestAnimationFrame(animate);
@@ -189,7 +300,6 @@ export default function GestureEditor({
     };
     animate();
 
-    // ── 窗口 resize ──
     const onResize = () => {
       if (!canvas || destroyed) return;
       const w = canvas.clientWidth;
@@ -219,16 +329,26 @@ export default function GestureEditor({
       const p = params[key];
       if (!p) continue;
       try {
-        const node = vrm.humanoid?.getRawBoneNode(boneName);
+        const node = vrm.humanoid?.getNormalizedBoneNode(boneName);
         if (node) {
-          node.rotation.set(p.x, p.y, p.z);
+          const q = eulerToQuat(p);
+          node.quaternion.set(q.x, q.y, q.z, q.w);
         }
       } catch {}
     }
   }
 
   function handleSave() {
-    const targetJson = JSON.stringify(boneParamsRef.current);
+    const eulerParams = boneParamsRef.current;
+    const poseData: Record<string, { position: number[]; rotation: number[] }> = {};
+    for (const key of BONE_KEYS) {
+      const q = eulerToQuat(eulerParams[key]);
+      poseData[key] = {
+        position: [0, 0, 0],
+        rotation: [q.x, q.y, q.z, q.w],
+      };
+    }
+    const targetJson = JSON.stringify(poseData);
     onSave({ name, targetJson, duration, lookAtX, lookAtY, tilt });
   }
 
@@ -238,7 +358,6 @@ export default function GestureEditor({
       params[key] = { x: 0, y: 0, z: 0 };
     }
     if (vrmRef.current) applyBonesToModel(vrmRef.current);
-    // 刷新 GUI 显示
     if (guiRef.current) {
       guiRef.current.controllersRecursive().forEach(c => c.updateDisplay());
     }
@@ -247,7 +366,6 @@ export default function GestureEditor({
   return (
     <div className="gesture-editor-overlay" onClick={onCancel}>
       <div className="gesture-editor-modal" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
         <div className="gesture-editor-header">
           <h3>
             <span className="gesture-name-input">
@@ -262,9 +380,7 @@ export default function GestureEditor({
           <button className="gesture-editor-close" onClick={onCancel}>✕</button>
         </div>
 
-        {/* Body */}
         <div className="gesture-editor-body">
-          {/* 左侧：3D 预览 */}
           <div className="gesture-preview-panel">
             <div className="gesture-preview-canvas-wrap">
               <canvas ref={canvasRef} />
@@ -275,7 +391,6 @@ export default function GestureEditor({
                 </div>
               )}
             </div>
-            {/* 基础参数 */}
             <div className="gesture-meta-bar">
               <div className="meta-field">
                 <label>时长</label>
@@ -296,17 +411,22 @@ export default function GestureEditor({
             </div>
           </div>
 
-          {/* 右侧：lil-gui */}
           <div className="gesture-gui-panel">
             <div className="gesture-gui-mount" ref={guiMountRef} />
           </div>
         </div>
 
-        {/* Footer */}
         <div className="gesture-editor-footer">
-          <button className="gesture-btn-reset" onClick={handleReset}>🔄 重置所有</button>
-          <button className="gesture-btn-cancel" onClick={onCancel}>取消</button>
-          <button className="gesture-btn-save" onClick={handleSave}>💾 保存动作</button>
+          {!readOnly && (
+            <>
+              <button className="gesture-btn-reset" onClick={handleReset}>🔄 重置所有</button>
+              <button className="gesture-btn-cancel" onClick={onCancel}>取消</button>
+              <button className="gesture-btn-save" onClick={handleSave}>💾 保存动作</button>
+            </>
+          )}
+          {readOnly && (
+            <button className="gesture-btn-cancel" onClick={onCancel}>关闭</button>
+          )}
         </div>
       </div>
     </div>
