@@ -162,19 +162,19 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     let builtin_gestures = [
         (
             "initialGreeting",
-            8000_i64,
+            6000_i64,
             0.0_f64,
             0.0_f64,
             0.0_f64,
-            r#"{"leftUpperArm":{"x":0,"y":0,"z":1.3},"rightUpperArm":{"x":-1,"y":1,"z":0.5},"leftForeArm":{"x":0,"y":0,"z":0.1},"rightForeArm":{"x":2,"y":2,"z":0},"rightHand":{"x":-0.2,"y":0.1,"z":-0.2},"rightThumb1":{"x":0.3,"y":0.3,"z":0.2},"rightThumb2":{"x":0.2,"y":0,"z":0},"rightThumb3":{"x":0.2,"y":0,"z":0},"rightIndex1":{"x":0,"y":0,"z":-0.3},"rightIndex2":{"x":0,"y":0,"z":-0.2},"rightIndex3":{"x":0,"y":0,"z":-0.2},"rightMiddle1":{"x":0,"y":0,"z":-0.3},"rightMiddle2":{"x":0,"y":0,"z":-0.2},"rightMiddle3":{"x":0,"y":0,"z":-0.2},"rightRing1":{"x":0,"y":0,"z":-0.3},"rightRing2":{"x":0,"y":0,"z":-0.2},"rightRing3":{"x":0,"y":0,"z":-0.2},"rightLittle1":{"x":0,"y":0,"z":-0.3},"rightLittle2":{"x":0,"y":0,"z":-0.2},"rightLittle3":{"x":0,"y":0,"z":-0.2}}"#,
+            r#"{"leftUpperArm":{"x":0,"y":0,"z":1.30},"rightUpperArm":{"x":-1,"y":1,"z":0.5},"leftForeArm":{"x":0,"y":0,"z":0.1},"rightForeArm":{"x":2,"y":2,"z":0},"rightHand":{"x":-0.2,"y":0.1,"z":-0.2},"rightThumb1":{"x":0.3,"y":0.3,"z":0.2},"rightThumb2":{"x":0.2,"y":0,"z":0},"rightThumb3":{"x":0.2,"y":0,"z":0},"rightIndex1":{"x":0,"y":0,"z":-0.3},"rightIndex2":{"x":0,"y":0,"z":-0.2},"rightIndex3":{"x":0,"y":0,"z":-0.2},"rightMiddle1":{"x":0,"y":0,"z":-0.3},"rightMiddle2":{"x":0,"y":0,"z":-0.2},"rightMiddle3":{"x":0,"y":0,"z":-0.2},"rightRing1":{"x":0,"y":0,"z":-0.3},"rightRing2":{"x":0,"y":0,"z":-0.2},"rightRing3":{"x":0,"y":0,"z":-0.2},"rightLittle1":{"x":0,"y":0,"z":-0.3},"rightLittle2":{"x":0,"y":0,"z":-0.2},"rightLittle3":{"x":0,"y":0,"z":-0.2}}"#,
         ),
         (
             "think",
             5000_i64,
-            0.3_f64,
-            -0.3_f64,
-            -0.08_f64,
-            r#"{"rightUpperArm":{"x":-2.0,"y":0,"z":-0.5},"rightForeArm":{"x":2.5,"y":0,"z":0},"rightHand":{"x":-0.3,"y":0,"z":0},"rightThumb1":{"x":0.2,"y":0,"z":0.2},"rightThumb2":{"x":0.2,"y":0,"z":0},"rightThumb3":{"x":0.2,"y":0,"z":0},"rightIndex1":{"x":0,"y":0,"z":-0.2},"rightIndex2":{"x":0,"y":0,"z":-0.1},"rightIndex3":{"x":0,"y":0,"z":-0.1},"rightMiddle1":{"x":0,"y":0,"z":0.6},"rightMiddle2":{"x":0,"y":0,"z":0.6},"rightMiddle3":{"x":0,"y":0,"z":0.6},"rightRing1":{"x":0,"y":0,"z":0.6},"rightRing2":{"x":0,"y":0,"z":0.6},"rightRing3":{"x":0,"y":0,"z":0.6},"rightLittle1":{"x":0,"y":0,"z":0.6},"rightLittle2":{"x":0,"y":0,"z":0.6},"rightLittle3":{"x":0,"y":0,"z":0.6},"leftUpperArm":{"x":-0.2,"y":0,"z":0.6},"leftForeArm":{"x":2.5,"y":0,"z":-0.3},"leftHand":{"x":0,"y":0,"z":0}}"#,
+            0.2_f64,
+            -0.2_f64,
+            -0.1_f64,
+            r#"{"rightUpperArm":{"x":-0.4,"y":0.2,"z":-0.2},"rightForeArm":{"x":2.2,"y":0.2,"z":0.2},"rightHand":{"x":-0.3,"y":0,"z":-0.2},"rightThumb1":{"x":0.3,"y":-0.1,"z":0.2},"rightThumb2":{"x":0.2,"y":0,"z":0},"rightThumb3":{"x":0.2,"y":0,"z":0},"rightIndex1":{"x":0.5,"y":0,"z":-0.1},"rightIndex2":{"x":0.4,"y":0,"z":0},"rightIndex3":{"x":0.3,"y":0,"z":0},"rightMiddle1":{"x":0.5,"y":0,"z":0.1},"rightMiddle2":{"x":0.4,"y":0,"z":0},"rightMiddle3":{"x":0.3,"y":0,"z":0},"rightRing1":{"x":0.5,"y":0,"z":0.2},"rightRing2":{"x":0.4,"y":0,"z":0},"rightRing3":{"x":0.3,"y":0,"z":0},"rightLittle1":{"x":0.5,"y":0,"z":0.3},"rightLittle2":{"x":0.4,"y":0,"z":0},"rightLittle3":{"x":0.3,"y":0,"z":0},"leftUpperArm":{"x":0.2,"y":0.4,"z":0.4},"leftForeArm":{"x":1.8,"y":-0.2,"z":-0.2},"leftHand":{"x":0.1,"y":0.2,"z":0.1}}"#,
         ),
     ];
 
@@ -193,6 +193,20 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         .bind(target_json)
         .bind(now)
         .bind(now)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string()).ok();
+
+        sqlx::query(
+            "UPDATE avatar_gestures SET duration = ?, look_at_x = ?, look_at_y = ?, tilt = ?, target_json = ?, updated_at = ? WHERE id = ?"
+        )
+        .bind(duration)
+        .bind(look_at_x)
+        .bind(look_at_y)
+        .bind(tilt)
+        .bind(target_json)
+        .bind(now)
+        .bind(&id)
         .execute(pool)
         .await
         .map_err(|e| e.to_string()).ok();

@@ -61,28 +61,32 @@ const REST_POSE = {
 let GESTURES: any[] = [
   {
     name: "initialGreeting",
-    duration: 8000,
+    duration: 6000,
     target: {
-      leftUpperArm: { x: 0, y: 0, z: 1.30 },
-      rightUpperArm: { x: -1, y: 1, z: 0.5 },
-      leftForeArm: { x: 0, y: 0, z: 0.1 },
-      rightForeArm: { x: 2, y: 2, z: 0 },
-      rightHand: { x: -0.2, y: 0.1, z: -0.2 },
-      rightThumb1: { x: 0.3, y: 0.3, z: 0.2 },
-      rightThumb2: { x: 0.2, y: 0, z: 0 },
-      rightThumb3: { x: 0.2, y: 0, z: 0 },
-      rightIndex1: { x: 0, y: 0, z: -0.3 },
-      rightIndex2: { x: 0, y: 0, z: -0.2 },
-      rightIndex3: { x: 0, y: 0, z: -0.2 },
-      rightMiddle1: { x: 0, y: 0, z: -0.3 },
-      rightMiddle2: { x: 0, y: 0, z: -0.2 },
-      rightMiddle3: { x: 0, y: 0, z: -0.2 },
-      rightRing1: { x: 0, y: 0, z: -0.3 },
-      rightRing2: { x: 0, y: 0, z: -0.2 },
-      rightRing3: { x: 0, y: 0, z: -0.2 },
-      rightLittle1: { x: 0, y: 0, z: -0.3 },
-      rightLittle2: { x: 0, y: 0, z: -0.2 },
-      rightLittle3: { x: 0, y: 0, z: -0.2 },
+      // --- 核心修改：直接复制了 think 动作的托腮参数 ---
+    leftUpperArm: { x: 0, y: 0, z: 1.30 },   // 左大臂保持基础位置（不乱动）
+    rightUpperArm: { x: -1, y: 1, z: 0.5 },  // 右大臂：抬起向脸部靠拢
+    leftForeArm: { x: 0, y: 0, z: 0.1 },     // 左前臂保持
+    rightForeArm: { x: 2, y: 2, z: 0 },      // 右前臂：大幅弯曲（关键！让手肘向后）
+    rightHand: { x: -0.2, y: 0.1, z: -0.2 }, // 右手：手掌贴向脸颊
+    
+    // --- 手指姿势：保持自然或微握 ---
+    // （保留了原本 think 动作里手指微握的参数，看起来更像托腮）
+    rightThumb1: { x: 0.3, y: 0.3, z: 0.2 },
+    rightThumb2: { x: 0.2, y: 0, z: 0 },
+    rightThumb3: { x: 0.2, y: 0, z: 0 },
+    rightIndex1: { x: 0, y: 0, z: -0.3 },
+    rightIndex2: { x: 0, y: 0, z: -0.2 },
+    rightIndex3: { x: 0, y: 0, z: -0.2 },
+    rightMiddle1: { x: 0, y: 0, z: -0.3 },
+    rightMiddle2: { x: 0, y: 0, z: -0.2 },
+    rightMiddle3: { x: 0, y: 0, z: -0.2 },
+    rightRing1: { x: 0, y: 0, z: -0.3 },
+    rightRing2: { x: 0, y: 0, z: -0.2 },
+    rightRing3: { x: 0, y: 0, z: -0.2 },
+    rightLittle1: { x: 0, y: 0, z: -0.3 },
+    rightLittle2: { x: 0, y: 0, z: -0.2 },
+    rightLittle3: { x: 0, y: 0, z: -0.2 },
     },
     lookAt: { x: 0, y: 0 },
     greeting: "你好呀！",
@@ -91,35 +95,40 @@ let GESTURES: any[] = [
     name: "think",
     duration: 5000,
     target: {
-      // 右臂抬起，手肘弯曲，食指轻触下巴
-      rightUpperArm: { x: -2.0, y: 0, z: -0.5 },
-      rightForeArm: { x: 2.5, y: 0, z: 0 },
-      rightHand: { x: -0.3, y: 0, z: 0 },
-      // 右手拇指自然弯曲
-      rightThumb1: { x: 0.2, y: 0, z: 0.2 },
+      // --- 右臂：抬起，前臂大幅度弯曲，使手部靠近下巴 ---
+      rightUpperArm: { x: -0.4, y: 0.2, z: -0.2 },
+      rightForeArm: { x: 2.2, y: 0.2, z: 0.2 },
+      rightHand: { x: -0.3, y: 0, z: -0.2 },
+      
+      // --- 右手手指：收拢形成微握拳状，贴合下巴 ---
+      rightThumb1: { x: 0.3, y: -0.1, z: 0.2 },
       rightThumb2: { x: 0.2, y: 0, z: 0 },
       rightThumb3: { x: 0.2, y: 0, z: 0 },
-      // 右手食指伸直指向下巴
-      rightIndex1: { x: 0, y: 0, z: -0.2 },
-      rightIndex2: { x: 0, y: 0, z: -0.1 },
-      rightIndex3: { x: 0, y: 0, z: -0.1 },
-      // 其他手指自然弯曲
-      rightMiddle1: { x: 0, y: 0, z: 0.6 },
-      rightMiddle2: { x: 0, y: 0, z: 0.6 },
-      rightMiddle3: { x: 0, y: 0, z: 0.6 },
-      rightRing1: { x: 0, y: 0, z: 0.6 },
-      rightRing2: { x: 0, y: 0, z: 0.6 },
-      rightRing3: { x: 0, y: 0, z: 0.6 },
-      rightLittle1: { x: 0, y: 0, z: 0.6 },
-      rightLittle2: { x: 0, y: 0, z: 0.6 },
-      rightLittle3: { x: 0, y: 0, z: 0.6 },
-      // 左臂交叉在胸前，手搭在右臂上
-      leftUpperArm: { x: -0.2, y: 0, z: 0.6 },
-      leftForeArm: { x: 2.5, y: 0, z: -0.3 },
-      leftHand: { x: 0, y: 0, z: 0 },
+      
+      rightIndex1: { x: 0.5, y: 0, z: -0.1 },
+      rightIndex2: { x: 0.4, y: 0, z: 0 },
+      rightIndex3: { x: 0.3, y: 0, z: 0 },
+      
+      rightMiddle1: { x: 0.5, y: 0, z: 0.1 },
+      rightMiddle2: { x: 0.4, y: 0, z: 0 },
+      rightMiddle3: { x: 0.3, y: 0, z: 0 },
+      
+      rightRing1: { x: 0.5, y: 0, z: 0.2 },
+      rightRing2: { x: 0.4, y: 0, z: 0 },
+      rightRing3: { x: 0.3, y: 0, z: 0 },
+      
+      rightLittle1: { x: 0.5, y: 0, z: 0.3 },
+      rightLittle2: { x: 0.4, y: 0, z: 0 },
+      rightLittle3: { x: 0.3, y: 0, z: 0 },
+
+      // --- 左臂：横跨腹部/胸下，手部托住右臂手肘 ---
+      leftUpperArm: { x: 0.2, y: 0.4, z: 0.4 },
+      leftForeArm: { x: 1.8, y: -0.2, z: -0.2 },
+      leftHand: { x: 0.1, y: 0.2, z: 0.1 },
     },
-    lookAt: { x: 0.3, y: -0.3 },
-    tilt: -0.08,
+    // 眼神微侧下方，头部微微倾斜，增加沉思感
+    lookAt: { x: 0.2, y: -0.2 }, 
+    tilt: -0.1,
   },
 ];
 
@@ -683,7 +692,8 @@ export default function AvatarWindow() {
               if ((g as any).tilt) targetRotZ = (g as any).tilt;
             }
             if (g?.name === "think" && isThinkingRef.current) {
-              targetRotY += Math.sin(now * 0.001) * 0.15;
+              targetRotY += Math.sin(now * 0.0007) * 0.08;
+              targetRotX += Math.sin(now * 0.0005 + 1.2) * 0.03;
             }
 
             if (bonesRef.current.head) {
