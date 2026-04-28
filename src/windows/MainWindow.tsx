@@ -81,6 +81,7 @@ export default function MainWindow() {
   const [thinkingContent, setThinkingContent] = useState("");
   const [streamedContent, setStreamedContent] = useState("");
   const streamedContentRef = useRef("");
+  const currentConversationIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // 每个会话独立的聊天状态存储
   const chatStatesRef = useRef<Map<string, ChatSessionState>>(new Map());
@@ -176,6 +177,7 @@ export default function MainWindow() {
       });
       setConversations((prev) => [result, ...prev]);
       setCurrentConversationId(result.id);
+      currentConversationIdRef.current = result.id;
       setMessages([]);
       setInput("");
       setActiveTab("chat");
@@ -186,6 +188,7 @@ export default function MainWindow() {
 
   const handleSelectConversation = async (id: string) => {
     setCurrentConversationId(id);
+    currentConversationIdRef.current = id;
   };
 
   const deleteConversation = async (id: string) => {
@@ -194,6 +197,7 @@ export default function MainWindow() {
       setConversations((prev) => prev.filter((c) => c.id !== id));
       if (currentConversationId === id) {
         setCurrentConversationId(null);
+        currentConversationIdRef.current = null;
         setMessages([]);
       }
     } catch (err) {
@@ -228,6 +232,7 @@ export default function MainWindow() {
         conversationId = conv.id;
         setConversations((prev) => [conv, ...prev]);
         setCurrentConversationId(conv.id);
+        currentConversationIdRef.current = conv.id;
       } catch (err) {
         console.error("Failed to create conversation:", err);
         return;
@@ -260,8 +265,8 @@ export default function MainWindow() {
       const current = chatStatesRef.current.get(convId) || { ...DEFAULT_CHAT_STATE };
       const next = { ...current, ...update };
       chatStatesRef.current.set(convId, next);
-      // 如果是当前会话，同步更新 React 状态
-      if (convId === currentConversationId) {
+      // 如果是当前会话，同步更新 React 状态（用 ref 避免闭包陈旧值）
+      if (convId === currentConversationIdRef.current) {
         if (update.isStreaming !== undefined) setIsStreaming(update.isStreaming);
         if (update.isThinking !== undefined) setIsThinking(update.isThinking);
         if (update.thinkingContent !== undefined) setThinkingContent(update.thinkingContent);
@@ -277,7 +282,7 @@ export default function MainWindow() {
       const prev = messagesMapRef.current.get(convId) || [];
       const next = updater(prev);
       messagesMapRef.current.set(convId, next);
-      if (convId === currentConversationId) {
+      if (convId === currentConversationIdRef.current) {
         setMessages(next);
       }
     };

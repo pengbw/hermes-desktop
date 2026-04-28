@@ -41,7 +41,7 @@ fn path_with_local_bin() -> String {
     }
 }
 
-fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
+async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
     let pool = match app.try_state::<AppState>() {
         Some(s) => s.db_pool.clone(),
         None => {
@@ -83,19 +83,15 @@ fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
         }
     }
 
-    let providers: Vec<(String, String)> = match tauri::async_runtime::block_on(async {
-        sqlx::query_as::<_, (String, String)>(
-            "SELECT api_key_env, api_key FROM providers WHERE api_key != '' AND api_key_env != ''"
-        )
-        .fetch_all(&pool)
-        .await
-    }) {
-        Ok(p) => p,
-        Err(e) => {
-            log::warn!("查询 providers 失败: {}", e);
-            return;
-        }
-    };
+    let providers: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+        "SELECT api_key_env, api_key FROM providers WHERE api_key != '' AND api_key_env != ''"
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_else(|e| {
+        log::warn!("查询 providers 失败: {}", e);
+        Vec::new()
+    });
 
     let mut changed = false;
     for (key_env, api_key) in &providers {
@@ -118,6 +114,122 @@ fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
             Err(e) => log::warn!("写入 .env 失败: {}", e),
         }
     }
+}
+
+async fn sync_hermes_providers_to_db(app: &tauri::AppHandle) {
+    let pool = match app.try_state::<AppState>() {
+        Some(s) => s.db_pool.clone(),
+        None => return,
+    };
+
+    let venv_python = hermes_bin().replace("/bin/hermes", "/bin/python");
+    if !std::path::Path::new(&venv_python).exists() {
+        log::warn!("hermes venv python 不存在: {}", venv_python);
+        return;
+    }
+
+    let script = r#"
+import json, sys
+try:
+    from hermes_cli.providers import HERMES_OVERLAYS
+    from agent.models_dev import get_provider_info
+    results = []
+    for pid in HERMES_OVERLAYS:
+        info = get_provider_info(pid)
+        if info and info.env:
+            results.append({
+                'id': info.id,
+                'name': info.name,
+                'env_vars': list(info.env),
+                'base_url': info.api or ''
+            })
+    print(json.dumps(results, ensure_ascii=False))
+except Exception as e:
+    print(json.dumps({'error': str(e)}), file=sys.stderr)
+    sys.exit(1)
+"#;
+
+    let output = match std::process::Command::new(&venv_python)
+        .args(["-c", script])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("查询 hermes 供应商失败: {}", e);
+            return;
+        }
+    };
+
+    let json_str = String::from_utf8_lossy(&output.stdout);
+    let providers: Vec<serde_json::Value> = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("解析 hermes 供应商 JSON 失败: {}", e);
+            return;
+        }
+    };
+
+    let now = chrono::Utc::now().timestamp_millis();
+
+    for (i, p) in providers.iter().enumerate() {
+        let pid = p["id"].as_str().unwrap_or("");
+        let name = p["name"].as_str().unwrap_or("");
+        let base_url = p["base_url"].as_str().unwrap_or("");
+        let env_vars: Vec<String> = p["env_vars"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let api_key_env = env_vars.first().cloned().unwrap_or_default();
+
+        let provider_value = pid.to_string();
+        let db_id = format!("hermes_{}", pid.replace('-', "_"));
+
+        let exists: bool = sqlx::query_scalar(
+            "SELECT COUNT(*) > 0 FROM providers WHERE value = ?"
+        )
+        .bind(&provider_value)
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(false);
+
+        if exists {
+            let _ = sqlx::query(
+                "UPDATE providers SET name = ?, base_url = ?, api_key_env = ?, updated_at = ? WHERE value = ?"
+            )
+            .bind(name)
+            .bind(base_url)
+            .bind(&api_key_env)
+            .bind(now)
+            .bind(&provider_value)
+            .execute(&pool)
+            .await
+            .map_err(|e| {
+                log::warn!("更新 hermes 供应商 {} 失败: {}", pid, e);
+            });
+        } else {
+            let _ = sqlx::query(
+                "INSERT INTO providers (id, name, value, base_url, api_key_env, is_builtin, sort_order, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)"
+            )
+            .bind(&db_id)
+            .bind(name)
+            .bind(&provider_value)
+            .bind(base_url)
+            .bind(&api_key_env)
+            .bind(i as i64 + 100)
+            .bind(now)
+            .bind(now)
+            .execute(&pool)
+            .await
+            .map_err(|e| {
+                log::warn!("插入 hermes 供应商 {} 失败: {}", pid, e);
+            });
+        }
+    }
+
+    log::info!("已同步 {} 个 Hermes 供应商到本地数据库", providers.len());
 }
 
 pub struct AppState {
@@ -307,13 +419,13 @@ fn kill_hermes_process() {
 #[cfg(unix)]
 fn get_install_shell_args<'a>(method: &str, install_cmd: &'a str) -> (&'static str, Vec<&'a str>) {
     let _ = method;
-    ("bash", vec!["-c", install_cmd])
+    ("bash", vec!["-lc", install_cmd])
 }
 
 #[cfg(windows)]
 fn get_install_shell_args<'a>(method: &str, install_cmd: &'a str) -> (&'static str, Vec<&'a str>) {
     if method == "curl" {
-        ("wsl", vec!["bash", "-c", install_cmd])
+        ("wsl", vec!["bash", "-lc", install_cmd])
     } else {
         ("cmd", vec!["/C", install_cmd])
     }
@@ -740,21 +852,21 @@ async fn install_hermes_agent(app: AppHandle, method: String) -> Result<bool, St
             "curl" => {
                 #[cfg(unix)]
                 {
-                    r#"bash -c 'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash'"#.to_string()
+                    r#"bash -c 'export GIT_SSH_COMMAND="ssh -o ConnectTimeout=30 -o BatchMode=yes"; export GIT_TERMINAL_PROMPT=0; curl -fsSL --connect-timeout 30 --max-time 300 https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup'"#.to_string()
                 }
                 #[cfg(windows)]
                 {
-                    "wsl bash -c 'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash'".to_string()
+                    "wsl bash -c 'export GIT_SSH_COMMAND=\"ssh -o ConnectTimeout=30 -o BatchMode=yes\"; export GIT_TERMINAL_PROMPT=0; curl -fsSL --connect-timeout 30 --max-time 300 https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup'".to_string()
                 }
             }
             "pip" => {
                 #[cfg(unix)]
                 {
-                    "pip install --upgrade hermes-agent".to_string()
+                    "pip install --upgrade --timeout 60 hermes-agent".to_string()
                 }
                 #[cfg(windows)]
                 {
-                    "pip install --upgrade hermes-agent".to_string()
+                    "pip install --upgrade --timeout 60 hermes-agent".to_string()
                 }
             }
             _ => return Err(format!("不支持的安装方式: {}", method)),
@@ -763,9 +875,13 @@ async fn install_hermes_agent(app: AppHandle, method: String) -> Result<bool, St
 
     let (shell, args) = get_install_shell_args(&method, &install_cmd);
 
+    let new_path = path_with_local_bin();
     let mut child = Command::new(shell)
         .args(&args)
+        .env("PATH", &new_path)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("CI", "1")
+        .env("HERMES_NO_PROMPT", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -935,7 +1051,8 @@ async fn install_hermes_agent(app: AppHandle, method: String) -> Result<bool, St
         .unwrap_or(false);
 
     if actual_installed {
-        sync_api_keys_to_hermes_env(&app);
+        sync_hermes_providers_to_db(&app).await;
+        sync_api_keys_to_hermes_env(&app).await;
     }
 
     let success = actual_installed || script_success;
@@ -1511,7 +1628,11 @@ pub fn run() {
                 .unwrap_or(false);
 
             if hermes_installed {
-                sync_api_keys_to_hermes_env(app.handle());
+                let handle = app.handle().clone();
+                tauri::async_runtime::block_on(async {
+                    sync_hermes_providers_to_db(&handle).await;
+                    sync_api_keys_to_hermes_env(&handle).await;
+                });
 
                 kill_hermes_process();
                 std::thread::sleep(std::time::Duration::from_millis(300));

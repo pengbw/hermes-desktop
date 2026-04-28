@@ -137,7 +137,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         ("minimax", "MiniMax", "", "MINIMAX_API_KEY"),
         ("minimax-cn", "MiniMax (中国)", "", "MINIMAX_API_KEY"),
         ("zai", "Z.AI / GLM", "", "ZAI_API_KEY"),
-        ("kimi", "Kimi", "https://api.moonshot.cn/v1", "KIMI_CN_API_KEY"),
+        ("kimi", "Kimi", "https://api.moonshot.cn/v1", "KIMI_API_KEY"),
     ];
 
     for (i, (value, name, base_url, api_key_env)) in builtin_providers.iter().enumerate() {
