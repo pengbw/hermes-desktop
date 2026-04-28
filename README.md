@@ -129,8 +129,14 @@ xattr -cr "/Applications/Hermes Desktop.app"
 
 ## 💬 交流与反馈
 
-> 如果觉得软件好用，请给我们一个 **Star** ⭐
+> 如果 Hermes Desktop 对你有帮助，欢迎扫码支持 ☕
 >
+> 你的鼓励是我们持续开发的最大动力！
+
+| 微信支持 | 支付宝支持 |
+|:---:|:---:|
+| ![微信](./docs/screenshots/wechat-pay.jpg) | ![支付宝](./docs/screenshots/alipay.jpg) |
+
 > 关注公众号：**小跃行迹**（small-leapgo），我们会持续更新功能，敬请期待！
 
 ---
