@@ -131,7 +131,7 @@ xattr -cr "/Applications/Hermes Desktop.app"
 
 > 如果觉得软件好用，请给我们一个 **Star** ⭐
 >
-> 关注公众号：**小跃行迹**（yuexingjx），我们会持续更新功能，敬请期待！
+> 关注公众号：**小跃行迹**（small-leapgo），我们会持续更新功能，敬请期待！
 
 ---
 
