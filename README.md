@@ -127,6 +127,14 @@ xattr -cr "/Applications/Hermes Desktop.app"
 
 ---
 
+## 💬 交流与反馈
+
+> 如果觉得软件好用，请给我们一个 **Star** ⭐
+>
+> 关注公众号：**小跃行迹**（yuexingjx），我们会持续更新功能，敬请期待！
+
+---
+
 ## 📄 开源协议
 
 Apache License 2.0
