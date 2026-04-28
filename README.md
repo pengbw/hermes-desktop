@@ -133,9 +133,7 @@ xattr -cr "/Applications/Hermes Desktop.app"
 >
 > 你的鼓励是我们持续开发的最大动力！
 
-| 微信支持 | 支付宝支持 |
-|:---:|:---:|
-| ![微信](./docs/screenshots/wechat-pay.jpg) | ![支付宝](./docs/screenshots/alipay.jpg) |
+| <img src="./docs/screenshots/wechat-pay.jpg" width="100"/> | <img src="./docs/screenshots/alipay.jpg" width="100"/> |
 
 > 关注公众号：**小跃行迹**（small-leapgo），我们会持续更新功能，敬请期待！
 
