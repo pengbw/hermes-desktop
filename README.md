@@ -135,7 +135,9 @@ xattr -cr "/Applications/Hermes Desktop.app"
 
 | <img src="./docs/screenshots/wechat-pay.jpg" width="200"/> | <img src="./docs/screenshots/alipay.jpg" width="200"/> |
 
-> 关注公众号：**小跃行迹**（small-leapgo），我们会持续更新功能，敬请期待！
+> 扫码关注公众号：**小跃行迹**，获取更新通知 & 使用技巧
+
+<img src="./docs/screenshots/wechat-gzh.jpg" width="200"/>
 
 ---
 
