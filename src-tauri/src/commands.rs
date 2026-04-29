@@ -825,3 +825,73 @@ pub async fn delete_avatar_gesture(app: AppHandle, id: String) -> Result<(), Str
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+pub struct FileContent {
+    pub name: String,
+    pub path: String,
+    pub is_image: bool,
+    pub size: u64,
+}
+
+#[tauri::command]
+pub async fn read_file_for_chat(path: String) -> Result<FileContent, String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err("文件不存在".to_string());
+    }
+
+    let name = p
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let metadata = std::fs::metadata(&path).map_err(|e| format!("读取文件信息失败: {}", e))?;
+    let size = metadata.len();
+
+    if size > 10 * 1024 * 1024 {
+        return Err("文件大小超过 10MB 限制".to_string());
+    }
+
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    let image_exts = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+    let is_image = image_exts.contains(&ext.as_str());
+
+    Ok(FileContent {
+        name,
+        path: path.clone(),
+        is_image,
+        size,
+    })
+}
+
+#[tauri::command]
+pub async fn prepare_temp_file(name: String, base64_content: String) -> Result<FileContent, String> {
+    let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &base64_content)
+        .map_err(|e| format!("base64解码失败: {}", e))?;
+
+    if bytes.len() > 10 * 1024 * 1024 {
+        return Err("文件大小超过 10MB 限制".to_string());
+    }
+
+    let tmp = std::env::temp_dir().join(format!("hermes_upload_{}", name));
+    std::fs::write(&tmp, &bytes).map_err(|e| format!("写入临时文件失败: {}", e))?;
+
+    let ext = std::path::Path::new(&name)
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let image_exts = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+    let is_image = image_exts.contains(&ext.as_str());
+
+    Ok(FileContent {
+        name,
+        path: tmp.to_string_lossy().to_string(),
+        is_image,
+        size: bytes.len() as u64,
+    })
+}
+

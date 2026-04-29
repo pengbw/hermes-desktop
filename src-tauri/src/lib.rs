@@ -1117,25 +1117,55 @@ async fn start_hermes_agent(_app: AppHandle, state: State<'_, AgentProcess>) -> 
 /// 与 Hermes Agent 对话（阻塞式，使用 hermes chat -q）
 /// 支持 session_id 恢复上下文
 #[tauri::command]
-async fn chat_with_hermes(message: String, session_id: Option<String>) -> Result<ChatResponse, String> {
-    log::info!("[chat] 开始: message={}, session_id={:?}", message, session_id);
+async fn chat_with_hermes(message: String, session_id: Option<String>, file_path: Option<String>, model: Option<String>) -> Result<ChatResponse, String> {
+    log::info!("[chat] 开始: message={}, session_id={:?}, has_file={}, model={:?}", message, session_id, file_path.is_some(), model);
+
+    let (full_message, image_arg) = if let Some(ref fp) = file_path {
+        let p = std::path::Path::new(fp);
+        let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let size_mb = std::fs::metadata(fp).map(|m| m.len() as f64 / 1024.0 / 1024.0).unwrap_or(0.0);
+        let image_exts = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+        if image_exts.contains(&ext.as_str()) {
+            (message.clone(), format!(" --image '{}'", fp))
+        } else {
+            let label = if ext.is_empty() { "文件" } else { &ext };
+            let hint = format!(
+                "{}\n\n[用户上传了文件]\n路径: {}\n名称: {}\n类型: {}\n大小: {:.1}MB\n请使用文件读取工具读取该文件内容。",
+                message, fp, name, label, size_mb
+            );
+            (hint, String::new())
+        }
+    } else {
+        (message.clone(), String::new())
+    };
 
     let bin = hermes_bin();
     let new_path = path_with_local_bin();
     let mut last_session_id = session_id.clone();
+
+    let msg_file = std::env::temp_dir().join(format!("hermes_msg_{}", std::process::id()));
+    std::fs::write(&msg_file, &full_message).map_err(|e| format!("写入临时文件失败: {}", e))?;
+    let msg_file_str = msg_file.to_string_lossy().to_string();
 
     for attempt in 0..2 {
         let resume_arg = match &last_session_id {
             Some(sid) => format!(" --resume '{}'", sid.replace('\'', "'\"'\"'")),
             None => String::new(),
         };
+        let model_arg = match &model {
+            Some(m) => format!(" -m '{}'", m.replace('\'', "'\"'\"'")),
+            None => String::new(),
+        };
         let shell_cmd = format!(
-            "{} chat -q '{}' -Q{}",
+            "{} chat -q \"$(cat '{}')\" -Q{}{}{}",
             bin,
-            message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
+            msg_file_str,
+            image_arg,
+            model_arg,
             resume_arg
         );
-        log::info!("[chat] 执行命令(attempt={}): zsh -lc {}", attempt, shell_cmd);
+        log::info!("[chat] 执行命令(attempt={})", attempt);
 
         let output = match tokio::time::timeout(
             tokio::time::Duration::from_secs(60),
@@ -1232,26 +1262,56 @@ async fn chat_with_hermes(message: String, session_id: Option<String>) -> Result
 
 /// 与 Avatar 数字人对话（简化版，直接返回文本）
 #[tauri::command]
-async fn chat_with_agent(_app: AppHandle, message: String, session_id: Option<String>) -> Result<ChatResponse, String> {
-    log::info!("[avatar_chat] 开始: message={}, session_id={:?}", message, session_id);
+async fn chat_with_agent(_app: AppHandle, message: String, session_id: Option<String>, file_path: Option<String>, model: Option<String>) -> Result<ChatResponse, String> {
+    log::info!("[avatar_chat] 开始: message={}, session_id={:?}, has_file={}, model={:?}", message, session_id, file_path.is_some(), model);
+
+    let (full_message, image_arg) = if let Some(ref fp) = file_path {
+        let p = std::path::Path::new(fp);
+        let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let size_mb = std::fs::metadata(fp).map(|m| m.len() as f64 / 1024.0 / 1024.0).unwrap_or(0.0);
+        let image_exts = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+        if image_exts.contains(&ext.as_str()) {
+            (message.clone(), format!(" --image '{}'", fp))
+        } else {
+            let label = if ext.is_empty() { "文件" } else { &ext };
+            let hint = format!(
+                "{}\n\n[用户上传了文件]\n路径: {}\n名称: {}\n类型: {}\n大小: {:.1}MB\n请使用文件读取工具读取该文件内容。",
+                message, fp, name, label, size_mb
+            );
+            (hint, String::new())
+        }
+    } else {
+        (message.clone(), String::new())
+    };
 
     let bin = hermes_bin();
     let new_path = path_with_local_bin();
 
     let mut last_session_id = session_id.clone();
 
+    let msg_file = std::env::temp_dir().join(format!("hermes_avatar_msg_{}", std::process::id()));
+    std::fs::write(&msg_file, &full_message).map_err(|e| format!("写入临时文件失败: {}", e))?;
+    let msg_file_str = msg_file.to_string_lossy().to_string();
+
     for attempt in 0..2 {
         let resume_arg = match &last_session_id {
             Some(sid) => format!(" --resume '{}'", sid.replace('\'', "'\"'\"'")),
             None => String::new(),
         };
+        let model_arg = match &model {
+            Some(m) => format!(" -m '{}'", m.replace('\'', "'\"'\"'")),
+            None => String::new(),
+        };
         let shell_cmd = format!(
-            "{} chat -q '{}' -Q{}",
+            "{} chat -q \"$(cat '{}')\" -Q{}{}{}",
             bin,
-            message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
+            msg_file_str,
+            image_arg,
+            model_arg,
             resume_arg
         );
-        log::info!("[avatar_chat] 执行命令(attempt={}): zsh -lc {}", attempt, shell_cmd);
+        log::info!("[avatar_chat] 执行命令(attempt={})", attempt);
 
         let output = match tokio::time::timeout(
             tokio::time::Duration::from_secs(120),
@@ -1354,16 +1414,21 @@ async fn chat_with_hermes_stream(
     app: AppHandle,
     message: String,
     conversation_id: String,
+    model: Option<String>,
 ) -> Result<(), String> {
     let event_id = format!("chat_stream_{}", conversation_id);
-    log::info!("[chat_stream] 开始: conversation_id={}, message={}", conversation_id, message);
+    log::info!("[chat_stream] 开始: conversation_id={}, message={}, model={:?}", conversation_id, message, model);
 
-    // 使用 zsh -lc 确保加载用户的 shell 环境（PATH 等）
     let bin = hermes_bin();
+    let model_arg = match &model {
+        Some(m) => format!(" -m '{}'", m.replace('\'', "'\"'\"'")),
+        None => String::new(),
+    };
     let shell_cmd = format!(
-        "{} chat -q '{}' -Q",
+        "{} chat -q '{}' -Q{}",
         bin,
-        message.replace('\\', "\\\\").replace('\'', "'\"'\"'")
+        message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
+        model_arg,
     );
     log::info!("[chat_stream] 执行命令: zsh -lc {}", shell_cmd);
 
@@ -1718,6 +1783,8 @@ pub fn run() {
             commands::delete_provider,
             commands::sync_provider_keys,
             commands::list_models,
+            commands::read_file_for_chat,
+            commands::prepare_temp_file,
         ])
         .run(tauri::generate_context!())
         .expect("Hermes Desktop 启动失败");

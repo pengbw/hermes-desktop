@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { getCurrentWindow, primaryMonitor } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRMHumanBoneName } from "@pixiv/three-vrm";
@@ -145,11 +146,14 @@ export default function AvatarWindow() {
   const [isThinking, setIsThinking] = useState(false);
   const isThinkingRef = useRef(false);
   const [isWaitingResponse, setIsWaitingResponse] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<{ name: string; path: string; isImage: boolean; size: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatWindowRef = useRef<WebviewWindow | null>(null);
   const chatSideRef = useRef<"right" | "left">("right");
   const avatarConvIdRef = useRef<string | null>(null);
   const hermesSessionIdRef = useRef<string | null>(null);
+
+  const [currentModel, setCurrentModel] = useState<string>("");
 
   const expressionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -313,12 +317,20 @@ export default function AvatarWindow() {
       }
     }
 
+    const currentFile = attachedFile;
+
+    const displayContent = currentFile
+      ? `[FILE:${currentFile.name}:${currentFile.size}]\n${text}`
+      : text;
+
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: "user",
-      content: text,
+      content: displayContent,
       timestamp: Date.now(),
     };
+
+    setAttachedFile(null);
 
     setIsThinking(true);
     isThinkingRef.current = true;
@@ -345,6 +357,8 @@ export default function AvatarWindow() {
       const result = await invoke<{ content: string; sessionId: string | null }>("chat_with_agent", {
         message: text,
         sessionId: hermesSessionIdRef.current,
+        filePath: currentFile?.path || null,
+        model: currentModel || null,
       });
       console.log("[Avatar] 收到回复:", result.content);
 
@@ -401,7 +415,7 @@ export default function AvatarWindow() {
         console.error("[Avatar] 保存错误消息失败:", e);
       }
     }
-  }, [inputText, isWaitingResponse, applyExpression, openChatWindow]);
+  }, [inputText, isWaitingResponse, applyExpression, openChatWindow, currentModel, attachedFile]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -409,6 +423,15 @@ export default function AvatarWindow() {
       handleSendMessage();
     }
   }, [handleSendMessage]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const config = await invoke<{ model: string }>("get_hermes_config");
+        if (config.model) setCurrentModel(config.model);
+      } catch {}
+    })();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -880,11 +903,35 @@ export default function AvatarWindow() {
         </div>
       )}
 
+      {attachedFile && (
+        <div className={`avatar-file-box ${isHovering || isWaitingResponse ? "visible" : ""}`}>
+          <span className="avatar-file-box-name">{attachedFile.name}</span>
+          <button className="avatar-file-box-remove" onClick={(e) => { e.stopPropagation(); setAttachedFile(null); }} title="移除文件">×</button>
+        </div>
+      )}
+
       <div
         className={`chat-input-wrapper ${isHovering || isWaitingResponse ? "visible" : ""}`}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
+        <button
+          className="chat-attach-btn"
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const selected = await open({ multiple: false, title: "选择文件" });
+              if (selected) {
+                const result = await invoke<{ name: string; path: string; isImage: boolean; size: number }>("read_file_for_chat", { path: selected });
+                setAttachedFile(result);
+              }
+            } catch {}
+          }}
+          disabled={isWaitingResponse}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          📎
+        </button>
         <input
           ref={inputRef}
           className="chat-input"

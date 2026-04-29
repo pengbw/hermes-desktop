@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import GestureEditor from "./GestureEditor";
 import InstallGuidePanel from "./InstallGuide";
 import "./MainWindow.css";
 
 type Tab = "home" | "chat" | "settings" | "skills";
+
+interface AttachedFile {
+  name: string;
+  path: string;
+  isImage: boolean;
+  size: number;
+}
 
 interface Message {
   id: string;
@@ -13,6 +21,7 @@ interface Message {
   content: string;
   thinking?: string;
   timestamp: number;
+  attachedFile?: AttachedFile;
 }
 
 interface Conversation {
@@ -80,6 +89,7 @@ export default function MainWindow() {
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingContent, setThinkingContent] = useState("");
   const [streamedContent, setStreamedContent] = useState("");
+  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const streamedContentRef = useRef("");
   const currentConversationIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -161,8 +171,25 @@ export default function MainWindow() {
   const loadMessages = async (conversationId: string) => {
     try {
       const result = await invoke<Message[]>("list_messages", { conversationId });
-      messagesMapRef.current.set(conversationId, result);
-      setMessages(result);
+      const parsed = result.map((msg) => {
+        const fileMatch = msg.content.match(/^\[FILE:(.+?):(\d+)\]\n/);
+        if (fileMatch) {
+          const cleanContent = msg.content.slice(fileMatch[0].length);
+          return {
+            ...msg,
+            content: cleanContent,
+            attachedFile: {
+              name: fileMatch[1],
+              path: "",
+              isImage: false,
+              size: parseInt(fileMatch[2], 10),
+            },
+          };
+        }
+        return msg;
+      });
+      messagesMapRef.current.set(conversationId, parsed);
+      setMessages(parsed);
     } catch (err) {
       console.error("Failed to load messages:", err);
     }
@@ -216,7 +243,7 @@ export default function MainWindow() {
     }
   };
 
-  const sendMessage = async () => {
+  const sendMessage = async (filePath?: string, model?: string) => {
     if (!input.trim() || isStreaming) return;
 
     let conversationId = currentConversationId;
@@ -244,15 +271,23 @@ export default function MainWindow() {
       role: "user",
       content: input.trim(),
       timestamp: Date.now(),
+      attachedFile: attachedFile || undefined,
     };
 
-    // Save user message to DB（失败不阻塞）
+    const currentFilePath = filePath;
+    const fileForDb = attachedFile;
+    setAttachedFile(null);
+
+    const dbContent = fileForDb
+      ? `[FILE:${fileForDb.name}:${fileForDb.size}]\n${userMsg.content}`
+      : userMsg.content;
+
     try {
       await invoke("create_message", {
         req: {
           conversationId: conversationId,
           role: "user",
-          content: userMsg.content,
+          content: dbContent,
           thinking: null,
         },
       });
@@ -314,6 +349,8 @@ export default function MainWindow() {
       const result = await invoke<{ content: string; thinking: string | null; sessionId?: string }>("chat_with_hermes", {
         message: userMsg.content,
         sessionId: hermesSessionId || null,
+        filePath: currentFilePath || null,
+        model: model || null,
       });
 
       updateChatState(conversationId, { isStreaming: false, isThinking: false, streamedContent: "" });
@@ -363,13 +400,6 @@ export default function MainWindow() {
       console.error("Chat error:", err);
       updateChatState(conversationId, { isStreaming: false, isThinking: false });
       unlisten();
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
     }
   };
 
@@ -427,8 +457,9 @@ export default function MainWindow() {
             isThinking={isThinking}
             thinkingContent={thinkingContent}
             streamedContent={streamedContent}
-            onKeyDown={handleKeyDown}
             messagesEndRef={messagesEndRef}
+            attachedFile={attachedFile}
+            onAttachFile={setAttachedFile}
           />
         )}
         {activeTab === "settings" && <SettingsPanel />}
@@ -611,13 +642,14 @@ interface ChatPanelProps {
   messages: Message[];
   input: string;
   setInput: (v: string) => void;
-  sendMessage: () => void;
+  sendMessage: (filePath?: string, model?: string) => void;
   isStreaming: boolean;
   isThinking: boolean;
   thinkingContent: string;
   streamedContent: string;
-  onKeyDown: (e: React.KeyboardEvent) => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  attachedFile: AttachedFile | null;
+  onAttachFile: (file: AttachedFile | null) => void;
 }
 
 function ChatPanel({
@@ -635,12 +667,95 @@ function ChatPanel({
   isThinking,
   thinkingContent,
   streamedContent,
-  onKeyDown,
   messagesEndRef,
+  attachedFile,
+  onAttachFile,
 }: ChatPanelProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const [currentModel, setCurrentModel] = useState<string>("");
+  const [currentProvider, setCurrentProvider] = useState<string>("");
+  const [modelList, setModelList] = useState<{id: string}[]>([]);
+  const [modelListLoading, setModelListLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const config = await invoke<HermesConfigData>("get_hermes_config");
+        if (config.provider) setCurrentProvider(config.provider);
+        if (config.model) setCurrentModel(config.model);
+        if (config.provider) {
+          setModelListLoading(true);
+          const list = await invoke<{id: string}[]>("list_models", { providerValue: config.provider });
+          setModelList(list);
+          setModelListLoading(false);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const handleModelChange = (newModel: string) => {
+    setCurrentModel(newModel);
+  };
+
+  const handleSelectFile = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        title: "选择文件",
+      });
+      if (selected) {
+        const result = await invoke<AttachedFile>("read_file_for_chat", { path: selected });
+        onAttachFile(result);
+      }
+    } catch (err) {
+      console.error("选择文件失败:", err);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    onAttachFile(null);
+  };
+
+  const handleSend = () => {
+    sendMessage(attachedFile?.path || undefined, currentModel || undefined);
+  };
+
+  const handleKeyDownInternal = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(attachedFile?.path || undefined, currentModel || undefined);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        const base64 = btoa(
+          Array.from(bytes).reduce((data, b) => data + String.fromCharCode(b), '')
+        );
+        const result = await invoke<AttachedFile>("prepare_temp_file", {
+          name: file.name,
+          base64Content: base64,
+        });
+        onAttachFile(result);
+      } catch (err) {
+        console.error("读取拖拽文件失败:", err);
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
   const startRename = (conv: Conversation) => {
     setRenamingId(conv.id);
@@ -678,7 +793,14 @@ function ChatPanel({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="conv-title">{conv.title}</span>
+          <>
+            <span className="conv-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </span>
+            <span className="conv-title">{conv.title}</span>
+          </>
         )}
         <button
           className="conv-delete"
@@ -706,7 +828,7 @@ function ChatPanel({
       </div>
 
       {/* 主聊天区 */}
-      <div className="chat-main">
+      <div className="chat-main" onDrop={handleDrop} onDragOver={handleDragOver}>
         <div className="messages-list">
           {messages.length === 0 && !isStreaming && (
             <div className="empty-chat">
@@ -719,6 +841,20 @@ function ChatPanel({
                 {msg.role === "user" ? "👤" : <img src="/bot.svg" alt="bot" className="message-avatar-img" />}
               </div>
               <div className="message-bubble">
+                {msg.attachedFile && (
+                  <div className="message-file-ref">
+                    <div className="file-ref-icon">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                    </div>
+                    <div className="file-ref-info">
+                      <span className="file-ref-name">{msg.attachedFile.name}</span>
+                      <span className="file-ref-size">{msg.attachedFile.size > 1024 ? `${(msg.attachedFile.size / 1024).toFixed(1)}KB` : `${msg.attachedFile.size}B`}</span>
+                    </div>
+                  </div>
+                )}
                 {msg.thinking && (
                   <div className="thinking-block">
                     <span className="thinking-label thinking-label-done">思考过程</span>
@@ -757,22 +893,77 @@ function ChatPanel({
           <div ref={messagesEndRef} />
         </div>
         <div className="chat-input-area">
-          <textarea
-            className="chat-input"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="输入消息，Enter 发送，Shift+Enter 换行..."
-            rows={1}
-            disabled={isStreaming}
-          />
-          <button
-            className="send-btn"
-            onClick={sendMessage}
-            disabled={isStreaming || !input.trim()}
-          >
-            {isStreaming ? "..." : "发送"}
-          </button>
+          <div className="chat-input-box">
+            {attachedFile && (
+              <div className="file-tag">
+                <span className="file-tag-name">{attachedFile.name}</span>
+                <button className="file-tag-remove" onClick={handleRemoveFile} title="移除文件">×</button>
+              </div>
+            )}
+            <textarea
+              className="chat-input"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDownInternal}
+              placeholder="输入消息，Enter 发送，Shift+Enter 换行..."
+              rows={3}
+              disabled={isStreaming}
+            />
+            <div className="chat-input-bar">
+              <div className="chat-input-left">
+                <button
+                  className="attach-btn"
+                  onClick={handleSelectFile}
+                  disabled={isStreaming}
+                  title="添加附件"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                  </svg>
+                </button>
+              </div>
+              <div className="chat-input-right">
+                {currentProvider && (
+                  <select
+                    className="inline-model-select"
+                    value={currentModel || ""}
+                    onChange={(e) => handleModelChange(e.target.value)}
+                    disabled={modelListLoading}
+                    title={currentModel || "选择模型"}
+                  >
+                    {!currentModel && <option value="">{modelListLoading ? "加载中..." : "模型"}</option>}
+                    {modelList.map((m) => (
+                      <option key={m.id} value={m.id}>{m.id.split("/").pop()}</option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  className="mic-btn"
+                  onClick={() => alert("开发中")}
+                  disabled={isStreaming}
+                  title="语音输入"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                </button>
+                <button
+                  className="send-btn"
+                  onClick={handleSend}
+                  disabled={isStreaming || !input.trim()}
+                  title="发送"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"/>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
