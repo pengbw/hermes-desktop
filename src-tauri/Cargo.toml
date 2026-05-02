@@ -33,3 +33,4 @@ urlencoding = "2.1.3"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 futures-util = "0.3"
+base64 = "0.22"

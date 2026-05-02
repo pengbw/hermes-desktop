@@ -1,4 +1,5 @@
 use crate::db;
+use base64::Engine;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
 
@@ -888,7 +889,7 @@ pub async fn read_file_for_chat(path: String) -> Result<FileContent, String> {
 
 #[tauri::command]
 pub async fn prepare_temp_file(name: String, base64_content: String) -> Result<FileContent, String> {
-    let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &base64_content)
+    let bytes = base64::engine::general_purpose::STANDARD.decode(&base64_content)
         .map_err(|e| format!("base64解码失败: {}", e))?;
 
     if bytes.len() > 10 * 1024 * 1024 {
