@@ -209,12 +209,12 @@ html, body, #root {
   transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: none;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-radius: 4px;
-  border: none;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: none;
   overflow: hidden;
 }
@@ -225,7 +225,132 @@ html, body, #root {
   pointer-events: auto;
 }
 
-.avatar-window .chat-input-wrapper .chat-input {
+.chat-input-wrapper.dragging {
+  border-color: rgba(79, 195, 247, 0.5);
+  background: rgba(79, 195, 247, 0.08);
+}
+
+.avatar-drag-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(79, 195, 247, 0.1);
+  border: 2px dashed rgba(79, 195, 247, 0.6);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  z-index: 10;
+  color: rgba(79, 195, 247, 0.9);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.avatar-file-display-area {
+  padding: 8px;
+  animation: avatar-file-area-in 0.2s ease;
+}
+
+@keyframes avatar-file-area-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.avatar-file-display-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.avatar-file-display-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: rgba(43, 125, 233, 0.2);
+  border-radius: 6px;
+  font-size: 11px;
+  color: rgba(100, 180, 255, 0.95);
+  transition: background 0.15s;
+}
+
+.avatar-file-display-item:hover {
+  background: rgba(43, 125, 233, 0.3);
+}
+
+.avatar-file-display-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.avatar-file-display-remove {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.avatar-file-display-item:hover .avatar-file-display-remove {
+  color: #F44336;
+}
+
+.avatar-file-display-remove:hover {
+  background: rgba(244, 67, 54, 0.3);
+  color: #F44336;
+}
+
+.avatar-input-row {
+  display: flex;
+  align-items: center;
+}
+
+.avatar-attach-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  margin-left: 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.avatar-attach-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.avatar-attach-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.chat-input {
   width: 100%;
   padding: 6px 12px;
   border: none;
@@ -238,23 +363,18 @@ html, body, #root {
   outline: none;
   letter-spacing: 0.3px;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
-  min-height: auto;
-  max-height: none;
-  height: auto;
-  line-height: normal;
-  resize: none;
 }
 
-.avatar-window .chat-input-wrapper .chat-input::placeholder {
+.chat-input::placeholder {
   color: rgba(255, 255, 255, 0.5);
   text-shadow: none;
 }
 
-.avatar-window .chat-input-wrapper .chat-input:focus {
+.chat-input:focus {
   outline: none;
 }
 
-.avatar-window .chat-input-wrapper .chat-input:disabled {
+.chat-input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -266,8 +386,8 @@ html, body, #root {
   margin-right: 6px;
   border: none;
   border-radius: 4px;
-  background: rgba(76, 175, 80, 0.5);
-  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -276,7 +396,7 @@ html, body, #root {
 }
 
 .chat-send-btn:hover:not(:disabled) {
-  background: rgba(76, 175, 80, 0.7);
+  background: rgba(255, 255, 255, 0.35);
   color: #ffffff;
   transform: scale(1.05);
 }
@@ -286,93 +406,6 @@ html, body, #root {
 }
 
 .chat-send-btn:disabled {
-  opacity: 0.25;
+  opacity: 0.3;
   cursor: not-allowed;
-}
-
-.chat-attach-btn {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  margin-left: 6px;
-  border: none;
-  border-radius: 4px;
-  background: rgba(76, 175, 80, 0.5);
-  color: rgba(255, 255, 255, 0.95);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  transition: all 0.2s ease;
-}
-
-.chat-attach-btn:hover:not(:disabled) {
-  background: rgba(76, 175, 80, 0.7);
-  color: #ffffff;
-  transform: scale(1.05);
-}
-
-.chat-attach-btn:disabled {
-  opacity: 0.25;
-  cursor: not-allowed;
-}
-
-.avatar-file-box {
-  position: absolute;
-  bottom: 48px;
-  left: 50%;
-  transform: translateX(-50%) translateY(12px);
-  z-index: 19;
-  opacity: 0;
-  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  pointer-events: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.avatar-file-box.visible {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-  pointer-events: auto;
-}
-
-.avatar-file-box-name {
-  font-size: 11px;
-  color: #64B5F6;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 180px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-.avatar-file-box-remove {
-  width: 18px;
-  height: 18px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  flex-shrink: 0;
-  transition: all 0.15s;
-}
-
-.avatar-file-box-remove:hover {
-  background: rgba(244, 67, 54, 0.6);
-  color: #ffcdd2;
 }

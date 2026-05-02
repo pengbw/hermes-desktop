@@ -154,6 +154,20 @@ pub async fn list_models(
 
     Ok(models)
 }
+
+#[tauri::command]
+pub async fn save_temp_file(file_name: String, file_bytes: Vec<u8>) -> Result<String, String> {
+    let temp_dir = std::env::temp_dir().join("hermes-desktop");
+    std::fs::create_dir_all(&temp_dir)
+        .map_err(|e| format!("创建临时目录失败: {}", e))?;
+
+    let file_path = temp_dir.join(&file_name);
+    std::fs::write(&file_path, &file_bytes)
+        .map_err(|e| format!("写入临时文件失败: {}", e))?;
+
+    Ok(file_path.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 pub async fn sync_provider_keys(app: AppHandle) -> Result<i64, String> {
     let pool = get_pool(&app)?;
@@ -282,8 +296,8 @@ pub async fn get_avatar_messages(app: AppHandle) -> Result<Vec<db::Message>, Str
         None => return Ok(vec![]),
     };
 
-    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, i64)>(
-        "SELECT id, role, content, thinking, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
+    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, i64)>(
+        "SELECT id, role, content, thinking, files, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
     )
     .bind(&conv_id)
     .fetch_all(&pool)
@@ -292,11 +306,12 @@ pub async fn get_avatar_messages(app: AppHandle) -> Result<Vec<db::Message>, Str
 
     let messages = rows
         .into_iter()
-        .map(|(id, role, content, thinking, timestamp)| db::Message {
+        .map(|(id, role, content, thinking, files, timestamp)| db::Message {
             id,
             role,
             content,
             thinking: thinking.filter(|s| !s.is_empty()),
+            files: files.filter(|s| !s.is_empty()),
             timestamp,
         })
         .collect();
@@ -379,12 +394,13 @@ pub async fn create_message(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
-    sqlx::query("INSERT INTO messages (id, conversation_id, role, content, thinking, timestamp) VALUES (?, ?, ?, ?, ?, ?)")
+    sqlx::query("INSERT INTO messages (id, conversation_id, role, content, thinking, files, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .bind(&id)
         .bind(&req.conversation_id)
         .bind(&req.role)
         .bind(&req.content)
         .bind(req.thinking.as_deref().unwrap_or(""))
+        .bind(req.files.as_deref().unwrap_or(""))
         .bind(now)
         .execute(&pool)
         .await
@@ -404,6 +420,7 @@ pub async fn create_message(
         role: req.role,
         content: req.content,
         thinking: req.thinking,
+        files: req.files,
         timestamp: now,
     })
 }
@@ -414,8 +431,8 @@ pub async fn list_messages(
     conversation_id: String,
 ) -> Result<Vec<db::Message>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, i64)>(
-        "SELECT id, role, content, thinking, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
+    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, i64)>(
+        "SELECT id, role, content, thinking, files, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
     )
     .bind(&conversation_id)
     .fetch_all(&pool)
@@ -424,11 +441,12 @@ pub async fn list_messages(
 
     let messages = rows
         .into_iter()
-        .map(|(id, role, content, thinking, timestamp)| db::Message {
+        .map(|(id, role, content, thinking, files, timestamp)| db::Message {
             id,
             role,
             content,
             thinking: thinking.filter(|s| !s.is_empty()),
+            files: files.filter(|s| !s.is_empty()),
             timestamp,
         })
         .collect();
@@ -764,35 +782,35 @@ pub async fn update_avatar_gesture(
 
     let mut query = String::from("UPDATE avatar_gestures SET updated_at = ?");
     let mut args: sqlx::sqlite::SqliteArguments = Default::default();
-    sqlx::Arguments::add(&mut args, now);
+    let _ = sqlx::Arguments::add(&mut args, now);
 
     if let Some(name) = &req.name {
         query.push_str(", name = ?");
-        sqlx::Arguments::add(&mut args, name);
+        let _ = sqlx::Arguments::add(&mut args, name);
     }
     if let Some(duration) = req.duration {
         query.push_str(", duration = ?");
-        sqlx::Arguments::add(&mut args, duration);
+        let _ = sqlx::Arguments::add(&mut args, duration);
     }
     if let Some(look_at_x) = req.look_at_x {
         query.push_str(", look_at_x = ?");
-        sqlx::Arguments::add(&mut args, look_at_x);
+        let _ = sqlx::Arguments::add(&mut args, look_at_x);
     }
     if let Some(look_at_y) = req.look_at_y {
         query.push_str(", look_at_y = ?");
-        sqlx::Arguments::add(&mut args, look_at_y);
+        let _ = sqlx::Arguments::add(&mut args, look_at_y);
     }
     if let Some(tilt) = req.tilt {
         query.push_str(", tilt = ?");
-        sqlx::Arguments::add(&mut args, tilt);
+        let _ = sqlx::Arguments::add(&mut args, tilt);
     }
     if let Some(target_json) = &req.target_json {
         query.push_str(", target_json = ?");
-        sqlx::Arguments::add(&mut args, target_json);
+        let _ = sqlx::Arguments::add(&mut args, target_json);
     }
 
     query.push_str(" WHERE id = ?");
-    sqlx::Arguments::add(&mut args, &req.id);
+    let _ = sqlx::Arguments::add(&mut args, &req.id);
 
     sqlx::query_with(&query, args)
         .execute(&pool)

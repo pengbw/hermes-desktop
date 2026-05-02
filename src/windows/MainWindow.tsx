@@ -1,27 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import GestureEditor from "./GestureEditor";
 import InstallGuidePanel from "./InstallGuide";
 import "./MainWindow.css";
 
 type Tab = "home" | "chat" | "settings" | "skills";
 
-interface AttachedFile {
-  name: string;
-  path: string;
-  isImage: boolean;
-  size: number;
-}
-
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   thinking?: string;
+  files?: string;
   timestamp: number;
-  attachedFile?: AttachedFile;
 }
 
 interface Conversation {
@@ -42,6 +34,7 @@ interface ChatSessionState {
   isThinking: boolean;
   thinkingContent: string;
   streamedContent: string;
+  toolProgress: string;
 }
 
 const DEFAULT_CHAT_STATE: ChatSessionState = {
@@ -49,6 +42,7 @@ const DEFAULT_CHAT_STATE: ChatSessionState = {
   isThinking: false,
   thinkingContent: "",
   streamedContent: "",
+  toolProgress: "",
 };
 
 export default function MainWindow() {
@@ -89,7 +83,7 @@ export default function MainWindow() {
   const [isThinking, setIsThinking] = useState(false);
   const [thinkingContent, setThinkingContent] = useState("");
   const [streamedContent, setStreamedContent] = useState("");
-  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [toolProgress, setToolProgress] = useState("");
   const streamedContentRef = useRef("");
   const currentConversationIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -171,25 +165,8 @@ export default function MainWindow() {
   const loadMessages = async (conversationId: string) => {
     try {
       const result = await invoke<Message[]>("list_messages", { conversationId });
-      const parsed = result.map((msg) => {
-        const fileMatch = msg.content.match(/^\[FILE:(.+?):(\d+)\]\n/);
-        if (fileMatch) {
-          const cleanContent = msg.content.slice(fileMatch[0].length);
-          return {
-            ...msg,
-            content: cleanContent,
-            attachedFile: {
-              name: fileMatch[1],
-              path: "",
-              isImage: false,
-              size: parseInt(fileMatch[2], 10),
-            },
-          };
-        }
-        return msg;
-      });
-      messagesMapRef.current.set(conversationId, parsed);
-      setMessages(parsed);
+      messagesMapRef.current.set(conversationId, result);
+      setMessages(result);
     } catch (err) {
       console.error("Failed to load messages:", err);
     }
@@ -243,8 +220,8 @@ export default function MainWindow() {
     }
   };
 
-  const sendMessage = async (filePath?: string, model?: string) => {
-    if (!input.trim() || isStreaming) return;
+  const sendMessage = async (attachedFiles?: string, model?: string, provider?: string, image?: string) => {
+    if ((!input.trim() && !attachedFiles) || isStreaming) return;
 
     let conversationId = currentConversationId;
 
@@ -253,7 +230,7 @@ export default function MainWindow() {
       try {
         const conv = await invoke<Conversation>("create_conversation", {
           req: {
-            title: input.trim().slice(0, 30) || "新对话",
+            title: input.trim().slice(0, 30) || (attachedFiles ? "文件对话" : "新对话"),
           },
         });
         conversationId = conv.id;
@@ -266,29 +243,41 @@ export default function MainWindow() {
       }
     }
 
+    let messageContent = input.trim() || (attachedFiles ? "请分析附件中的文件" : "");
+    let sendContent = messageContent;
+
+    if (attachedFiles) {
+      try {
+        const files: AttachedFile[] = JSON.parse(attachedFiles);
+        const imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+        const nonImageFiles = files.filter((f) => {
+          const ext = f.name.split(".").pop()?.toLowerCase();
+          return !imageExtensions.includes(ext || "");
+        });
+        if (nonImageFiles.length > 0) {
+          const fileList = nonImageFiles.map((f) => `- ${f.name}: ${f.path}`).join("\n");
+          sendContent = `${sendContent}\n\n附件文件路径：\n${fileList}`;
+        }
+      } catch {}
+    }
+
     const userMsg: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input.trim(),
+      content: messageContent,
+      files: attachedFiles,
       timestamp: Date.now(),
-      attachedFile: attachedFile || undefined,
     };
 
-    const currentFilePath = filePath;
-    const fileForDb = attachedFile;
-    setAttachedFile(null);
-
-    const dbContent = fileForDb
-      ? `[FILE:${fileForDb.name}:${fileForDb.size}]\n${userMsg.content}`
-      : userMsg.content;
-
+    // Save user message to DB（失败不阻塞）
     try {
       await invoke("create_message", {
         req: {
           conversationId: conversationId,
           role: "user",
-          content: dbContent,
+          content: userMsg.content,
           thinking: null,
+          files: attachedFiles || null,
         },
       });
     } catch (err) {
@@ -305,6 +294,7 @@ export default function MainWindow() {
         if (update.isStreaming !== undefined) setIsStreaming(update.isStreaming);
         if (update.isThinking !== undefined) setIsThinking(update.isThinking);
         if (update.thinkingContent !== undefined) setThinkingContent(update.thinkingContent);
+        if (update.toolProgress !== undefined) setToolProgress(update.toolProgress);
         if (update.streamedContent !== undefined) {
           setStreamedContent(update.streamedContent);
           streamedContentRef.current = update.streamedContent;
@@ -325,80 +315,72 @@ export default function MainWindow() {
     setMessages((prev) => [...prev, userMsg]);
     messagesMapRef.current.set(conversationId, [...(messagesMapRef.current.get(conversationId) || []), userMsg]);
     setInput("");
-    updateChatState(conversationId, { isStreaming: true, isThinking: true, thinkingContent: "", streamedContent: "" });
+    updateChatState(conversationId, { isStreaming: true, isThinking: true, thinkingContent: "", streamedContent: "", toolProgress: "" });
 
-    // Listen for stream events
     const eventId = `chat_stream_${conversationId}`;
+    let fullContent = "";
 
-    const unlisten = await listen<{ chunk: string; done: boolean }>(eventId, (event) => {
-      if (event.payload.done) {
-        updateChatState(conversationId, { isStreaming: false, isThinking: false });
+    const unlisten = await listen<{
+      chunk: string;
+      done: boolean;
+      event_type?: string;
+      tool_name?: string;
+      tool_label?: string;
+    }>(eventId, (event) => {
+      const { chunk, done, event_type, tool_label } = event.payload;
+
+      if (done) {
+        const assistantMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: fullContent,
+          timestamp: Date.now(),
+        };
+        updateChatMessages(conversationId, (prev) => [...prev, assistantMsg]);
+        updateChatState(conversationId, { isStreaming: false, isThinking: false, toolProgress: "" });
+
+        (async () => {
+          try {
+            await invoke("create_message", {
+              req: {
+                conversationId: conversationId,
+                role: "assistant",
+                content: fullContent,
+                thinking: null,
+              },
+            });
+            loadConversations();
+          } catch (saveErr) {
+            console.error("Failed to save assistant message:", saveErr);
+          }
+        })();
+
         unlisten();
+      } else if (event_type === "tool_progress") {
+        updateChatState(conversationId, { toolProgress: tool_label || chunk, isThinking: true });
+      } else if (event_type === "error") {
+        updateChatState(conversationId, { toolProgress: "", isThinking: false });
       } else {
-        const newContent = (chatStatesRef.current.get(conversationId)?.streamedContent || "") + "\n" + event.payload.chunk;
-        updateChatState(conversationId, { streamedContent: newContent.trim(), isThinking: false });
+        fullContent += chunk;
+        updateChatState(conversationId, { streamedContent: fullContent, isThinking: false, toolProgress: "" });
       }
     });
 
     try {
-      // 获取当前会话的 hermes session_id 用于恢复上下文
       const currentConv = conversations.find(c => c.id === conversationId);
       const hermesSessionId = currentConv?.hermesSessionId;
 
-      // 使用非流式对话获取回复
-      const result = await invoke<{ content: string; thinking: string | null; sessionId?: string }>("chat_with_hermes", {
-        message: userMsg.content,
+      await invoke("chat_with_hermes_api", {
+        message: sendContent,
         sessionId: hermesSessionId || null,
-        filePath: currentFilePath || null,
         model: model || null,
+        provider: provider || null,
+        image: image || null,
+        eventId: eventId,
       });
-
-      updateChatState(conversationId, { isStreaming: false, isThinking: false, streamedContent: "" });
-
-      // 添加 assistant 消息到会话
-      const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: result.content,
-        thinking: result.thinking || undefined,
-        timestamp: Date.now(),
-      };
-      updateChatMessages(conversationId, (prev) => [...prev, assistantMsg]);
-      unlisten();
-
-      // 保存 hermes session_id（用于上下文恢复）
-      if (result.sessionId && result.sessionId !== hermesSessionId) {
-        try {
-          await invoke("update_conversation_session_id", {
-            id: conversationId,
-            hermesSessionId: result.sessionId,
-          });
-          setConversations((prev) =>
-            prev.map(c => c.id === conversationId ? { ...c, hermesSessionId: result.sessionId } : c)
-          );
-        } catch (err) {
-          console.error("Failed to save session_id:", err);
-        }
-      }
-
-      // 保存 assistant 消息到 DB（失败不影响显示）
-      try {
-        await invoke("create_message", {
-          req: {
-            conversationId: conversationId,
-            role: "assistant",
-            content: result.content,
-            thinking: result.thinking || null,
-          },
-        });
-      } catch (saveErr) {
-        console.error("Failed to save assistant message:", saveErr);
-      }
-
-      loadConversations();
     } catch (err) {
       console.error("Chat error:", err);
-      updateChatState(conversationId, { isStreaming: false, isThinking: false });
+      updateChatState(conversationId, { isStreaming: false, isThinking: false, toolProgress: "" });
       unlisten();
     }
   };
@@ -457,9 +439,8 @@ export default function MainWindow() {
             isThinking={isThinking}
             thinkingContent={thinkingContent}
             streamedContent={streamedContent}
+            toolProgress={toolProgress}
             messagesEndRef={messagesEndRef}
-            attachedFile={attachedFile}
-            onAttachFile={setAttachedFile}
           />
         )}
         {activeTab === "settings" && <SettingsPanel />}
@@ -642,14 +623,18 @@ interface ChatPanelProps {
   messages: Message[];
   input: string;
   setInput: (v: string) => void;
-  sendMessage: (filePath?: string, model?: string) => void;
+  sendMessage: (attachedFiles?: string, model?: string, provider?: string, image?: string) => void;
   isStreaming: boolean;
   isThinking: boolean;
   thinkingContent: string;
   streamedContent: string;
+  toolProgress: string;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
-  attachedFile: AttachedFile | null;
-  onAttachFile: (file: AttachedFile | null) => void;
+}
+
+interface AttachedFile {
+  name: string;
+  path: string;
 }
 
 function ChatPanel({
@@ -667,94 +652,171 @@ function ChatPanel({
   isThinking,
   thinkingContent,
   streamedContent,
+  toolProgress,
   messagesEndRef,
-  attachedFile,
-  onAttachFile,
 }: ChatPanelProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
-  const [currentModel, setCurrentModel] = useState<string>("");
-  const [currentProvider, setCurrentProvider] = useState<string>("");
-  const [modelList, setModelList] = useState<{id: string}[]>([]);
-  const [modelListLoading, setModelListLoading] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [modelList, setModelList] = useState<{ id: string; ownedBy?: string }[]>([]);
+  const [currentModel, setCurrentModel] = useState("");
+  const [providers, setProviders] = useState<{ id: string; name: string; value: string; baseUrl: string; apiKey: string }[]>([]);
+  const [currentProvider, setCurrentProvider] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    (async () => {
+    const loadProviders = async () => {
       try {
-        const config = await invoke<HermesConfigData>("get_hermes_config");
-        if (config.provider) setCurrentProvider(config.provider);
-        if (config.model) setCurrentModel(config.model);
-        if (config.provider) {
-          setModelListLoading(true);
-          const list = await invoke<{id: string}[]>("list_models", { providerValue: config.provider });
-          setModelList(list);
-          setModelListLoading(false);
-        }
-      } catch {}
-    })();
+        const list = await invoke<{ id: string; name: string; value: string; baseUrl: string; apiKey: string }[]>("list_providers");
+        setProviders(list);
+      } catch (e) {
+        console.error("Failed to load providers:", e);
+      }
+    };
+    const loadCurrentModel = async () => {
+      try {
+        const config = await invoke<{ model: string; provider: string }>("get_hermes_config");
+        setCurrentModel(config.model);
+        setCurrentProvider(config.provider);
+      } catch (e) {
+        console.error("Failed to load model config:", e);
+      }
+    };
+    loadProviders();
+    loadCurrentModel();
   }, []);
 
-  const handleModelChange = (newModel: string) => {
-    setCurrentModel(newModel);
-  };
-
-  const handleSelectFile = async () => {
-    try {
-      const selected = await open({
-        multiple: false,
-        title: "选择文件",
-      });
-      if (selected) {
-        const result = await invoke<AttachedFile>("read_file_for_chat", { path: selected });
-        onAttachFile(result);
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setShowModelDropdown(false);
       }
-    } catch (err) {
-      console.error("选择文件失败:", err);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!currentProvider) {
+      setModelList([]);
+      return;
     }
-  };
-
-  const handleRemoveFile = () => {
-    onAttachFile(null);
-  };
-
-  const handleSend = () => {
-    sendMessage(attachedFile?.path || undefined, currentModel || undefined);
-  };
-
-  const handleKeyDownInternal = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(attachedFile?.path || undefined, currentModel || undefined);
-    }
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const file = files[0];
+    const loadModels = async () => {
       try {
-        const arrayBuffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        const base64 = btoa(
-          Array.from(bytes).reduce((data, b) => data + String.fromCharCode(b), '')
-        );
-        const result = await invoke<AttachedFile>("prepare_temp_file", {
-          name: file.name,
-          base64Content: base64,
+        const list = await invoke<{ id: string; ownedBy?: string }[]>("list_models", { providerValue: currentProvider });
+        setModelList(list);
+      } catch (e) {
+        console.error("Failed to load model list:", e);
+        setModelList([]);
+      }
+    };
+    loadModels();
+  }, [currentProvider]);
+
+  const processFiles = async (fileList: FileList): Promise<AttachedFile[]> => {
+    const result: AttachedFile[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i];
+      try {
+        const buffer = await f.arrayBuffer();
+        const bytes = Array.from(new Uint8Array(buffer));
+        const tempPath = await invoke<string>("save_temp_file", {
+          fileName: f.name,
+          fileBytes: bytes,
         });
-        onAttachFile(result);
-      } catch (err) {
-        console.error("读取拖拽文件失败:", err);
+        result.push({ name: f.name, path: tempPath });
+      } catch (e) {
+        console.error("Failed to save temp file:", f.name, e);
       }
     }
+    return result;
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newFiles = await processFiles(files);
+    if (newFiles.length > 0) {
+      setAttachedFiles((prev) => [...prev, ...newFiles]);
+    }
+    e.target.value = "";
+  };
+
+  const removeFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    const newFiles = await processFiles(files);
+    if (newFiles.length > 0) {
+      setAttachedFiles((prev) => [...prev, ...newFiles]);
+    }
+  };
+
+  const handleSend = () => {
+    if (!input.trim() && attachedFiles.length === 0) return;
+
+    const imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+    const firstImage = attachedFiles.find((f) => {
+      const ext = f.name.split(".").pop()?.toLowerCase();
+      return ext && imageExtensions.includes(ext);
+    });
+    const imagePath = firstImage?.path;
+
+    const filesJson = attachedFiles.length > 0 ? JSON.stringify(attachedFiles) : undefined;
+    sendMessage(filesJson, currentModel || undefined, currentProvider || undefined, imagePath);
+    setAttachedFiles([]);
+  };
+
+  const handleKeyDownLocal = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleModelSelect = (modelId: string) => {
+    setCurrentModel(modelId);
+    setShowModelDropdown(false);
+  };
+
+  const handleProviderChange = async (providerValue: string) => {
+    setCurrentProvider(providerValue);
+    setCurrentModel("");
+  };
+
+  const toggleModelDropdown = async () => {
+    setShowModelDropdown(!showModelDropdown);
+  };
+
+  const parseMessageFiles = (filesStr?: string): AttachedFile[] => {
+    if (!filesStr) return [];
+    try {
+      return JSON.parse(filesStr);
+    } catch {
+      return [];
+    }
   };
 
   const startRename = (conv: Conversation) => {
@@ -793,14 +855,7 @@ function ChatPanel({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <>
-            <span className="conv-icon">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-            </span>
-            <span className="conv-title">{conv.title}</span>
-          </>
+          <span className="conv-title">{conv.title}</span>
         )}
         <button
           className="conv-delete"
@@ -828,43 +883,45 @@ function ChatPanel({
       </div>
 
       {/* 主聊天区 */}
-      <div className="chat-main" onDrop={handleDrop} onDragOver={handleDragOver}>
+      <div className="chat-main">
         <div className="messages-list">
           {messages.length === 0 && !isStreaming && (
             <div className="empty-chat">
               <span>🗨️ 开始和小跃对话吧</span>
             </div>
           )}
-          {messages.map((msg) => (
-            <div key={msg.id} className={`message-row ${msg.role}`}>
-              <div className="message-avatar">
-                {msg.role === "user" ? "👤" : <img src="/bot.svg" alt="bot" className="message-avatar-img" />}
-              </div>
-              <div className="message-bubble">
-                {msg.attachedFile && (
-                  <div className="message-file-ref">
-                    <div className="file-ref-icon">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                      </svg>
+          {messages.map((msg) => {
+            const msgFiles = parseMessageFiles(msg.files);
+            return (
+              <div key={msg.id} className={`message-row ${msg.role}`}>
+                <div className="message-avatar">
+                  {msg.role === "user" ? "👤" : <img src="/bot.svg" alt="bot" className="message-avatar-img" />}
+                </div>
+                <div className="message-bubble">
+                  {msg.thinking && (
+                    <div className="thinking-block">
+                      <span className="thinking-label thinking-label-done">思考过程</span>
+                      <pre className="thinking-content">{msg.thinking}</pre>
                     </div>
-                    <div className="file-ref-info">
-                      <span className="file-ref-name">{msg.attachedFile.name}</span>
-                      <span className="file-ref-size">{msg.attachedFile.size > 1024 ? `${(msg.attachedFile.size / 1024).toFixed(1)}KB` : `${msg.attachedFile.size}B`}</span>
+                  )}
+                  {msgFiles.length > 0 && (
+                    <div className="message-files">
+                      {msgFiles.map((f, i) => (
+                        <div key={i} className="message-file-item">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                            <polyline points="13 2 13 9 20 9" />
+                          </svg>
+                          <span className="message-file-name">{f.name}</span>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                )}
-                {msg.thinking && (
-                  <div className="thinking-block">
-                    <span className="thinking-label thinking-label-done">思考过程</span>
-                    <pre className="thinking-content">{msg.thinking}</pre>
-                  </div>
-                )}
-                <div className="message-text">{msg.content}</div>
+                  )}
+                  {msg.content && <div className="message-text">{msg.content}</div>}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {isStreaming && streamedContent && (
             <div className="message-row assistant">
               <div className="message-avatar"><img src="/bot.svg" alt="bot" className="message-avatar-img" /></div>
@@ -879,91 +936,159 @@ function ChatPanel({
               <div className="message-avatar"><img src="/bot.svg" alt="bot" className="message-avatar-img" /></div>
               <div className="thinking-block">
                 <span className="thinking-label">
-                    思考中
+                  {toolProgress || "思考中"}
+                  {!toolProgress && (
                     <span className="thinking-dots">
                       <span className="thinking-dot" />
                       <span className="thinking-dot" />
                       <span className="thinking-dot" />
                     </span>
-                  </span>
+                  )}
+                </span>
                 {thinkingContent && <pre className="thinking-content">{thinkingContent}</pre>}
               </div>
             </div>
           )}
           <div ref={messagesEndRef} />
         </div>
-        <div className="chat-input-area">
-          <div className="chat-input-box">
-            {attachedFile && (
-              <div className="file-tag">
-                <span className="file-tag-name">{attachedFile.name}</span>
-                <button className="file-tag-remove" onClick={handleRemoveFile} title="移除文件">×</button>
+        <div
+          className={`chat-input-area ${isDragging ? "dragging" : ""}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDragging && (
+            <div className="drag-overlay">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <span>释放文件以上传</span>
+            </div>
+          )}
+          {attachedFiles.length > 0 && (
+            <div className="file-display-area">
+              <div className="file-display-list">
+                {attachedFiles.map((f, i) => (
+                  <div key={i} className="file-display-item">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                      <polyline points="13 2 13 9 20 9" />
+                    </svg>
+                    <span className="file-display-name">{f.name}</span>
+                    <button className="file-display-remove" onClick={() => removeFile(i)}>×</button>
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
+          )}
+          <div className="chat-input-box">
             <textarea
+              ref={textareaRef}
               className="chat-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDownInternal}
+              onKeyDown={handleKeyDownLocal}
               placeholder="输入消息，Enter 发送，Shift+Enter 换行..."
-              rows={3}
+              rows={1}
               disabled={isStreaming}
             />
-            <div className="chat-input-bar">
-              <div className="chat-input-left">
+            <div className="chat-input-toolbar">
+              <div className="toolbar-left">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={handleFileSelect}
+                />
                 <button
-                  className="attach-btn"
-                  onClick={handleSelectFile}
+                  className="toolbar-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="上传附件"
                   disabled={isStreaming}
-                  title="添加附件"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                   </svg>
                 </button>
               </div>
-              <div className="chat-input-right">
-                {currentProvider && (
-                  <select
-                    className="inline-model-select"
-                    value={currentModel || ""}
-                    onChange={(e) => handleModelChange(e.target.value)}
-                    disabled={modelListLoading}
-                    title={currentModel || "选择模型"}
+              <div className="toolbar-right">
+                <div className="model-selector" ref={modelDropdownRef}>
+                  <button
+                    className="toolbar-btn model-btn"
+                    onClick={toggleModelDropdown}
+                    title="切换模型"
+                    disabled={isStreaming}
                   >
-                    {!currentModel && <option value="">{modelListLoading ? "加载中..." : "模型"}</option>}
-                    {modelList.map((m) => (
-                      <option key={m.id} value={m.id}>{m.id.split("/").pop()}</option>
-                    ))}
-                  </select>
-                )}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <line x1="3" y1="9" x2="21" y2="9" />
+                      <line x1="9" y1="21" x2="9" y2="9" />
+                    </svg>
+                    <span className="model-btn-text">{currentModel || "模型"}</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                  {showModelDropdown && (
+                    <div className="model-dropdown">
+                      <div className="model-dropdown-provider">
+                        <select
+                          value={currentProvider}
+                          onChange={(e) => handleProviderChange(e.target.value)}
+                        >
+                          <option value="">选择供应商</option>
+                          {providers.map(p => (
+                            <option key={p.id} value={p.value}>{p.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="model-dropdown-list">
+                        {modelList.length > 0 ? modelList.map(m => (
+                          <button
+                            key={m.id}
+                            className={`model-dropdown-item ${m.id === currentModel ? "active" : ""}`}
+                            onClick={() => handleModelSelect(m.id)}
+                          >
+                            {m.id}
+                            {m.ownedBy && <span className="model-owned-by">{m.ownedBy}</span>}
+                          </button>
+                        )) : (
+                          <div className="model-dropdown-empty">请先选择供应商</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <button
-                  className="mic-btn"
-                  onClick={() => alert("开发中")}
-                  disabled={isStreaming}
-                  title="语音输入"
+                  className="toolbar-btn mic-btn"
+                  title="语音输入（即将推出）"
+                  disabled
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="23"/>
-                    <line x1="8" y1="23" x2="16" y2="23"/>
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
                   </svg>
                 </button>
                 <button
                   className="send-btn"
                   onClick={handleSend}
-                  disabled={isStreaming || !input.trim()}
-                  title="发送"
+                  disabled={isStreaming || (!input.trim() && attachedFiles.length === 0)}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="22" y1="2" x2="11" y2="13"/>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                  </svg>
+                  {isStreaming ? "..." : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="22" y1="2" x2="11" y2="13" />
+                      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
+                  )}
                 </button>
+                </div>
               </div>
             </div>
-          </div>
         </div>
       </div>
     </div>

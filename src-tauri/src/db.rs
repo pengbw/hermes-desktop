@@ -124,6 +124,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     for alter in [
         "ALTER TABLE providers ADD COLUMN api_key TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE avatar_gestures ADD COLUMN source TEXT NOT NULL DEFAULT 'custom'",
+        "ALTER TABLE messages ADD COLUMN files TEXT",
     ] {
         let _ = sqlx::query(alter).execute(pool).await;
     }
@@ -245,6 +246,7 @@ pub struct Message {
     pub role: String,
     pub content: String,
     pub thinking: Option<String>,
+    pub files: Option<String>,
     pub timestamp: i64,
 }
 
@@ -264,6 +266,8 @@ pub struct CreateMessageRequest {
     pub content: String,
     #[serde(default)]
     pub thinking: Option<String>,
+    #[serde(default)]
+    pub files: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
