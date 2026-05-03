@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { useTheme } from "../contexts/ThemeContext";
+import { useI18n } from "../contexts/I18nContext";
 import GestureEditor from "./GestureEditor";
 import InstallGuidePanel from "./InstallGuide";
 import "./MainWindow.css";
@@ -46,6 +48,7 @@ const DEFAULT_CHAT_STATE: ChatSessionState = {
 };
 
 export default function MainWindow() {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<Tab>(DEFAULT_TAB);
   const [showAvatar, setShowAvatar] = useState(false);
   const [hermesInstalled, setHermesInstalled] = useState<boolean | null>(null);
@@ -176,7 +179,7 @@ export default function MainWindow() {
     try {
       const result = await invoke<Conversation>("create_conversation", {
         req: {
-          title: "新对话",
+          title: t("chat.newConversation"),
         },
       });
       setConversations((prev) => [result, ...prev]);
@@ -230,7 +233,7 @@ export default function MainWindow() {
       try {
         const conv = await invoke<Conversation>("create_conversation", {
           req: {
-            title: input.trim().slice(0, 30) || (attachedFiles ? "文件对话" : "新对话"),
+            title: input.trim().slice(0, 30) || (attachedFiles ? t("chat.fileConversation") : t("chat.newConversation")),
           },
         });
         conversationId = conv.id;
@@ -405,7 +408,10 @@ export default function MainWindow() {
               className={`tab-btn ${activeTab === tab ? "active" : ""}`}
               onClick={() => setActiveTab(tab)}
             >
-              {tabLabels[tab]}
+              {tab === "home" && t("tabs.home")}
+              {tab === "chat" && t("tabs.chat")}
+              {tab === "skills" && t("tabs.skills")}
+              {tab === "settings" && t("tabs.settings")}
             </button>
           ))}
         </nav>
@@ -421,7 +427,7 @@ export default function MainWindow() {
       {/* 内容区 */}
       <div className="content-area">
         {activeTab === "home" && (
-          <HomePanel onStartChat={() => setActiveTab("chat")} conversationCount={conversations.length} />
+          <HomePanel t={t} onStartChat={() => setActiveTab("chat")} conversationCount={conversations.length} />
         )}
         {activeTab === "chat" && (
           <ChatPanel
@@ -444,20 +450,13 @@ export default function MainWindow() {
           />
         )}
         {activeTab === "settings" && <SettingsPanel />}
-        {activeTab === "skills" && <SkillsPanel />}
+        {activeTab === "skills" && <SkillsPanel t={t} />}
       </div>
       </>
       )}
     </div>
   );
 }
-
-const tabLabels: Record<Tab, string> = {
-  home: "🏠 首页",
-  chat: "🗨️ 对话",
-  settings: "⚙️ 设置",
-  skills: "📦 技能中心",
-};
 
 // ── Hermes Agent 信息类型 ──
 interface HermesInfo {
@@ -472,7 +471,7 @@ interface HermesInfo {
 }
 
 // ── 首页 ──
-function HomePanel({ onStartChat, conversationCount }: { onStartChat: () => void; conversationCount: number }) {
+function HomePanel({ t, onStartChat, conversationCount }: { t: (key: string, params?: Record<string, string | number>) => string; onStartChat: () => void; conversationCount: number }) {
   const [hermesInfo, setHermesInfo] = useState<HermesInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -512,19 +511,19 @@ function HomePanel({ onStartChat, conversationCount }: { onStartChat: () => void
         <div className="home-avatar-circle">
           <img src="/bot.svg" alt="小跃" className="home-avatar-icon" />
         </div>
-        <h2>小跃</h2>
-        <p>你的 AI 助理，随时待命</p>
+        <h2>{t("home.welcome")}</h2>
+        <p>{t("app.desc")}</p>
       </div>
 
       <div className="home-quick-actions">
         <button className="quick-action-btn" onClick={onStartChat}>
-          🗨️ 开始对话
+          {t("home.quickChat")}
         </button>
         <button className="quick-action-btn" onClick={() => window.location.search = "?tab=settings"}>
-          ⚙️ 模型设置
+          {t("home.openSettings")}
         </button>
         <button className="quick-action-btn" onClick={() => window.location.search = "?tab=skills"}>
-          📦 技能中心
+          {t("tabs.skills")}
         </button>
       </div>
 
@@ -532,17 +531,17 @@ function HomePanel({ onStartChat, conversationCount }: { onStartChat: () => void
       <div className="home-stats">
         <div className="stat-card">
           <span className="stat-num">{loading ? "..." : versionShort}</span>
-          <span className="stat-label">Agent 版本</span>
+          <span className="stat-label">{t("home.agentVersion")}</span>
         </div>
         <div className="stat-card">
           <span className={`stat-num status-dot ${isOnline ? "online" : "offline"}`}>
-            {loading ? "..." : isOnline ? "● 在线" : "● 离线"}
+            {loading ? "..." : isOnline ? "● " + t("home.online") : "● " + t("home.offline")}
           </span>
-          <span className="stat-label">Agent 状态</span>
+          <span className="stat-label">{t("home.agentStatus")}</span>
         </div>
         <div className="stat-card">
           <span className="stat-num">{conversationCount}</span>
-          <span className="stat-label">会话数</span>
+          <span className="stat-label">{t("home.conversations")}</span>
         </div>
       </div>
 
@@ -655,6 +654,7 @@ function ChatPanel({
   toolProgress,
   messagesEndRef,
 }: ChatPanelProps) {
+  const { t } = useI18n();
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -875,7 +875,7 @@ function ChatPanel({
       {/* 侧边栏 - 对话列表 */}
       <div className="chat-sidebar">
         <button className="new-chat-btn" onClick={onNewConversation}>
-          + 新对话
+          {t("chat.newChat")}
         </button>
         <div className="conversation-list">
           {conversations.map((conv) => renderConvItem(conv))}
@@ -1127,6 +1127,8 @@ interface AvatarGesture {
 }
 
 function SettingsPanel() {
+  const { theme, setTheme } = useTheme();
+  const { locale, setLocale, t } = useI18n();
   const [config, setConfig] = useState<HermesConfigData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1309,7 +1311,7 @@ function SettingsPanel() {
     const sectionFields = SECTION_FIELDS[section] || [];
     const fieldsToSave = sectionFields.filter(f => dirtyFields.has(f));
     if (fieldsToSave.length === 0) {
-      setSaveMessage({ text: "没有修改需要保存", type: "success" });
+      setSaveMessage({ text: t("settings.noChange"), type: "success" });
       setTimeout(() => setSaveMessage(null), 2000);
       return;
     }
@@ -1351,7 +1353,7 @@ function SettingsPanel() {
         }
       }
 
-      setSaveMessage({ text: `已保存 ${fieldsToSave.length} 项配置`, type: "success" });
+      setSaveMessage({ text: t("settings.saved", { count: fieldsToSave.length }), type: "success" });
       setDirtyFields((prev) => {
         const next = new Set(prev);
         fieldsToSave.forEach(f => next.delete(f));
@@ -1359,7 +1361,7 @@ function SettingsPanel() {
       });
     } catch (err) {
       console.error("Failed to save config:", err);
-      setSaveMessage({ text: `保存失败: ${err}`, type: "error" });
+      setSaveMessage({ text: `${t("settings.saveFailed")}: ${err}`, type: "error" });
     } finally {
       setSaving(false);
       setTimeout(() => setSaveMessage(null), 3000);
@@ -1478,14 +1480,14 @@ function SettingsPanel() {
   return (
     <div className="panel settings-panel-new">
       <div className="settings-sidebar">
-        <div className="settings-sidebar-title">设置</div>
+        <div className="settings-sidebar-title">{t("settings.title")}</div>
         <nav className="settings-nav">
           {([
-            { key: "agent", icon: "👾", label: "Agent 设置", dirty: sectionDirtyCount("model") },
-            { key: "provider", icon: "🔌", label: "供应商设置", dirty: 0 },
-            { key: "gesture", icon: "💃", label: "动作管理", dirty: 0 },
-            { key: "system", icon: "⚙️", label: "系统设置", dirty: sectionDirtyCount("system") },
-            { key: "about", icon: "ℹ️", label: "关于", dirty: 0 },
+            { key: "agent", icon: "👾", labelKey: "nav.agent" as const, dirty: sectionDirtyCount("model") },
+            { key: "provider", icon: "🔌", labelKey: "nav.provider" as const, dirty: 0 },
+            { key: "gesture", icon: "💃", labelKey: "nav.gesture" as const, dirty: 0 },
+            { key: "system", icon: "⚙️", labelKey: "nav.system" as const, dirty: sectionDirtyCount("system") },
+            { key: "about", icon: "ℹ️", labelKey: "nav.about" as const, dirty: 0 },
           ] as const).map((item) => (
             <button
               key={item.key}
@@ -1493,7 +1495,7 @@ function SettingsPanel() {
               onClick={() => handleSectionChange(item.key)}
             >
               <span className="settings-nav-icon">{item.icon}</span>
-              <span className="settings-nav-label">{item.label}</span>
+              <span className="settings-nav-label">{t(item.labelKey)}</span>
               {item.dirty > 0 && <span className="dirty-badge nav-dirty-badge">{item.dirty}</span>}
             </button>
           ))}
@@ -1506,14 +1508,14 @@ function SettingsPanel() {
           {activeSection === "agent" && (
             <div className="settings-section-card">
               <div className="settings-header">
-                <h2>⚙️ Hermes Agent 设置</h2>
+                <h2>{t("agent.title")}</h2>
                 <div className="settings-actions">
-                  <button className="refresh-btn" onClick={loadConfig}>🔄 刷新</button>
+                  <button className="refresh-btn" onClick={loadConfig}>{t("settings.refresh")}</button>
                 </div>
               </div>
               {config && (
                 <div className="config-path-info">
-                  <span className="path-label">配置文件:</span>
+                  <span className="path-label">{t("settings.configPath")}:</span>
                   <span className="path-value">{config.config_path}</span>
                 </div>
               )}
@@ -1523,16 +1525,16 @@ function SettingsPanel() {
                 </div>
               )}
               <div className="settings-section">
-                <h3>模型设置</h3>
+                <h3>{t("agent.sectionTitle")}</h3>
                 <div className="settings-form">
                   <div className="form-group">
                     <label>
-                      供应商
-                      {dirtyFields.has("provider") && <span className="dirty-badge">已修改</span>}
+                      {t("agent.provider")}
+                      {dirtyFields.has("provider") && <span className="dirty-badge">{t("common.modified")}</span>}
                     </label>
                     <div className="provider-select-row">
                       <select value={provider} onChange={(e) => handleProviderChange(e.target.value)}>
-                        <option value="">请选择供应商</option>
+                        <option value="">{t("common.selectProvider")}</option>
                         {providers.map(p => (
                           <option key={p.id} value={p.value}>{p.name}</option>
                         ))}
@@ -1547,15 +1549,15 @@ function SettingsPanel() {
                   </div>
                   <div className="form-group">
                     <label>
-                      模型名称
-                      {dirtyFields.has("model") && <span className="dirty-badge">已修改</span>}
+                      {t("agent.model")}
+                      {dirtyFields.has("model") && <span className="dirty-badge">{t("common.modified")}</span>}
                     </label>
                     <div className="model-select-row">
                       {modelList.length > 0 ? (
                         <select value={model} onChange={(e) => { setModel(e.target.value); markDirty("model"); }}>
-                          <option value="">请选择模型</option>
+                          <option value="">{t("common.selectModel")}</option>
                           {model && !modelList.some(m => m.id === model) && (
-                            <option value={model}>{model} (当前)</option>
+                            <option value={model}>{model} ({t("common.current")})</option>
                           )}
                           {modelList.map(m => (
                             <option key={m.id} value={m.id}>{m.id}{m.ownedBy ? ` (${m.ownedBy})` : ''}</option>
@@ -1566,32 +1568,32 @@ function SettingsPanel() {
                           type="text"
                           value={model}
                           onChange={(e) => { setModel(e.target.value); markDirty("model"); }}
-                          placeholder="选择供应商后加载模型列表，或手动输入模型ID"
+                          placeholder={t("agent.modelPlaceholder")}
                         />
                       )}
-                      {modelListLoading && <span style={{ fontSize: '12px', color: '#999' }}>⏳ 加载模型列表中...</span>}
+                      {modelListLoading && <span style={{ fontSize: '12px', color: '#999' }}>{t("agent.loadingModels")}</span>}
                       {modelList.length === 0 && !modelListLoading && provider && (
-                        <button type="button" className="save-btn" style={{ padding: '2px 8px', fontSize: '12px' }} onClick={() => fetchModelList(provider)}>刷新模型列表</button>
+                        <button type="button" className="save-btn" style={{ padding: '2px 8px', fontSize: '12px' }} onClick={() => fetchModelList(provider)}>{t("agent.refreshModels")}</button>
                       )}
                     </div>
                   </div>
                   <div className="form-group">
                     <label>
-                      API Base URL
-                      {dirtyFields.has("baseUrl") && <span className="dirty-badge">已修改</span>}
+                      {t("agent.baseUrl")}
+                      {dirtyFields.has("baseUrl") && <span className="dirty-badge">{t("common.modified")}</span>}
                     </label>
                     <input
                       type="text"
                       value={baseUrl}
                       readOnly
-                      placeholder="根据供应商自动填充"
+                      placeholder={t("agent.baseUrl")}
                       style={{ background: '#F5F5F7', color: '#666' }}
                     />
                   </div>
                   <div className="form-group">
                     <label>
-                      最大轮次 (Max Turns): {maxTurns}
-                      {dirtyFields.has("maxTurns") && <span className="dirty-badge">已修改</span>}
+                      {t("agent.maxTurns")}: {maxTurns}
+                      {dirtyFields.has("maxTurns") && <span className="dirty-badge">{t("common.modified")}</span>}
                     </label>
                     <input
                       type="range"
@@ -1609,7 +1611,7 @@ function SettingsPanel() {
                     onClick={() => saveSectionConfig("model")}
                     disabled={saving || sectionDirtyCount("model") === 0}
                   >
-                    {saving ? "保存中..." : "💾 保存 Agent 配置"}
+                    {saving ? t("settings.saving") : t("agent.saveBtn")}
                   </button>
                 </div>
               </div>
@@ -1620,11 +1622,11 @@ function SettingsPanel() {
           {activeSection === "provider" && (
             <div className="settings-section-card">
               <div className="settings-section">
-                <h3>🔌 供应商设置</h3>
+                <h3>{t("provider.title")}</h3>
                 <div className="settings-section providers-inline-section">
                   {providers.length === 0 && (
                     <div className="provider-empty">
-                      <p style={{ color: '#999', textAlign: 'center', padding: '20px 0' }}>暂无供应商，请添加</p>
+                      <p style={{ color: '#999', textAlign: 'center', padding: '20px 0' }}>{t("provider.empty")}</p>
                     </div>
                   )}
                   <div className="provider-list">
@@ -1634,7 +1636,7 @@ function SettingsPanel() {
                           <span className="provider-name">{p.name}</span>
                           <span className="provider-value">{p.value}</span>
                           {p.baseUrl && <span className="provider-url">{p.baseUrl}</span>}
-                          {p.isBuiltin && <span className="provider-builtin-tag">内置</span>}
+                          {p.isBuiltin && <span className="provider-builtin-tag">{t("provider.builtin")}</span>}
                         </div>
                         <div className="provider-item-actions">
                           <button className="provider-item-btn" onClick={() => openEditProvider(p)} disabled={p.isBuiltin} title={p.isBuiltin ? "内置供应商不可编辑" : "编辑"}>
@@ -1654,7 +1656,7 @@ function SettingsPanel() {
                     ))}
                   </div>
                   <div className="provider-add-bar">
-                    <button className="section-save-btn" onClick={openNewProvider}>+ 添加供应商</button>
+                    <button className="section-save-btn" onClick={openNewProvider}>{t("provider.add")}</button>
                   </div>
                 </div>
               </div>
@@ -1665,29 +1667,81 @@ function SettingsPanel() {
           {activeSection === "system" && (
             <div className="settings-section-card">
               <div className="settings-header">
-                <h2>⚙️ 系统设置</h2>
+                <h2>{t("system.title")}</h2>
               </div>
               <div className="settings-section">
-                <h3>🎨 显示与交互</h3>
+                <h3>{t("system.theme")}</h3>
+                <div className="theme-options">
+                  <button
+                    className={`theme-option ${theme === "light" ? "active" : ""}`}
+                    onClick={() => setTheme("light")}
+                  >
+                    <span className="theme-option-icon">☀️</span>
+                    <span className="theme-option-label">{t("system.theme.light")}</span>
+                  </button>
+                  <button
+                    className={`theme-option ${theme === "dark" ? "active" : ""}`}
+                    onClick={() => setTheme("dark")}
+                  >
+                    <span className="theme-option-icon">🌙</span>
+                    <span className="theme-option-label">{t("system.theme.dark")}</span>
+                  </button>
+                  <button
+                    className={`theme-option ${theme === "system" ? "active" : ""}`}
+                    onClick={() => setTheme("system")}
+                  >
+                    <span className="theme-option-icon">🖥️</span>
+                    <span className="theme-option-label">{t("system.theme.system")}</span>
+                  </button>
+                </div>
+              </div>
+              <div className="settings-section">
+                <h3>{t("system.language")}</h3>
+                <div className="language-options">
+                  <button
+                    className={`language-option ${locale === "zh-CN" ? "active" : ""}`}
+                    onClick={() => setLocale("zh-CN")}
+                  >
+                    <span className="language-flag language-flag-cn"></span>
+                    <span className="language-label">{t("system.language.zhCN")}</span>
+                  </button>
+                  <button
+                    className={`language-option ${locale === "zh-XG" ? "active" : ""}`}
+                    onClick={() => setLocale("zh-XG")}
+                  >
+                    <span className="language-flag language-flag-hk"></span>
+                    <span className="language-label">{t("system.language.zhTW")}</span>
+                  </button>
+                  <button
+                    className={`language-option ${locale === "en" ? "active" : ""}`}
+                    onClick={() => setLocale("en")}
+                  >
+                    <span className="language-flag language-flag-us"></span>
+                    <span className="language-label">{t("system.language.en")}</span>
+                  </button>
+                </div>
+              </div>
+              <div className="settings-section">
+                <h3>{t("system.display")}</h3>
                 <div className="settings-form">
                   <div className="form-group">
                     <label>
-                      人格风格
-                      {dirtyFields.has("personality") && <span className="dirty-badge">已修改</span>}
+                      {t("system.display.personality")}
+                      {dirtyFields.has("personality") && <span className="dirty-badge">{t("common.modified")}</span>}
                     </label>
                     <select value={personality} onChange={(e) => { setPersonality(e.target.value); markDirty("personality"); }}>
-                      <option value="default">默认</option>
-                      <option value="kawaii">Kawaii</option>
-                      <option value="professional">专业</option>
-                      <option value="pirate">海盗</option>
-                      <option value="zen">禅意</option>
+                      <option value="default">{t("system.display.personalityDefault")}</option>
+                      <option value="kawaii">{t("system.display.personalityKawaii")}</option>
+                      <option value="professional">{t("system.display.personalityProfessional")}</option>
+                      <option value="pirate">{t("system.display.personalityPirate")}</option>
+                      <option value="zen">{t("system.display.personalityZen")}</option>
                     </select>
                   </div>
                   <div className="form-group">
                     <label className="toggle-label">
                       <span>
-                        显示推理过程
-                        {dirtyFields.has("showReasoning") && <span className="dirty-badge">已修改</span>}
+                        {t("system.display.showReasoning")}
+                        {dirtyFields.has("showReasoning") && <span className="dirty-badge">{t("common.modified")}</span>}
                       </span>
                       <input
                         type="checkbox"
@@ -1698,8 +1752,8 @@ function SettingsPanel() {
                   </div>
                   <div className="form-group">
                     <label>
-                      TTS 语音引擎
-                      {dirtyFields.has("ttsProvider") && <span className="dirty-badge">已修改</span>}
+                      {t("system.display.ttsProvider")}
+                      {dirtyFields.has("ttsProvider") && <span className="dirty-badge">{t("common.modified")}</span>}
                     </label>
                     <select value={ttsProvider} onChange={(e) => { setTtsProvider(e.target.value); markDirty("ttsProvider"); }}>
                       <option value="edge">Edge TTS</option>
@@ -1712,12 +1766,12 @@ function SettingsPanel() {
                 </div>
               </div>
               <div className="settings-section">
-                <h3>🖥️ 终端与系统</h3>
+                <h3>{t("system.terminal")}</h3>
                 <div className="settings-form">
                   <div className="form-group">
                     <label>
-                      终端后端
-                      {dirtyFields.has("terminalBackend") && <span className="dirty-badge">已修改</span>}
+                      {t("system.terminal.backend")}
+                      {dirtyFields.has("terminalBackend") && <span className="dirty-badge">{t("common.modified")}</span>}
                     </label>
                     <select value={terminalBackend} onChange={(e) => { setTerminalBackend(e.target.value); markDirty("terminalBackend"); }}>
                       <option value="local">本地 (local)</option>
@@ -1728,8 +1782,8 @@ function SettingsPanel() {
                   </div>
                   <div className="form-group">
                     <label>
-                      命令超时 (秒): {terminalTimeout}
-                      {dirtyFields.has("terminalTimeout") && <span className="dirty-badge">已修改</span>}
+                      {t("system.terminal.timeout")}: {terminalTimeout}
+                      {dirtyFields.has("terminalTimeout") && <span className="dirty-badge">{t("common.modified")}</span>}
                     </label>
                     <input
                       type="range"
@@ -1743,8 +1797,8 @@ function SettingsPanel() {
                   <div className="form-group">
                     <label className="toggle-label">
                       <span>
-                        上下文压缩
-                        {dirtyFields.has("compressionEnabled") && <span className="dirty-badge">已修改</span>}
+                        {t("system.terminal.compression")}
+                        {dirtyFields.has("compressionEnabled") && <span className="dirty-badge">{t("common.modified")}</span>}
                       </span>
                       <input
                         type="checkbox"
@@ -1756,8 +1810,8 @@ function SettingsPanel() {
                   <div className="form-group">
                     <label className="toggle-label">
                       <span>
-                        记忆功能
-                        {dirtyFields.has("memoryEnabled") && <span className="dirty-badge">已修改</span>}
+                        {t("system.terminal.memory")}
+                        {dirtyFields.has("memoryEnabled") && <span className="dirty-badge">{t("common.modified")}</span>}
                       </span>
                       <input
                         type="checkbox"
@@ -1773,7 +1827,7 @@ function SettingsPanel() {
                     onClick={() => saveSectionConfig("system")}
                     disabled={saving || sectionDirtyCount("system") === 0}
                   >
-                    {saving ? "保存中..." : "💾 保存系统设置"}
+                    {saving ? t("settings.saving") : t("system.saveBtn")}
                   </button>
                 </div>
               </div>
@@ -1785,7 +1839,7 @@ function SettingsPanel() {
             <div className="settings-section-card">
               <div className="settings-section">
                 <div className="gesture-section-header">
-                  <h3>💃 动作管理</h3>
+                  <h3>{t("gesture.title")}</h3>
                   <div className="gesture-header-right">
                     <button className="gesture-add-btn" onClick={() => {
                       setEditingGesture(null);
@@ -1793,11 +1847,11 @@ function SettingsPanel() {
                       setShowGestureModal(true);
                     }}>
                       <span className="gesture-add-icon">+</span>
-                      新增动作
+                      {t("gesture.add")}
                     </button>
-                    <button className="gesture-add-btn gesture-import-btn" onClick={() => handleImportGestureJson()} title="从 JSON 文件导入动作姿势数据">
+                    <button className="gesture-add-btn gesture-import-btn" onClick={() => handleImportGestureJson()} title={t("gesture.import")}>
                       <span className="gesture-add-icon">📥</span>
-                      导入
+                      {t("gesture.import")}
                     </button>
                     <input type="file" ref={gestureFileInputRef} style={{ display: 'none' }} />
                   </div>
@@ -1806,7 +1860,7 @@ function SettingsPanel() {
                   {gestures.length === 0 && (
                     <div className="gesture-empty">
                       <span className="gesture-empty-icon">🎭</span>
-                      <p>暂无动作，点击上方按钮新增</p>
+                      <p>{t("gesture.empty")}</p>
                     </div>
                   )}
                   <div className="gesture-card-list">
@@ -1822,7 +1876,7 @@ function SettingsPanel() {
                             <div className="gesture-card-name-row">
                               <span className="gesture-card-name">{g.name}</span>
                               <span className={`gesture-source-tag ${isSystem ? "gesture-source-system" : "gesture-source-custom"}`}>
-                                {isSystem ? "系统" : "自定义"}
+                                {isSystem ? t("gesture.system") : t("gesture.custom")}
                               </span>
                             </div>
                             <div className="gesture-card-tags">
@@ -1860,36 +1914,36 @@ function SettingsPanel() {
                             setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
                             setGestureReadOnly(true);
                             setShowGestureModal(true);
-                          }} title="查看动作">
+                          }} title={t("gesture.view")}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                               <circle cx="12" cy="12" r="3"/>
                             </svg>
-                            查看
+                            {t("gesture.view")}
                           </button>
                           <button className="gesture-action-btn gesture-action-edit" disabled={isSystem} onClick={() => {
                             setEditingGesture(g);
                             setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
                             setGestureReadOnly(false);
                             setShowGestureModal(true);
-                          }} title={isSystem ? "系统动作不可编辑" : "编辑动作"}>
+                          }} title={isSystem ? "系统动作不可编辑" : t("gesture.edit")}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                             </svg>
-                            编辑
+                            {t("gesture.edit")}
                           </button>
                           <button className="gesture-action-btn gesture-action-delete" disabled={isSystem} onClick={async () => {
                             if (confirm(`删除动作「${g.name}」吗？`)) {
                               await invoke("delete_avatar_gesture", { id: g.id });
                               loadGestures();
                             }
-                          }} title={isSystem ? "系统动作不可删除" : "删除动作"}>
+                          }} title={isSystem ? "系统动作不可删除" : t("gesture.delete")}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <polyline points="3 6 5 6 21 6"/>
                               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                             </svg>
-                            删除
+                            {t("gesture.delete")}
                           </button>
                         </div>
                       </div>
@@ -1905,15 +1959,15 @@ function SettingsPanel() {
           {activeSection === "about" && (
             <div className="settings-section-card">
               <div className="settings-section">
-                <h3>ℹ️ 关于</h3>
+                <h3>{t("about.title")}</h3>
                 <div className="about-info">
                   <div className="about-logo"><img src="/bot.svg" alt="Hermes" /></div>
-                  <div className="about-name">Hermes Desktop</div>
-                  <div className="about-version">版本 0.1.0</div>
-                  <div className="about-desc">AI 智能助手桌面客户端</div>
+                  <div className="about-name">{t("app.name")}</div>
+                  <div className="about-version">{t("about.version")}</div>
+                  <div className="about-desc">{t("app.desc")}</div>
                   <div className="about-meta">
-                    <div className="about-author">作者：西安跃行信息有限公司</div>
-                    <div className="about-email">邮箱：leapgo@yeah.net</div>
+                    <div className="about-author">{t("about.author")}</div>
+                    <div className="about-email">{t("about.email")}</div>
                   </div>
                 </div>
               </div>
@@ -2075,7 +2129,7 @@ const CATEGORY_ICONS: Record<string, string> = {
   "software-development": "💻",
 };
 
-function SkillsPanel() {
+function SkillsPanel({ t }: { t: (key: string, params?: Record<string, string | number>) => string }) {
   const [skillsResult, setSkillsResult] = useState<SkillsResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2133,9 +2187,9 @@ function SkillsPanel() {
   return (
     <div className="panel skills-panel">
       <div className="skills-header">
-        <h2>📦 技能中心</h2>
+        <h2>{t("skills.title")}</h2>
         <button className="refresh-btn" onClick={loadSkills} disabled={loading}>
-          {loading ? "加载中..." : "🔄 刷新"}
+          {loading ? "..." : t("skills.refresh")}
         </button>
       </div>
 
@@ -2144,19 +2198,19 @@ function SkillsPanel() {
         <div className="skills-stats">
           <div className="skills-stat-badge total">
             <span className="stat-count">{skillsResult.total}</span>
-            <span className="stat-text">全部</span>
+            <span className="stat-text">{t("skills.all")}</span>
           </div>
           <div className="skills-stat-badge builtin">
             <span className="stat-count">{skillsResult.builtin}</span>
-            <span className="stat-text">内置</span>
+            <span className="stat-text">{t("skills.builtin")}</span>
           </div>
           <div className="skills-stat-badge local">
             <span className="stat-count">{skillsResult.local}</span>
-            <span className="stat-text">本地</span>
+            <span className="stat-text">{t("skills.local")}</span>
           </div>
           <div className="skills-stat-badge hub">
             <span className="stat-count">{skillsResult.hub_installed}</span>
-            <span className="stat-text">Hub</span>
+            <span className="stat-text">{t("skills.hub")}</span>
           </div>
         </div>
       )}
@@ -2166,7 +2220,7 @@ function SkillsPanel() {
         <input
           className="skills-search"
           type="text"
-          placeholder="🔍 搜索技能名称或分类..."
+          placeholder={t("skills.searchPlaceholder")}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
@@ -2175,10 +2229,10 @@ function SkillsPanel() {
           value={filterSource}
           onChange={(e) => setFilterSource(e.target.value)}
         >
-          <option value="all">全部来源</option>
-          <option value="builtin">内置 (builtin)</option>
-          <option value="local">本地 (local)</option>
-          <option value="hub">Hub 安装</option>
+          <option value="all">{t("skills.allSources")}</option>
+          <option value="builtin">{t("skills.builtinSources")}</option>
+          <option value="local">{t("skills.localSources")}</option>
+          <option value="hub">{t("skills.hubSources")}</option>
         </select>
       </div>
 
@@ -2186,7 +2240,7 @@ function SkillsPanel() {
       {loading && (
         <div className="skills-loading">
           <span className="loading-spinner">⏳</span>
-          <p>正在加载技能列表...</p>
+          <p>{t("skills.loading")}</p>
         </div>
       )}
 
@@ -2243,7 +2297,7 @@ function SkillsPanel() {
       {!loading && filteredSkills.length === 0 && (
         <div className="skills-empty">
           <span>🔍</span>
-          <p>{searchQuery ? "没有找到匹配的技能" : "暂无已安装技能"}</p>
+          <p>{searchQuery ? t("skills.noResults") : t("skills.empty")}</p>
         </div>
       )}
     </div>
