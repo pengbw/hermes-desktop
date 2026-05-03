@@ -940,6 +940,23 @@ export default function AvatarWindow() {
         </div>
       )}
 
+      {(isHovering || isWaitingResponse) && attachedFiles.length > 0 && (
+        <div className="avatar-file-display-area">
+          <div className="avatar-file-display-list">
+            {attachedFiles.map((f, i) => (
+              <div key={i} className="avatar-file-display-item">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                  <polyline points="13 2 13 9 20 9" />
+                </svg>
+                <span className="avatar-file-display-name">{f.name}</span>
+                <button className="avatar-file-display-remove" onClick={(e) => { e.stopPropagation(); setAttachedFiles(prev => prev.filter((_, j) => j !== i)); }}>×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div
         className={`chat-input-wrapper ${isHovering || isWaitingResponse ? "visible" : ""} ${isDragging ? "dragging" : ""}`}
         onMouseDown={(e) => e.stopPropagation()}
@@ -967,22 +984,6 @@ export default function AvatarWindow() {
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
             <span>释放文件</span>
-          </div>
-        )}
-        {attachedFiles.length > 0 && (
-          <div className="avatar-file-display-area">
-            <div className="avatar-file-display-list">
-              {attachedFiles.map((f, i) => (
-                <div key={i} className="avatar-file-display-item">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-                    <polyline points="13 2 13 9 20 9" />
-                  </svg>
-                  <span className="avatar-file-display-name">{f.name}</span>
-                  <button className="avatar-file-display-remove" onClick={(e) => { e.stopPropagation(); setAttachedFiles(prev => prev.filter((_, j) => j !== i)); }}>×</button>
-                </div>
-              ))}
-            </div>
           </div>
         )}
         <div className="avatar-input-row">
