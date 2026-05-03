@@ -1148,8 +1148,8 @@ function SettingsPanel() {
   // 跟踪哪些字段被修改了
   const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set());
 
-  // 折叠状态
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  // 当前选中的设置分区
+  const [activeSection, setActiveSection] = useState("agent");
 
   // 供应商管理
   interface Provider {
@@ -1289,13 +1289,8 @@ function SettingsPanel() {
     setEditingProvider(null);
   };
 
-  const toggleSection = (section: string) => {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(section)) next.delete(section);
-      else next.add(section);
-      return next;
-    });
+  const handleSectionChange = (section: string) => {
+    setActiveSection(section);
   };
 
   // 按分区定义字段归属
@@ -1303,6 +1298,7 @@ function SettingsPanel() {
     model: ["model", "provider", "baseUrl", "maxTurns"],
     display: ["personality", "showReasoning", "ttsProvider"],
     terminal: ["terminalBackend", "terminalTimeout", "compressionEnabled", "memoryEnabled"],
+    system: ["personality", "showReasoning", "ttsProvider", "terminalBackend", "terminalTimeout", "compressionEnabled", "memoryEnabled"],
   };
 
   const sectionDirtyCount = (section: string) => {
@@ -1480,407 +1476,449 @@ function SettingsPanel() {
   }
 
   return (
-    <div className="panel settings-panel">
-      <div className="settings-header">
-        <h2>⚙️ Hermes Agent 设置</h2>
-        <div className="settings-actions">
-          <button className="refresh-btn" onClick={loadConfig}>🔄 刷新</button>
-        </div>
+    <div className="panel settings-panel-new">
+      <div className="settings-sidebar">
+        <div className="settings-sidebar-title">设置</div>
+        <nav className="settings-nav">
+          {([
+            { key: "agent", icon: "👾", label: "Agent 设置", dirty: sectionDirtyCount("model") },
+            { key: "provider", icon: "🔌", label: "供应商设置", dirty: 0 },
+            { key: "gesture", icon: "💃", label: "动作管理", dirty: 0 },
+            { key: "system", icon: "⚙️", label: "系统设置", dirty: sectionDirtyCount("system") },
+            { key: "about", icon: "ℹ️", label: "关于", dirty: 0 },
+          ] as const).map((item) => (
+            <button
+              key={item.key}
+              className={`settings-nav-item ${activeSection === item.key ? "active" : ""}`}
+              onClick={() => handleSectionChange(item.key)}
+            >
+              <span className="settings-nav-icon">{item.icon}</span>
+              <span className="settings-nav-label">{item.label}</span>
+              {item.dirty > 0 && <span className="dirty-badge nav-dirty-badge">{item.dirty}</span>}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {/* 配置文件路径提示 */}
-      {config && (
-        <div className="config-path-info">
-          <span className="path-label">配置文件:</span>
-          <span className="path-value">{config.config_path}</span>
-        </div>
-      )}
-
-      {/* 保存提示 */}
-      {saveMessage && (
-        <div className={`save-toast ${saveMessage.type}`}>
-          {saveMessage.type === "success" ? "✅" : "❌"} {saveMessage.text}
-        </div>
-      )}
-
-      <div className="settings-sections">
-        {/* 模型配置 */}
-        <div className={`settings-group ${collapsedSections.has("model") ? "collapsed" : ""}`}>
-          <div className="settings-group-header" onClick={() => toggleSection("model")}>
-            <h3>🤖 模型配置
-              {sectionDirtyCount("model") > 0 && <span className="dirty-badge">{sectionDirtyCount("model")} 项已修改</span>}
-            </h3>
-            <span className="collapse-arrow">▾</span>
-          </div>
-          <div className="settings-group-body">
-            <div className="settings-form">
-              <div className="form-group">
-                <label>
-                  供应商
-                  {dirtyFields.has("provider") && <span className="dirty-badge">已修改</span>}
-                </label>
-                <div className="provider-select-row">
-                  <select value={provider} onChange={(e) => handleProviderChange(e.target.value)}>
-                    <option value="">请选择供应商</option>
-                    {providers.map(p => (
-                      <option key={p.id} value={p.value}>{p.name}</option>
-                    ))}
-                  </select>
-                  <button type="button" className="provider-manage-btn" onClick={() => { setEditingProvider(null); setShowProviderModal(true); }} title="管理供应商">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="3"/>
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                    </svg>
+      <div className="settings-content">
+        <div className="settings-section-content">
+          {/* Agent 设置 */}
+          {activeSection === "agent" && (
+            <div className="settings-section-card">
+              <div className="settings-header">
+                <h2>⚙️ Hermes Agent 设置</h2>
+                <div className="settings-actions">
+                  <button className="refresh-btn" onClick={loadConfig}>🔄 刷新</button>
+                </div>
+              </div>
+              {config && (
+                <div className="config-path-info">
+                  <span className="path-label">配置文件:</span>
+                  <span className="path-value">{config.config_path}</span>
+                </div>
+              )}
+              {saveMessage && (
+                <div className={`save-toast ${saveMessage.type}`}>
+                  {saveMessage.type === "success" ? "✅" : "❌"} {saveMessage.text}
+                </div>
+              )}
+              <div className="settings-section">
+                <h3>模型设置</h3>
+                <div className="settings-form">
+                  <div className="form-group">
+                    <label>
+                      供应商
+                      {dirtyFields.has("provider") && <span className="dirty-badge">已修改</span>}
+                    </label>
+                    <div className="provider-select-row">
+                      <select value={provider} onChange={(e) => handleProviderChange(e.target.value)}>
+                        <option value="">请选择供应商</option>
+                        {providers.map(p => (
+                          <option key={p.id} value={p.value}>{p.name}</option>
+                        ))}
+                      </select>
+                      <button type="button" className="provider-manage-btn" onClick={() => { setEditingProvider(null); setShowProviderModal(true); }} title="管理供应商">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="3"/>
+                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      模型名称
+                      {dirtyFields.has("model") && <span className="dirty-badge">已修改</span>}
+                    </label>
+                    <div className="model-select-row">
+                      {modelList.length > 0 ? (
+                        <select value={model} onChange={(e) => { setModel(e.target.value); markDirty("model"); }}>
+                          <option value="">请选择模型</option>
+                          {model && !modelList.some(m => m.id === model) && (
+                            <option value={model}>{model} (当前)</option>
+                          )}
+                          {modelList.map(m => (
+                            <option key={m.id} value={m.id}>{m.id}{m.ownedBy ? ` (${m.ownedBy})` : ''}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={model}
+                          onChange={(e) => { setModel(e.target.value); markDirty("model"); }}
+                          placeholder="选择供应商后加载模型列表，或手动输入模型ID"
+                        />
+                      )}
+                      {modelListLoading && <span style={{ fontSize: '12px', color: '#999' }}>⏳ 加载模型列表中...</span>}
+                      {modelList.length === 0 && !modelListLoading && provider && (
+                        <button type="button" className="save-btn" style={{ padding: '2px 8px', fontSize: '12px' }} onClick={() => fetchModelList(provider)}>刷新模型列表</button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      API Base URL
+                      {dirtyFields.has("baseUrl") && <span className="dirty-badge">已修改</span>}
+                    </label>
+                    <input
+                      type="text"
+                      value={baseUrl}
+                      readOnly
+                      placeholder="根据供应商自动填充"
+                      style={{ background: '#F5F5F7', color: '#666' }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      最大轮次 (Max Turns): {maxTurns}
+                      {dirtyFields.has("maxTurns") && <span className="dirty-badge">已修改</span>}
+                    </label>
+                    <input
+                      type="range"
+                      min="10"
+                      max="200"
+                      step="10"
+                      value={maxTurns}
+                      onChange={(e) => { setMaxTurns(parseInt(e.target.value)); markDirty("maxTurns"); }}
+                    />
+                  </div>
+                </div>
+                <div className="section-save-bar">
+                  <button
+                    className="section-save-btn"
+                    onClick={() => saveSectionConfig("model")}
+                    disabled={saving || sectionDirtyCount("model") === 0}
+                  >
+                    {saving ? "保存中..." : "💾 保存 Agent 配置"}
                   </button>
                 </div>
               </div>
-              <div className="form-group">
-                <label>
-                  模型名称
-                  {dirtyFields.has("model") && <span className="dirty-badge">已修改</span>}
-                </label>
-                <div className="model-select-row">
-                  {modelList.length > 0 ? (
-                    <select value={model} onChange={(e) => { setModel(e.target.value); markDirty("model"); }}>
-                      <option value="">请选择模型</option>
-                      {model && !modelList.some(m => m.id === model) && (
-                        <option value={model}>{model} (当前)</option>
-                      )}
-                      {modelList.map(m => (
-                        <option key={m.id} value={m.id}>{m.id}{m.ownedBy ? ` (${m.ownedBy})` : ''}</option>
-                      ))}
+            </div>
+          )}
+
+          {/* 供应商设置 */}
+          {activeSection === "provider" && (
+            <div className="settings-section-card">
+              <div className="settings-section">
+                <h3>🔌 供应商设置</h3>
+                <div className="settings-section providers-inline-section">
+                  {providers.length === 0 && (
+                    <div className="provider-empty">
+                      <p style={{ color: '#999', textAlign: 'center', padding: '20px 0' }}>暂无供应商，请添加</p>
+                    </div>
+                  )}
+                  <div className="provider-list">
+                    {providers.map((p) => (
+                      <div key={p.id} className="provider-item">
+                        <div className="provider-info">
+                          <span className="provider-name">{p.name}</span>
+                          <span className="provider-value">{p.value}</span>
+                          {p.baseUrl && <span className="provider-url">{p.baseUrl}</span>}
+                          {p.isBuiltin && <span className="provider-builtin-tag">内置</span>}
+                        </div>
+                        <div className="provider-item-actions">
+                          <button className="provider-item-btn" onClick={() => openEditProvider(p)} disabled={p.isBuiltin} title={p.isBuiltin ? "内置供应商不可编辑" : "编辑"}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                          </button>
+                          <button className="provider-item-btn provider-delete-btn" onClick={() => handleDeleteProvider(p.id)} disabled={p.isBuiltin} title={p.isBuiltin ? "内置供应商不可删除" : "删除"}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"/>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="provider-add-bar">
+                    <button className="section-save-btn" onClick={openNewProvider}>+ 添加供应商</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 系统设置 */}
+          {activeSection === "system" && (
+            <div className="settings-section-card">
+              <div className="settings-header">
+                <h2>⚙️ 系统设置</h2>
+              </div>
+              <div className="settings-section">
+                <h3>🎨 显示与交互</h3>
+                <div className="settings-form">
+                  <div className="form-group">
+                    <label>
+                      人格风格
+                      {dirtyFields.has("personality") && <span className="dirty-badge">已修改</span>}
+                    </label>
+                    <select value={personality} onChange={(e) => { setPersonality(e.target.value); markDirty("personality"); }}>
+                      <option value="default">默认</option>
+                      <option value="kawaii">Kawaii</option>
+                      <option value="professional">专业</option>
+                      <option value="pirate">海盗</option>
+                      <option value="zen">禅意</option>
                     </select>
-                  ) : (
+                  </div>
+                  <div className="form-group">
+                    <label className="toggle-label">
+                      <span>
+                        显示推理过程
+                        {dirtyFields.has("showReasoning") && <span className="dirty-badge">已修改</span>}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={showReasoning}
+                        onChange={(e) => { setShowReasoning(e.target.checked); markDirty("showReasoning"); }}
+                      />
+                    </label>
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      TTS 语音引擎
+                      {dirtyFields.has("ttsProvider") && <span className="dirty-badge">已修改</span>}
+                    </label>
+                    <select value={ttsProvider} onChange={(e) => { setTtsProvider(e.target.value); markDirty("ttsProvider"); }}>
+                      <option value="edge">Edge TTS</option>
+                      <option value="elevenlabs">ElevenLabs</option>
+                      <option value="openai">OpenAI TTS</option>
+                      <option value="xai">xAI</option>
+                      <option value="mistral">Mistral</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="settings-section">
+                <h3>🖥️ 终端与系统</h3>
+                <div className="settings-form">
+                  <div className="form-group">
+                    <label>
+                      终端后端
+                      {dirtyFields.has("terminalBackend") && <span className="dirty-badge">已修改</span>}
+                    </label>
+                    <select value={terminalBackend} onChange={(e) => { setTerminalBackend(e.target.value); markDirty("terminalBackend"); }}>
+                      <option value="local">本地 (local)</option>
+                      <option value="docker">Docker</option>
+                      <option value="modal">Modal</option>
+                      <option value="daytona">Daytona</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>
+                      命令超时 (秒): {terminalTimeout}
+                      {dirtyFields.has("terminalTimeout") && <span className="dirty-badge">已修改</span>}
+                    </label>
                     <input
-                      type="text"
-                      value={model}
-                      onChange={(e) => { setModel(e.target.value); markDirty("model"); }}
-                      placeholder="选择供应商后加载模型列表，或手动输入模型ID"
+                      type="range"
+                      min="30"
+                      max="600"
+                      step="30"
+                      value={terminalTimeout}
+                      onChange={(e) => { setTerminalTimeout(parseInt(e.target.value)); markDirty("terminalTimeout"); }}
                     />
-                  )}
-                  {modelListLoading && <span style={{ fontSize: '12px', color: '#999' }}>⏳ 加载模型列表中...</span>}
-                  {modelList.length === 0 && !modelListLoading && provider && (
-                    <button type="button" className="save-btn" style={{ padding: '2px 8px', fontSize: '12px' }} onClick={() => fetchModelList(provider)}>刷新模型列表</button>
-                  )}
-                </div>
-              </div>
-              <div className="form-group">
-                <label>
-                  API Base URL
-                  {dirtyFields.has("baseUrl") && <span className="dirty-badge">已修改</span>}
-                </label>
-                <input
-                  type="text"
-                  value={baseUrl}
-                  readOnly
-                  placeholder="根据供应商自动填充"
-                  style={{ background: '#F5F5F7', color: '#666' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>
-                  最大轮次 (Max Turns): {maxTurns}
-                  {dirtyFields.has("maxTurns") && <span className="dirty-badge">已修改</span>}
-                </label>
-                <input
-                  type="range"
-                  min="10"
-                  max="200"
-                  step="10"
-                  value={maxTurns}
-                  onChange={(e) => { setMaxTurns(parseInt(e.target.value)); markDirty("maxTurns"); }}
-                />
-              </div>
-            </div>
-            <div className="section-save-bar">
-              <button
-                className="section-save-btn"
-                onClick={() => saveSectionConfig("model")}
-                disabled={saving || sectionDirtyCount("model") === 0}
-              >
-                {saving ? "保存中..." : "💾 保存模型配置"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 显示与交互 */}
-        <div className={`settings-group ${collapsedSections.has("display") ? "collapsed" : ""}`}>
-          <div className="settings-group-header" onClick={() => toggleSection("display")}>
-            <h3>🎨 显示与交互
-              {sectionDirtyCount("display") > 0 && <span className="dirty-badge">{sectionDirtyCount("display")} 项已修改</span>}
-            </h3>
-            <span className="collapse-arrow">▾</span>
-          </div>
-          <div className="settings-group-body">
-            <div className="settings-form">
-              <div className="form-group">
-                <label>
-                  人格风格
-                  {dirtyFields.has("personality") && <span className="dirty-badge">已修改</span>}
-                </label>
-                <select value={personality} onChange={(e) => { setPersonality(e.target.value); markDirty("personality"); }}>
-                  <option value="default">默认</option>
-                  <option value="kawaii">Kawaii</option>
-                  <option value="professional">专业</option>
-                  <option value="pirate">海盗</option>
-                  <option value="zen">禅意</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="toggle-label">
-                  <span>
-                    显示推理过程
-                    {dirtyFields.has("showReasoning") && <span className="dirty-badge">已修改</span>}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={showReasoning}
-                    onChange={(e) => { setShowReasoning(e.target.checked); markDirty("showReasoning"); }}
-                  />
-                </label>
-              </div>
-              <div className="form-group">
-                <label>
-                  TTS 语音引擎
-                  {dirtyFields.has("ttsProvider") && <span className="dirty-badge">已修改</span>}
-                </label>
-                <select value={ttsProvider} onChange={(e) => { setTtsProvider(e.target.value); markDirty("ttsProvider"); }}>
-                  <option value="edge">Edge TTS</option>
-                  <option value="elevenlabs">ElevenLabs</option>
-                  <option value="openai">OpenAI TTS</option>
-                  <option value="xai">xAI</option>
-                  <option value="mistral">Mistral</option>
-                </select>
-              </div>
-            </div>
-            <div className="section-save-bar">
-              <button
-                className="section-save-btn"
-                onClick={() => saveSectionConfig("display")}
-                disabled={saving || sectionDirtyCount("display") === 0}
-              >
-                {saving ? "保存中..." : "💾 保存显示配置"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 终端 & 系统 */}
-        <div className={`settings-group ${collapsedSections.has("terminal") ? "collapsed" : ""}`}>
-          <div className="settings-group-header" onClick={() => toggleSection("terminal")}>
-            <h3>🖥️ 终端与系统
-              {sectionDirtyCount("terminal") > 0 && <span className="dirty-badge">{sectionDirtyCount("terminal")} 项已修改</span>}
-            </h3>
-            <span className="collapse-arrow">▾</span>
-          </div>
-          <div className="settings-group-body">
-            <div className="settings-form">
-              <div className="form-group">
-                <label>
-                  终端后端
-                  {dirtyFields.has("terminalBackend") && <span className="dirty-badge">已修改</span>}
-                </label>
-                <select value={terminalBackend} onChange={(e) => { setTerminalBackend(e.target.value); markDirty("terminalBackend"); }}>
-                  <option value="local">本地 (local)</option>
-                  <option value="docker">Docker</option>
-                  <option value="modal">Modal</option>
-                  <option value="daytona">Daytona</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>
-                  命令超时 (秒): {terminalTimeout}
-                  {dirtyFields.has("terminalTimeout") && <span className="dirty-badge">已修改</span>}
-                </label>
-                <input
-                  type="range"
-                  min="30"
-                  max="600"
-                  step="30"
-                  value={terminalTimeout}
-                  onChange={(e) => { setTerminalTimeout(parseInt(e.target.value)); markDirty("terminalTimeout"); }}
-                />
-              </div>
-              <div className="form-group">
-                <label className="toggle-label">
-                  <span>
-                    上下文压缩
-                    {dirtyFields.has("compressionEnabled") && <span className="dirty-badge">已修改</span>}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={compressionEnabled}
-                    onChange={(e) => { setCompressionEnabled(e.target.checked); markDirty("compressionEnabled"); }}
-                  />
-                </label>
-              </div>
-              <div className="form-group">
-                <label className="toggle-label">
-                  <span>
-                    记忆功能
-                    {dirtyFields.has("memoryEnabled") && <span className="dirty-badge">已修改</span>}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={memoryEnabled}
-                    onChange={(e) => { setMemoryEnabled(e.target.checked); markDirty("memoryEnabled"); }}
-                  />
-                </label>
-              </div>
-            </div>
-            <div className="section-save-bar">
-              <button
-                className="section-save-btn"
-                onClick={() => saveSectionConfig("terminal")}
-                disabled={saving || sectionDirtyCount("terminal") === 0}
-              >
-                {saving ? "保存中..." : "💾 保存终端配置"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className={`settings-group ${collapsedSections.has("gesture") ? "collapsed" : ""}`}>
-          <div className="settings-group-header gesture-section-header" onClick={() => toggleSection("gesture")}>
-            <h3>💃 数字人动作管理</h3>
-            <div className="gesture-header-right">
-              <button className="gesture-add-btn" onClick={(e) => {
-                e.stopPropagation();
-                setEditingGesture(null);
-                setGestureForm({ name: "", duration: 1000, lookAtX: 0, lookAtY: 0, tilt: 0, targetJson: "{}" });
-                setShowGestureModal(true);
-              }}>
-                <span className="gesture-add-icon">+</span>
-                新增动作
-              </button>
-              <button className="gesture-add-btn gesture-import-btn" onClick={(e) => {
-                e.stopPropagation();
-                handleImportGestureJson();
-              }} title="从 JSON 文件导入动作姿势数据">
-                <span className="gesture-add-icon">📥</span>
-                导入
-              </button>
-              <input type="file" ref={gestureFileInputRef} style={{ display: 'none' }} />
-              <span className="collapse-arrow">▾</span>
-            </div>
-          </div>
-
-          <div className="settings-group-body">
-            {gestures.length === 0 && (
-              <div className="gesture-empty">
-                <span className="gesture-empty-icon">🎭</span>
-                <p>暂无动作，点击上方按钮新增</p>
-              </div>
-            )}
-
-            <div className="gesture-card-list">
-              {gestures.map((g, index) => {
-                const isSystem = g.source === "system";
-                return (
-                <div key={g.id} className="gesture-card" style={{ animationDelay: `${index * 0.05}s` }}>
-                  <div className="gesture-card-left">
-                    <div className="gesture-card-icon">
-                      {g.name === "greeting" ? "👋" : g.name === "think" ? "🤔" : "🎭"}
-                    </div>
-                    <div className="gesture-card-info">
-                      <div className="gesture-card-name-row">
-                        <span className="gesture-card-name">{g.name}</span>
-                        <span className={`gesture-source-tag ${isSystem ? "gesture-source-system" : "gesture-source-custom"}`}>
-                          {isSystem ? "系统" : "自定义"}
-                        </span>
-                      </div>
-                      <div className="gesture-card-tags">
-                        <span className="gesture-tag gesture-tag-duration">⏱ {g.duration}ms</span>
-                        {(g.lookAtX !== 0 || g.lookAtY !== 0) && (
-                          <span className="gesture-tag gesture-tag-lookat">👁 {g.lookAtX},{g.lookAtY}</span>
-                        )}
-                        {g.tilt !== 0 && (
-                          <span className="gesture-tag gesture-tag-tilt">↗ {g.tilt}</span>
-                        )}
-                        {(() => {
-                          try {
-                            const bones = JSON.parse(g.targetJson || "{}");
-                            const activeBones = Object.entries(bones).filter(([, v]: [string, any]) => {
-                              if (!v) return false;
-                              if (Array.isArray(v.rotation) && v.rotation.length === 4) {
-                                return v.rotation[0] !== 0 || v.rotation[1] !== 0 || v.rotation[2] !== 0 || v.rotation[3] !== 1;
-                              }
-                              if (typeof v.w === 'number') {
-                                return v.x !== 0 || v.y !== 0 || v.z !== 0 || v.w !== 1;
-                              }
-                              return false;
-                            });
-                            return activeBones.map(([key]: [string, any]) => (
-                              <span key={key} className="gesture-tag gesture-tag-bone">🦴 {key}</span>
-                            ));
-                          } catch { return null; }
-                        })()}
-                      </div>
-                    </div>
                   </div>
-                  <div className="gesture-card-actions">
-                    <button className="gesture-action-btn gesture-action-view" onClick={() => {
-                      setEditingGesture(g);
-                      setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
-                      setGestureReadOnly(true);
-                      setShowGestureModal(true);
-                    }} title="查看动作">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                        <circle cx="12" cy="12" r="3"/>
-                      </svg>
-                      查看
-                    </button>
-                    <button className="gesture-action-btn gesture-action-edit" disabled={isSystem} onClick={() => {
-                      setEditingGesture(g);
-                      setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
-                      setGestureReadOnly(false);
-                      setShowGestureModal(true);
-                    }} title={isSystem ? "系统动作不可编辑" : "编辑动作"}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                      </svg>
-                      编辑
-                    </button>
-                    <button className="gesture-action-btn gesture-action-delete" disabled={isSystem} onClick={async () => {
-                      if (confirm(`删除动作「${g.name}」吗？`)) {
-                        await invoke("delete_avatar_gesture", { id: g.id });
-                        loadGestures();
-                      }
-                    }} title={isSystem ? "系统动作不可删除" : "删除动作"}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6"/>
-                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                      </svg>
-                      删除
-                    </button>
+                  <div className="form-group">
+                    <label className="toggle-label">
+                      <span>
+                        上下文压缩
+                        {dirtyFields.has("compressionEnabled") && <span className="dirty-badge">已修改</span>}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={compressionEnabled}
+                        onChange={(e) => { setCompressionEnabled(e.target.checked); markDirty("compressionEnabled"); }}
+                      />
+                    </label>
+                  </div>
+                  <div className="form-group">
+                    <label className="toggle-label">
+                      <span>
+                        记忆功能
+                        {dirtyFields.has("memoryEnabled") && <span className="dirty-badge">已修改</span>}
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={memoryEnabled}
+                        onChange={(e) => { setMemoryEnabled(e.target.checked); markDirty("memoryEnabled"); }}
+                      />
+                    </label>
                   </div>
                 </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        <div className={`settings-group ${collapsedSections.has("about") ? "collapsed" : ""}`}>
-          <div className="settings-group-header" onClick={() => toggleSection("about")}>
-            <h3>ℹ️ 关于</h3>
-            <span className="settings-toggle-icon">{collapsedSections.has("about") ? "▸" : "▾"}</span>
-          </div>
-          <div className="settings-group-content">
-            <div className="about-info">
-              <div className="about-logo"><img src="/bot.svg" alt="Hermes" /></div>
-              <div className="about-name">Hermes Desktop</div>
-              <div className="about-version">版本 0.1.0</div>
-              <div className="about-desc">AI 智能助手桌面客户端</div>
-              <div className="about-meta">
-                <div className="about-author">作者：西安跃行信息有限公司</div>
-                <div className="about-email">邮箱：leapgo@yeah.net</div>
+                <div className="section-save-bar">
+                  <button
+                    className="section-save-btn"
+                    onClick={() => saveSectionConfig("system")}
+                    disabled={saving || sectionDirtyCount("system") === 0}
+                  >
+                    {saving ? "保存中..." : "💾 保存系统设置"}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* 动作管理 */}
+          {activeSection === "gesture" && (
+            <div className="settings-section-card">
+              <div className="settings-section">
+                <div className="gesture-section-header">
+                  <h3>💃 动作管理</h3>
+                  <div className="gesture-header-right">
+                    <button className="gesture-add-btn" onClick={() => {
+                      setEditingGesture(null);
+                      setGestureForm({ name: "", duration: 1000, lookAtX: 0, lookAtY: 0, tilt: 0, targetJson: "{}" });
+                      setShowGestureModal(true);
+                    }}>
+                      <span className="gesture-add-icon">+</span>
+                      新增动作
+                    </button>
+                    <button className="gesture-add-btn gesture-import-btn" onClick={() => handleImportGestureJson()} title="从 JSON 文件导入动作姿势数据">
+                      <span className="gesture-add-icon">📥</span>
+                      导入
+                    </button>
+                    <input type="file" ref={gestureFileInputRef} style={{ display: 'none' }} />
+                  </div>
+                </div>
+                <div>
+                  {gestures.length === 0 && (
+                    <div className="gesture-empty">
+                      <span className="gesture-empty-icon">🎭</span>
+                      <p>暂无动作，点击上方按钮新增</p>
+                    </div>
+                  )}
+                  <div className="gesture-card-list">
+                    {gestures.map((g, index) => {
+                      const isSystem = g.source === "system";
+                      return (
+                      <div key={g.id} className="gesture-card" style={{ animationDelay: `${index * 0.05}s` }}>
+                        <div className="gesture-card-left">
+                          <div className="gesture-card-icon">
+                            {g.name === "greeting" ? "👋" : g.name === "think" ? "🤔" : "🎭"}
+                          </div>
+                          <div className="gesture-card-info">
+                            <div className="gesture-card-name-row">
+                              <span className="gesture-card-name">{g.name}</span>
+                              <span className={`gesture-source-tag ${isSystem ? "gesture-source-system" : "gesture-source-custom"}`}>
+                                {isSystem ? "系统" : "自定义"}
+                              </span>
+                            </div>
+                            <div className="gesture-card-tags">
+                              <span className="gesture-tag gesture-tag-duration">⏱ {g.duration}ms</span>
+                              {(g.lookAtX !== 0 || g.lookAtY !== 0) && (
+                                <span className="gesture-tag gesture-tag-lookat">👁 {g.lookAtX},{g.lookAtY}</span>
+                              )}
+                              {g.tilt !== 0 && (
+                                <span className="gesture-tag gesture-tag-tilt">↗ {g.tilt}</span>
+                              )}
+                              {(() => {
+                                try {
+                                  const bones = JSON.parse(g.targetJson || "{}");
+                                  const activeBones = Object.entries(bones).filter(([, v]: [string, any]) => {
+                                    if (!v) return false;
+                                    if (Array.isArray(v.rotation) && v.rotation.length === 4) {
+                                      return v.rotation[0] !== 0 || v.rotation[1] !== 0 || v.rotation[2] !== 0 || v.rotation[3] !== 1;
+                                    }
+                                    if (typeof v.w === 'number') {
+                                      return v.x !== 0 || v.y !== 0 || v.z !== 0 || v.w !== 1;
+                                    }
+                                    return false;
+                                  });
+                                  return activeBones.map(([key]: [string, any]) => (
+                                    <span key={key} className="gesture-tag gesture-tag-bone">🦴 {key}</span>
+                                  ));
+                                } catch { return null; }
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="gesture-card-actions">
+                          <button className="gesture-action-btn gesture-action-view" onClick={() => {
+                            setEditingGesture(g);
+                            setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
+                            setGestureReadOnly(true);
+                            setShowGestureModal(true);
+                          }} title="查看动作">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                              <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            查看
+                          </button>
+                          <button className="gesture-action-btn gesture-action-edit" disabled={isSystem} onClick={() => {
+                            setEditingGesture(g);
+                            setGestureForm({ name: g.name, duration: g.duration, lookAtX: g.lookAtX, lookAtY: g.lookAtY, tilt: g.tilt, targetJson: g.targetJson });
+                            setGestureReadOnly(false);
+                            setShowGestureModal(true);
+                          }} title={isSystem ? "系统动作不可编辑" : "编辑动作"}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                            编辑
+                          </button>
+                          <button className="gesture-action-btn gesture-action-delete" disabled={isSystem} onClick={async () => {
+                            if (confirm(`删除动作「${g.name}」吗？`)) {
+                              await invoke("delete_avatar_gesture", { id: g.id });
+                              loadGestures();
+                            }
+                          }} title={isSystem ? "系统动作不可删除" : "删除动作"}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"/>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                            删除
+                          </button>
+                        </div>
+                      </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 关于 */}
+          {activeSection === "about" && (
+            <div className="settings-section-card">
+              <div className="settings-section">
+                <h3>ℹ️ 关于</h3>
+                <div className="about-info">
+                  <div className="about-logo"><img src="/bot.svg" alt="Hermes" /></div>
+                  <div className="about-name">Hermes Desktop</div>
+                  <div className="about-version">版本 0.1.0</div>
+                  <div className="about-desc">AI 智能助手桌面客户端</div>
+                  <div className="about-meta">
+                    <div className="about-author">作者：西安跃行信息有限公司</div>
+                    <div className="about-email">邮箱：leapgo@yeah.net</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
