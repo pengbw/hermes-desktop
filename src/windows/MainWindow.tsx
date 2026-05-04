@@ -2592,6 +2592,18 @@ interface SkillItem {
   category: string;
   source: string;
   trust: string;
+  enabled: boolean;
+  description: string;
+  version: string;
+  tags: string[];
+}
+
+interface SkillCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  count: number;
 }
 
 interface SkillsResult {
@@ -2600,49 +2612,60 @@ interface SkillsResult {
   hub_installed: number;
   builtin: number;
   local: number;
+  enabled_count: number;
+  disabled_count: number;
+  categories: SkillCategory[];
 }
 
-const CATEGORY_ICONS: Record<string, string> = {
-  apple: "🍎",
-  "autonomous-ai-agents": "🤖",
-  creative: "🎨",
-  "data-science": "📊",
-  devops: "🔧",
-  email: "📧",
-  gaming: "🎮",
-  github: "🐙",
-  leisure: "🏖️",
-  mcp: "🔌",
-  media: "🎵",
-  mlops: "⚡",
-  "note-taking": "📝",
-  productivity: "📋",
-  "red-teaming": "🔴",
-  research: "🔬",
-  "smart-home": "🏠",
-  "social-media": "📱",
-  "software-development": "💻",
-};
+interface BrowseSkill {
+  name: string;
+  description: string;
+  source: string;
+  trust: string;
+  identifier: string;
+}
+
+interface BrowseResult {
+  skills: BrowseSkill[];
+  page: number;
+  total_pages: number;
+  total_skills: number;
+}
 
 function SkillsPanel({ t }: { t: (key: string, params?: Record<string, string | number>) => string }) {
   const [skillsResult, setSkillsResult] = useState<SkillsResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterSource, setFilterSource] = useState<string>("all");
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [showAddSkill, setShowAddSkill] = useState(false);
+  const [detailSkill, setDetailSkill] = useState<SkillItem | null>(null);
+  const [detailContent, setDetailContent] = useState("");
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [browseResult, setBrowseResult] = useState<BrowseResult | null>(null);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [browsePage, setBrowsePage] = useState(1);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [installMsg, setInstallMsg] = useState("");
 
   useEffect(() => {
     loadSkills();
   }, []);
+
+  useEffect(() => {
+    const handler = () => {
+      if (menuOpen) setMenuOpen(null);
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [menuOpen]);
 
   const loadSkills = async () => {
     setLoading(true);
     try {
       const result = await invoke<SkillsResult>("list_hermes_skills");
       setSkillsResult(result);
-      // 默认展开所有分类
-      const categories = new Set(result.skills.map((s) => s.category || "未分类"));
-      setExpandedCategories(categories);
     } catch (err) {
       console.error("Failed to load skills:", err);
     } finally {
@@ -2650,67 +2673,96 @@ function SkillsPanel({ t }: { t: (key: string, params?: Record<string, string | 
     }
   };
 
-  const toggleCategory = (cat: string) => {
-    setExpandedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
+  const loadBrowse = async (page: number = 1) => {
+    setBrowseLoading(true);
+    try {
+      const result = await invoke<BrowseResult>("browse_skills", { page, size: 20 });
+      setBrowseResult(result);
+      setBrowsePage(page);
+    } catch (err) {
+      console.error("Failed to browse skills:", err);
+    } finally {
+      setBrowseLoading(false);
+    }
   };
 
-  // 过滤技能
+  const handleInstall = async (identifier: string) => {
+    setInstalling(identifier);
+    setInstallMsg("");
+    try {
+      await invoke("install_skill", { identifier });
+      setInstallMsg(t("skills.installSuccess"));
+      loadSkills();
+      if (browseResult) loadBrowse(browsePage);
+    } catch (err: any) {
+      setInstallMsg(err?.toString() || t("skills.installFail"));
+    } finally {
+      setInstalling(null);
+    }
+  };
+
+  const handleUninstall = async (name: string) => {
+    try {
+      await invoke("uninstall_skill", { name });
+      loadSkills();
+      setMenuOpen(null);
+    } catch (err) {
+      console.error("Uninstall failed:", err);
+    }
+  };
+
+  const handleInspect = async (skill: SkillItem) => {
+    setDetailSkill(skill);
+    setDetailLoading(true);
+    setDetailContent("");
+    try {
+      const identifier = skill.category ? `${skill.category}/${skill.name}` : skill.name;
+      const content = await invoke<string>("inspect_skill", { identifier });
+      setDetailContent(content);
+    } catch (err) {
+      setDetailContent(t("skills.detailLoadFail"));
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   const filteredSkills = (skillsResult?.skills || []).filter((skill) => {
     const matchSearch =
       !searchQuery ||
       skill.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      skill.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       skill.category.toLowerCase().includes(searchQuery.toLowerCase());
     const matchSource = filterSource === "all" || skill.source === filterSource;
-    return matchSearch && matchSource;
+    const matchCategory = activeCategory === "all" || skill.category === activeCategory;
+    return matchSearch && matchSource && matchCategory;
   });
 
-  // 按分类分组
-  const groupedSkills: Record<string, SkillItem[]> = {};
-  for (const skill of filteredSkills) {
-    const cat = skill.category || "未分类";
-    if (!groupedSkills[cat]) groupedSkills[cat] = [];
-    groupedSkills[cat].push(skill);
-  }
+  const categories = skillsResult?.categories || [];
 
-  const sortedCategories = Object.keys(groupedSkills).sort();
+  const getSkillInitial = (name: string) => name.charAt(0).toUpperCase();
+
+  const getCategoryIcon = (catId: string) => {
+    const cat = categories.find(c => c.id === catId);
+    return cat?.icon || "📂";
+  };
 
   return (
     <div className="panel skills-panel">
       <div className="skills-header">
-        <h2>{t("skills.title")}</h2>
-        <button className="refresh-btn" onClick={loadSkills} disabled={loading}>
-          {loading ? "..." : t("skills.refresh")}
-        </button>
+        <div className="skills-header-left">
+          <h2>{t("skills.title")}</h2>
+          <span className="skills-subtitle">{t("skills.subtitle")}</span>
+        </div>
+        <div className="skills-header-actions">
+          <button className="refresh-btn" onClick={loadSkills} disabled={loading}>
+            {loading ? "..." : t("skills.refresh")}
+          </button>
+          <button className="add-skill-btn" onClick={() => { setShowAddSkill(true); loadBrowse(1); }}>
+            + {t("skills.addSkill")}
+          </button>
+        </div>
       </div>
 
-      {/* 统计概览 */}
-      {skillsResult && (
-        <div className="skills-stats">
-          <div className="skills-stat-badge total">
-            <span className="stat-count">{skillsResult.total}</span>
-            <span className="stat-text">{t("skills.all")}</span>
-          </div>
-          <div className="skills-stat-badge builtin">
-            <span className="stat-count">{skillsResult.builtin}</span>
-            <span className="stat-text">{t("skills.builtin")}</span>
-          </div>
-          <div className="skills-stat-badge local">
-            <span className="stat-count">{skillsResult.local}</span>
-            <span className="stat-text">{t("skills.local")}</span>
-          </div>
-          <div className="skills-stat-badge hub">
-            <span className="stat-count">{skillsResult.hub_installed}</span>
-            <span className="stat-text">{t("skills.hub")}</span>
-          </div>
-        </div>
-      )}
-
-      {/* 搜索和过滤 */}
       <div className="skills-toolbar">
         <input
           className="skills-search"
@@ -2731,7 +2783,24 @@ function SkillsPanel({ t }: { t: (key: string, params?: Record<string, string | 
         </select>
       </div>
 
-      {/* 加载中 */}
+      <div className="skills-category-tabs">
+        <button
+          className={`category-tab ${activeCategory === "all" ? "active" : ""}`}
+          onClick={() => setActiveCategory("all")}
+        >
+          {t("skills.all")} {skillsResult?.total ?? 0}
+        </button>
+        {categories.map((cat) => (
+          <button
+            key={cat.id}
+            className={`category-tab ${activeCategory === cat.id ? "active" : ""}`}
+            onClick={() => setActiveCategory(cat.id)}
+          >
+            {cat.icon} {cat.name} {cat.count}
+          </button>
+        ))}
+      </div>
+
       {loading && (
         <div className="skills-loading">
           <span className="loading-spinner">⏳</span>
@@ -2739,60 +2808,132 @@ function SkillsPanel({ t }: { t: (key: string, params?: Record<string, string | 
         </div>
       )}
 
-      {/* 技能列表 - 按分类分组 */}
-      {!loading && sortedCategories.length > 0 && (
-        <div className="skills-categories">
-          {sortedCategories.map((category) => (
-            <div key={category} className="skill-category-group">
-              <div
-                className="category-header"
-                onClick={() => toggleCategory(category)}
-              >
-                <div className="category-left">
-                  <span className="category-icon">
-                    {CATEGORY_ICONS[category] || "📂"}
-                  </span>
-                  <span className="category-name">{category}</span>
-                  <span className="category-count">
-                    {groupedSkills[category].length}
-                  </span>
+      {!loading && filteredSkills.length > 0 && (
+        <div className="skills-grid">
+          {filteredSkills.map((skill) => (
+            <div key={skill.name} className="skill-card">
+              <div className="skill-card-top">
+                <div className="skill-card-icon" data-category={skill.category}>
+                  <span className="skill-icon-emoji">{getCategoryIcon(skill.category)}</span>
+                  <span className="skill-icon-letter">{getSkillInitial(skill.name)}</span>
                 </div>
-                <span className={`category-arrow ${expandedCategories.has(category) ? "expanded" : ""}`}>
-                  ▸
-                </span>
-              </div>
-
-              {expandedCategories.has(category) && (
-                <div className="category-skills">
-                  {groupedSkills[category].map((skill) => (
-                    <div key={skill.name} className="skill-item">
-                      <div className="skill-info">
-                        <span className="skill-name">{skill.name}</span>
-                        <div className="skill-badges">
-                          <span className={`source-badge ${skill.source}`}>
-                            {skill.source}
-                          </span>
-                          {skill.trust !== skill.source && (
-                            <span className={`trust-badge ${skill.trust}`}>
-                              {skill.trust}
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                <div className="skill-card-header">
+                  <span className="skill-card-name">{skill.name}</span>
+                  {skill.version && <span className="skill-version">v{skill.version}</span>}
+                </div>
+                <div className="skill-card-menu-wrap">
+                  <button
+                    className="skill-card-menu-btn"
+                    onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === skill.name ? null : skill.name); }}
+                  >
+                    ⋮
+                  </button>
+                  {menuOpen === skill.name && (
+                    <div className="skill-card-menu" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => { handleInspect(skill); setMenuOpen(null); }}>
+                        {t("skills.viewDetail")}
+                      </button>
+                      {skill.source === "hub" && (
+                        <button onClick={() => { handleUninstall(skill.name); }}>
+                          {t("skills.uninstall")}
+                        </button>
+                      )}
                     </div>
+                  )}
+                </div>
+              </div>
+              <p className="skill-card-desc">
+                {skill.description || t("skills.noDesc")}
+              </p>
+              <div className="skill-card-bottom">
+                <div className="skill-card-tags">
+                  <span className={`source-badge ${skill.source}`}>{skill.source}</span>
+                  <span className={`enabled-badge ${skill.enabled ? "enabled" : "disabled"}`}>
+                    {skill.enabled ? t("skills.enabled") : t("skills.disabled")}
+                  </span>
+                  {skill.tags.slice(0, 2).map((tag) => (
+                    <span key={tag} className="tag-badge">{tag}</span>
                   ))}
                 </div>
-              )}
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* 空状态 */}
       {!loading && filteredSkills.length === 0 && (
         <div className="skills-empty">
           <span>🔍</span>
           <p>{searchQuery ? t("skills.noResults") : t("skills.empty")}</p>
+        </div>
+      )}
+
+      {detailSkill && (
+        <div className="modal-overlay" onClick={() => setDetailSkill(null)}>
+          <div className="modal-content skill-detail-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{detailSkill.name}</h3>
+              <button className="modal-close" onClick={() => setDetailSkill(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              {detailLoading ? (
+                <p>{t("skills.loading")}</p>
+              ) : (
+                <pre className="skill-detail-content">{detailContent}</pre>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddSkill && (
+        <div className="modal-overlay" onClick={() => setShowAddSkill(false)}>
+          <div className="modal-content add-skill-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{t("skills.addSkillTitle")}</h3>
+              <button className="modal-close" onClick={() => setShowAddSkill(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              {browseLoading && <p>{t("skills.loading")}</p>}
+              {browseResult && browseResult.skills.map((bs) => (
+                <div key={bs.identifier || bs.name} className="browse-skill-item">
+                  <div className="browse-skill-info">
+                    <span className="browse-skill-name">{bs.name}</span>
+                    <span className="browse-skill-desc">{bs.description}</span>
+                    <div className="browse-skill-meta">
+                      <span className={`source-badge ${bs.source}`}>{bs.source}</span>
+                      <span className="trust-badge">{bs.trust}</span>
+                    </div>
+                  </div>
+                  <button
+                    className="install-btn"
+                    disabled={installing === bs.identifier}
+                    onClick={() => handleInstall(bs.identifier)}
+                  >
+                    {installing === bs.identifier ? "..." : t("skills.install")}
+                  </button>
+                </div>
+              ))}
+              {browseResult && browseResult.total_pages > 1 && (
+                <div className="browse-pagination">
+                  <button
+                    disabled={browsePage <= 1}
+                    onClick={() => loadBrowse(browsePage - 1)}
+                  >
+                    {t("skills.prevPage")}
+                  </button>
+                  <span>{browsePage} / {browseResult.total_pages}</span>
+                  <button
+                    disabled={browsePage >= browseResult.total_pages}
+                    onClick={() => loadBrowse(browsePage + 1)}
+                  >
+                    {t("skills.nextPage")}
+                  </button>
+                </div>
+              )}
+              {installMsg && <p className="install-msg">{installMsg}</p>}
+            </div>
+          </div>
         </div>
       )}
     </div>
