@@ -1767,12 +1767,14 @@ function SettingsPanel() {
       apiKey: p.apiKey,
     });
     setShowApiKey(false);
+    setShowProviderModal(true);
   };
 
   const openNewProvider = () => {
     setEditingProvider({ id: "", name: "", value: "", baseUrl: "", apiKeyEnv: "", apiKey: "", isBuiltin: false, sortOrder: 0, createdAt: 0, updatedAt: 0 });
     setProviderForm({ name: "", value: "", baseUrl: "", apiKeyEnv: "", apiKey: "" });
     setShowApiKey(false);
+    setShowProviderModal(true);
   };
 
   const closeProviderModal = () => {
@@ -1972,8 +1974,8 @@ function SettingsPanel() {
         <div className="settings-sidebar-title">{t("settings.title")}</div>
         <nav className="settings-nav">
           {([
-            { key: "agent", icon: "👾", labelKey: "nav.agent" as const, dirty: sectionDirtyCount("model") },
             { key: "provider", icon: "🔌", labelKey: "nav.provider" as const, dirty: 0 },
+            { key: "agent", icon: "👾", labelKey: "nav.agent" as const, dirty: sectionDirtyCount("model") },
             { key: "gesture", icon: "💃", labelKey: "nav.gesture" as const, dirty: 0 },
             { key: "cardManager", icon: "🃏", labelKey: "nav.cardManager" as const, dirty: 0 },
             { key: "system", icon: "⚙️", labelKey: "nav.system" as const, dirty: sectionDirtyCount("system") },
@@ -2029,12 +2031,6 @@ function SettingsPanel() {
                           <option key={p.id} value={p.value}>{p.name}</option>
                         ))}
                       </select>
-                      <button type="button" className="provider-manage-btn" onClick={() => { setEditingProvider(null); setShowProviderModal(true); }} title="管理供应商">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="3"/>
-                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                        </svg>
-                      </button>
                     </div>
                   </div>
                   <div className="form-group">
@@ -2112,42 +2108,61 @@ function SettingsPanel() {
           {activeSection === "provider" && (
             <div className="settings-section-card">
               <div className="settings-section">
-                <h3>{t("provider.title")}</h3>
-                <div className="settings-section providers-inline-section">
-                  {providers.length === 0 && (
-                    <div className="provider-empty">
-                      <p style={{ color: '#999', textAlign: 'center', padding: '20px 0' }}>{t("provider.empty")}</p>
-                    </div>
-                  )}
-                  <div className="provider-list">
-                    {providers.map((p) => (
-                      <div key={p.id} className="provider-item">
-                        <div className="provider-info">
-                          <span className="provider-name">{p.name}</span>
-                          <span className="provider-value">{p.value}</span>
-                          {p.baseUrl && <span className="provider-url">{p.baseUrl}</span>}
-                          {p.isBuiltin && <span className="provider-builtin-tag">{t("provider.builtin")}</span>}
+                <div className="provider-section-header">
+                  <h3>{t("provider.title")}</h3>
+                  <button className="provider-add-header-btn" onClick={openNewProvider}>
+                    <span className="provider-add-icon">+</span>
+                    {t("provider.add")}
+                  </button>
+                </div>
+                {providers.length === 0 && (
+                  <div className="provider-empty">
+                    <span className="provider-empty-icon">🔌</span>
+                    <p>{t("provider.empty")}</p>
+                  </div>
+                )}
+                <div className="provider-card-list">
+                  {providers.map((p, index) => (
+                    <div key={p.id} className="provider-card" style={{ animationDelay: `${index * 0.05}s` }}>
+                      <div className="provider-card-left">
+                        <div className="provider-card-icon">
+                          {p.name === "OpenAI" ? "🤖" : p.name === "Anthropic" ? "🧠" : p.name === "Google" ? "🔍" : p.name === "xAI" ? "🚀" : p.name === "Mistral" ? "🌀" : p.name === "DeepSeek" ? "🔮" : "🔌"}
                         </div>
-                        <div className="provider-item-actions">
-                          <button className="provider-item-btn" onClick={() => openEditProvider(p)} disabled={p.isBuiltin} title={p.isBuiltin ? "内置供应商不可编辑" : "编辑"}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                            </svg>
-                          </button>
-                          <button className="provider-item-btn provider-delete-btn" onClick={() => handleDeleteProvider(p.id)} disabled={p.isBuiltin} title={p.isBuiltin ? "内置供应商不可删除" : "删除"}>
+                        <div className="provider-card-info">
+                          <div className="provider-card-name-row">
+                            <span className="provider-card-name">{p.name}</span>
+                            {p.isBuiltin && <span className="provider-source-tag provider-source-builtin">{t("provider.builtin")}</span>}
+                            {!p.isBuiltin && <span className="provider-source-tag provider-source-custom">{t("provider.custom")}</span>}
+                            <span className={`provider-key-tag ${p.apiKey ? 'provider-key-configured' : 'provider-key-missing'}`}>
+                              {p.apiKey ? '🔑 ' + t("provider.keyConfigured") : '⚠️ ' + t("provider.keyMissing")}
+                            </span>
+                          </div>
+                          <div className="provider-card-meta">
+                            <span className="provider-meta-item provider-meta-value">{p.value}</span>
+                            {p.baseUrl && <span className="provider-meta-item provider-meta-url">{p.baseUrl}</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="provider-card-actions">
+                        <button className="provider-action-btn provider-action-edit" onClick={() => openEditProvider(p)} title={t("provider.edit")}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                          {t("provider.edit")}
+                        </button>
+                        {!p.isBuiltin && (
+                          <button className="provider-action-btn provider-action-delete" onClick={() => handleDeleteProvider(p.id)} title={t("provider.delete")}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <polyline points="3 6 5 6 21 6"/>
                               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                             </svg>
+                            {t("provider.delete")}
                           </button>
-                        </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                  <div className="provider-add-bar">
-                    <button className="section-save-btn" onClick={openNewProvider}>{t("provider.add")}</button>
-                  </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -2499,83 +2514,135 @@ function SettingsPanel() {
 
       {showProviderModal && (
         <div className="modal-overlay" onClick={closeProviderModal}>
-          <div className="modal-content" style={{ width: '480px' }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content provider-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{editingProvider && editingProvider.id ? `编辑供应商: ${editingProvider.name}` : editingProvider ? "添加新供应商" : "供应商管理"}</h3>
-              <button className="modal-close-btn" onClick={closeProviderModal}>✕</button>
+              <h3>{editingProvider && editingProvider.id ? t("provider.editTitle", { name: editingProvider.name }) : editingProvider ? t("provider.addTitle") : t("provider.manageTitle")}</h3>
+              <button className="modal-close" onClick={closeProviderModal}>✕</button>
             </div>
 
             {editingProvider ? (
-              <div className="provider-form">
-                <div className="form-group">
-                  <label>名称</label>
-                  <input type="text" value={providerForm.name} onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })} placeholder="如: OpenAI" />
-                </div>
-                {editingProvider.isBuiltin ? (
-                  <div className="form-group">
-                    <label>标识 (内置，不可修改)</label>
-                    <input type="text" value={editingProvider.value} readOnly style={{ background: '#F5F5F7', color: '#999' }} />
+              <div className="provider-edit-form">
+                <div className="provider-edit-section">
+                  <div className="provider-edit-section-title">
+                    <span className="provider-edit-section-icon">📋</span>
+                    {t("provider.basicInfo")}
                   </div>
-                ) : (
-                  <div className="form-group">
-                    <label>标识 (value)</label>
-                    <input type="text" value={providerForm.value} onChange={(e) => setProviderForm({ ...providerForm, value: e.target.value })} placeholder="如: openai" />
-                  </div>
-                )}
-                <div className="form-group">
-                  <label>API Base URL</label>
-                  <input type="text" value={providerForm.baseUrl} onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" />
-                </div>
-                <div className="form-group">
-                  <label>API Key 环境变量名</label>
-                  <input type="text" value={providerForm.apiKeyEnv} onChange={(e) => setProviderForm({ ...providerForm, apiKeyEnv: e.target.value })} placeholder="OPENAI_API_KEY" />
-                </div>
-                <div className="form-group">
-                  <label>API Key</label>
-                  <div className="api-key-input-row">
-                    <input
-                      type={showApiKey ? "text" : "password"}
-                      value={providerForm.apiKey}
-                      onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
-                      placeholder="sk-..."
-                    />
-                    <button type="button" className="api-key-toggle-btn" onClick={() => setShowApiKey(!showApiKey)}>
-                      {showApiKey ? "🙈" : "👁"}
-                    </button>
+                  <div className="provider-edit-fields">
+                    <div className="form-group">
+                      <label>{t("provider.nameLabel")}</label>
+                      <input
+                        type="text"
+                        value={providerForm.name}
+                        onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })}
+                        placeholder={t("provider.namePlaceholder")}
+                        readOnly={editingProvider.isBuiltin}
+                        className={editingProvider.isBuiltin ? 'readonly-input' : ''}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>{editingProvider.isBuiltin ? t("provider.identifierBuiltin") : t("provider.identifierLabel")}</label>
+                      <input
+                        type="text"
+                        value={editingProvider.isBuiltin ? editingProvider.value : providerForm.value}
+                        onChange={(e) => setProviderForm({ ...providerForm, value: e.target.value })}
+                        placeholder={t("provider.identifierPlaceholder")}
+                        readOnly={editingProvider.isBuiltin}
+                        className={editingProvider.isBuiltin ? 'readonly-input' : ''}
+                      />
+                    </div>
                   </div>
                 </div>
-                <div className="provider-form-actions">
-                  <button className="provider-cancel-btn" onClick={() => { setEditingProvider(null); }}>← 返回列表</button>
-                  <button className="provider-save-btn" onClick={handleSaveProvider}>保存</button>
+
+                <div className="provider-edit-section">
+                  <div className="provider-edit-section-title">
+                    <span className="provider-edit-section-icon">🌐</span>
+                    {t("provider.apiConfig")}
+                  </div>
+                  <div className="provider-edit-fields">
+                    <div className="form-group">
+                      <label>{t("provider.baseUrlLabel")}</label>
+                      <input
+                        type="text"
+                        value={providerForm.baseUrl}
+                        onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })}
+                        placeholder={t("provider.baseUrlPlaceholder")}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>{t("provider.apiKeyEnvLabel")}</label>
+                      <input
+                        type="text"
+                        value={providerForm.apiKeyEnv}
+                        onChange={(e) => setProviderForm({ ...providerForm, apiKeyEnv: e.target.value })}
+                        placeholder={t("provider.apiKeyEnvPlaceholder")}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>{t("provider.apiKeyLabel")}</label>
+                      <div className="api-key-input-row">
+                        <input
+                          type={showApiKey ? "text" : "password"}
+                          value={providerForm.apiKey}
+                          onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
+                          placeholder={t("provider.apiKeyPlaceholder")}
+                        />
+                        <button type="button" className="api-key-toggle-btn" onClick={() => setShowApiKey(!showApiKey)}>
+                          {showApiKey ? "🙈" : "👁"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="provider-edit-actions">
+                  <button className="provider-edit-cancel" onClick={() => { setEditingProvider(null); }}>
+                    {t("provider.backToList")}
+                  </button>
+                  <button className="provider-edit-save" onClick={handleSaveProvider}>
+                    {t("provider.save")}
+                  </button>
                 </div>
               </div>
             ) : (
-              <div>
-                <div className="provider-list">
-                  {providers.map(p => (
-                    <div key={p.id} className="provider-item">
-                      <div className="provider-item-info">
-                        <div className="provider-item-name">
+              <div className="provider-modal-list">
+                {providers.map(p => (
+                  <div key={p.id} className="provider-modal-item">
+                    <div className="provider-modal-item-left">
+                      <div className="provider-modal-item-icon">
+                        {p.name === "OpenAI" ? "🤖" : p.name === "Anthropic" ? "🧠" : p.name === "Google" ? "🔍" : p.name === "xAI" ? "🚀" : p.name === "Mistral" ? "🌀" : p.name === "DeepSeek" ? "🔮" : "🔌"}
+                      </div>
+                      <div className="provider-modal-item-info">
+                        <div className="provider-modal-item-name">
                           {p.name}
-                          {p.isBuiltin && <span style={{ fontSize: '10px', color: '#999', marginLeft: '4px' }}>[内置]</span>}
-                          <span className={`api-key-badge ${p.apiKey ? 'configured' : 'missing'}`}>
-                            {p.apiKey ? '密钥已配置' : '未配置密钥'}
+                          {p.isBuiltin && <span className="provider-source-tag provider-source-builtin">{t("provider.builtin")}</span>}
+                          <span className={`provider-key-tag ${p.apiKey ? 'provider-key-configured' : 'provider-key-missing'}`}>
+                            {p.apiKey ? '🔑' : '⚠️'}
                           </span>
                         </div>
-                        <div className="provider-item-value">{p.value}</div>
-                        {p.baseUrl && <div className="provider-item-url">{p.baseUrl}</div>}
-                      </div>
-                      <div className="provider-item-actions">
-                        <button className="provider-edit-btn" onClick={() => openEditProvider(p)} title="编辑">✏️</button>
-                        {!p.isBuiltin && (
-                          <button className="provider-delete-btn" onClick={() => handleDeleteProvider(p.id)} title="删除">🗑️</button>
-                        )}
+                        <div className="provider-modal-item-value">{p.value}</div>
+                        {p.baseUrl && <div className="provider-modal-item-url">{p.baseUrl}</div>}
                       </div>
                     </div>
-                  ))}
-                </div>
-                <button className="provider-add-btn" onClick={() => { openNewProvider(); }}>
-                  + 添加新供应商
+                    <div className="provider-modal-item-actions">
+                      <button className="provider-action-btn provider-action-edit" onClick={() => openEditProvider(p)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
+                      {!p.isBuiltin && (
+                        <button className="provider-action-btn provider-action-delete" onClick={() => handleDeleteProvider(p.id)}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <button className="provider-modal-add-btn" onClick={() => { openNewProvider(); }}>
+                  <span>+</span> {t("provider.add")}
                 </button>
               </div>
             )}

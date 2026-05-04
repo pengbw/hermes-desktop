@@ -49,9 +49,40 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     });
   }, [locale]);
 
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        const valid = ["zh-CN", "zh-XG", "en"].includes(e.newValue);
+        if (valid) {
+          setLocaleState(e.newValue as Locale);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+
+    let unlisten: (() => void) | undefined;
+    import("@tauri-apps/api/event").then(({ listen }) => {
+      listen<{ locale: string }>("locale-changed", (event) => {
+        const valid = ["zh-CN", "zh-XG", "en"].includes(event.payload.locale);
+        if (valid) {
+          setLocaleState(event.payload.locale as Locale);
+        }
+      }).then((fn) => { unlisten = fn; }).catch(() => {});
+    }).catch(() => {});
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      if (unlisten) unlisten();
+    };
+  }, []);
+
   const setLocale = useCallback(async (l: Locale) => {
     setLocaleState(l);
     localStorage.setItem(STORAGE_KEY, l);
+    try {
+      const { emit } = await import("@tauri-apps/api/event");
+      await emit("locale-changed", { locale: l });
+    } catch {}
   }, []);
 
   const t = useCallback(
