@@ -223,6 +223,159 @@ export default function MainWindow() {
     }
   };
 
+  const sendMessageFromHome = async (cardPrompt: string, userText: string, homeFiles?: AttachedFile[]) => {
+    if (isStreaming) return;
+    const fullText = cardPrompt ? `${cardPrompt}\n\n${userText}` : userText;
+    const hasFiles = homeFiles && homeFiles.length > 0;
+    if (!fullText.trim() && !hasFiles) return;
+    const displayContent = fullText.trim() || (hasFiles ? "请分析附件中的文件" : "");
+
+    let sendContent = fullText.trim();
+    if (hasFiles) {
+      const nonImageFiles = homeFiles.filter((f) => {
+        const ext = f.name.split(".").pop()?.toLowerCase();
+        return !["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext || "");
+      });
+      if (nonImageFiles.length > 0) {
+        const fileList = nonImageFiles.map((f) => `- ${f.name}: ${f.path}`).join("\n");
+        sendContent = `${sendContent}\n\n附件文件路径：\n${fileList}`;
+      }
+    }
+    const firstImage = hasFiles ? homeFiles.find((f) => {
+      const ext = f.name.split(".").pop()?.toLowerCase();
+      return ext && ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext);
+    }) : undefined;
+
+    const filesJson = hasFiles ? JSON.stringify(homeFiles) : undefined;
+
+    setActiveTab("chat");
+
+    setTimeout(async () => {
+      try {
+        const conv = await invoke<Conversation>("create_conversation", {
+          req: { title: userText.trim().slice(0, 30) || displayContent.slice(0, 30) },
+        });
+        const convId = conv.id;
+        setConversations((prev) => [conv, ...prev]);
+        currentConversationIdRef.current = convId;
+        setCurrentConversationId(convId);
+
+        const userMsg: Message = {
+          id: Date.now().toString(),
+          role: "user",
+          content: displayContent,
+          files: filesJson,
+          timestamp: Date.now(),
+        };
+        try {
+          await invoke("create_message", {
+            req: {
+              conversationId: convId,
+              role: "user",
+              content: userMsg.content,
+              thinking: null,
+              files: filesJson || null,
+            },
+          });
+        } catch {}
+
+        const cached = messagesMapRef.current.get(convId) || [];
+        cached.push(userMsg);
+        messagesMapRef.current.set(convId, cached);
+
+        const updateChatState = (id: string, update: Partial<ChatSessionState>) => {
+          const current = chatStatesRef.current.get(id) || { ...DEFAULT_CHAT_STATE };
+          chatStatesRef.current.set(id, { ...current, ...update });
+          if (id === currentConversationIdRef.current) {
+            if (update.isStreaming !== undefined) setIsStreaming(update.isStreaming);
+            if (update.isThinking !== undefined) setIsThinking(update.isThinking);
+            if (update.thinkingContent !== undefined) setThinkingContent(update.thinkingContent);
+            if (update.toolProgress !== undefined) setToolProgress(update.toolProgress);
+            if (update.streamedContent !== undefined) { setStreamedContent(update.streamedContent); streamedContentRef.current = update.streamedContent; }
+          }
+        };
+
+        const updateChatMessages = (id: string, updater: (prev: Message[]) => Message[]) => {
+          const prev = messagesMapRef.current.get(id) || [];
+          const next = updater(prev);
+          messagesMapRef.current.set(id, next);
+          if (id === currentConversationIdRef.current) {
+            setMessages(next);
+          }
+        };
+
+        setMessages(cached);
+        updateChatState(convId, { isStreaming: true, isThinking: true, thinkingContent: "", streamedContent: "", toolProgress: "" });
+
+        const eventId = `chat_stream_${convId}`;
+        let fullContent = "";
+
+        const unlisten = await listen<{
+          chunk: string;
+          done: boolean;
+          event_type?: string;
+          tool_name?: string;
+          tool_label?: string;
+        }>(eventId, (event) => {
+          const { chunk, done, event_type, tool_label } = event.payload;
+
+          if (done) {
+            const assistantMsg: Message = {
+              id: (Date.now() + 1).toString(),
+              role: "assistant",
+              content: fullContent,
+              timestamp: Date.now(),
+            };
+            updateChatMessages(convId, (prev) => [...prev, assistantMsg]);
+            updateChatState(convId, { isStreaming: false, isThinking: false, toolProgress: "" });
+
+            (async () => {
+              try {
+                await invoke("create_message", {
+                  req: {
+                    conversationId: convId,
+                    role: "assistant",
+                    content: fullContent,
+                    thinking: null,
+                  },
+                });
+                loadConversations();
+              } catch (saveErr) {
+                console.error("Failed to save assistant message:", saveErr);
+              }
+            })();
+
+            unlisten();
+          } else if (event_type === "tool_progress") {
+            updateChatState(convId, { toolProgress: tool_label || chunk, isThinking: true });
+          } else if (event_type === "error") {
+            updateChatState(convId, { toolProgress: "", isThinking: false });
+          } else {
+            fullContent += chunk;
+            updateChatState(convId, { streamedContent: fullContent, isThinking: false, toolProgress: "" });
+          }
+        });
+
+        try {
+          await invoke("chat_with_hermes_api", {
+            message: sendContent,
+            sessionId: null,
+            model: null,
+            provider: null,
+            image: firstImage?.path || null,
+            eventId: eventId,
+          });
+        } catch (err) {
+          console.error("Chat API error:", err);
+          updateChatState(convId, { isStreaming: false, isThinking: false, toolProgress: "" });
+          unlisten();
+        }
+      } catch (err) {
+        console.error("Failed to start chat from home:", err);
+      }
+    }, 50);
+  };
+
   const sendMessage = async (attachedFiles?: string, model?: string, provider?: string, image?: string) => {
     if ((!input.trim() && !attachedFiles) || isStreaming) return;
 
@@ -427,7 +580,11 @@ export default function MainWindow() {
       {/* 内容区 */}
       <div className="content-area">
         {activeTab === "home" && (
-          <HomePanel t={t} onStartChat={() => setActiveTab("chat")} conversationCount={conversations.length} />
+          <HomePanel
+            t={t}
+            sendMessage={sendMessageFromHome}
+            isStreaming={isStreaming}
+          />
         )}
         {activeTab === "chat" && (
           <ChatPanel
@@ -458,52 +615,133 @@ export default function MainWindow() {
   );
 }
 
-// ── Hermes Agent 信息类型 ──
-interface HermesInfo {
-  installed: boolean;
-  running: boolean;
-  version: string;
-  python: string;
-  model: string;
-  provider: string;
-  project_path: string;
-  api_keys: { name: string; configured: boolean }[];
+// ── 快捷对话卡片类型 ──
+interface QuickCard {
+  id: string;
+  name: string;
+  icon: string;
+  prompt: string;
+  source: "builtin" | "custom";
 }
 
-// ── 首页 ──
-function HomePanel({ t, onStartChat, conversationCount }: { t: (key: string, params?: Record<string, string | number>) => string; onStartChat: () => void; conversationCount: number }) {
-  const [hermesInfo, setHermesInfo] = useState<HermesInfo | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+const BUILTIN_CARDS: QuickCard[] = [
+  { id: "mindmap", name: "思维导图", icon: "🧠", prompt: "请帮我生成一个关于「主题」的思维导图，用markdown格式列出清晰的层级结构，包含中心主题、主要分支和细节要点。", source: "builtin" },
+  { id: "weekly", name: "周报生成", icon: "📊", prompt: "请根据以下工作内容，帮我生成一份结构清晰的专业周报，包含本周完成事项（分类列出）、下周工作计划、遇到的风险和解决方案三个部分。", source: "builtin" },
+  { id: "codereview", name: "代码审查", icon: "🔍", prompt: "请对以下代码进行详细审查，从以下几个方面分析：1.逻辑缺陷和潜在bug 2.性能瓶颈和优化建议 3.安全漏洞 4.代码可读性和维护性改进建议。", source: "builtin" },
+  { id: "translator", name: "翻译助手", icon: "🌐", prompt: "请将以下内容翻译成英文，要求：1.保持专业严谨的技术术语 2.语句流畅自然，符合英文表达习惯 3.完整保留原文信息不遗漏。", source: "builtin" },
+  { id: "summary", name: "文章总结", icon: "📝", prompt: "请用简洁精炼的语言总结以下文章的3-5个核心观点，每个观点用一句话概括，然后给出一个整体的摘要。请保留关键数据和结论。", source: "builtin" },
+  { id: "brainstorm", name: "头脑风暴", icon: "💡", prompt: "请针对「项目/想法」进行头脑风暴，提供10个创意方向或改进思路，每个方向附带简要说明和可行性评估（高/中/低）。", source: "builtin" },
+  { id: "explain", name: "通俗解释", icon: "🎓", prompt: "请用通俗易懂的方式向非专业人士解释以下概念。要求：1.使用生动的比喻 2.避免使用专业术语 3.分步骤说明 4.控制在500字以内。", source: "builtin" },
+  { id: "social", name: "社交媒体", icon: "📱", prompt: "请为以下内容生成适合发布在微博/小红书/朋友圈的社交媒体文案。要求：1.风格活泼有吸引力 2.添加合适的emoji 3.包含2-3个版本供选择 4.附带合适的#话题标签。", source: "builtin" },
+];
 
-  const loadHermesInfo = async () => {
-    try {
-      const info = await invoke<HermesInfo>("get_hermes_info");
-      setHermesInfo(info);
-    } catch (err) {
-      console.error("Failed to get hermes info:", err);
-      setHermesInfo(null);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+const CARDS_STORAGE_KEY = "hermes-custom-cards";
+
+function loadCustomCards(): QuickCard[] {
+  try {
+    const stored = localStorage.getItem(CARDS_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomCards(cards: QuickCard[]) {
+  localStorage.setItem(CARDS_STORAGE_KEY, JSON.stringify(cards));
+}
+
+interface AttachedFile {
+  name: string;
+  path: string;
+}
+
+function HomePanel({
+  t,
+  sendMessage,
+  isStreaming,
+}: {
+  t: (key: string, params?: Record<string, string | number>) => string;
+  sendMessage: (cardPrompt: string, userText: string, homeFiles?: AttachedFile[]) => Promise<void>;
+  isStreaming: boolean;
+}) {
+  const [cardIndex, setCardIndex] = useState(0);
+  const [homeInput, setHomeInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const customCards = loadCustomCards();
+  const allCards = [...BUILTIN_CARDS, ...customCards];
+  const cardsPerRow = 4;
+
+  const processFiles = async (fileList: FileList): Promise<AttachedFile[]> => {
+    const result: AttachedFile[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i];
+      try {
+        const buffer = await f.arrayBuffer();
+        const bytes = Array.from(new Uint8Array(buffer));
+        const tempPath = await invoke<string>("save_temp_file", {
+          fileName: f.name,
+          fileBytes: bytes,
+        });
+        result.push({ name: f.name, path: tempPath });
+      } catch (e) {
+        console.error("Failed to save temp file:", f.name, e);
+      }
+    }
+    return result;
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newFiles = await processFiles(files);
+    if (newFiles.length > 0) setAttachedFiles((prev) => [...prev, ...newFiles]);
+    e.target.value = "";
+  };
+
+  const removeFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
+  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation(); setIsDragging(false);
+    const files = e.dataTransfer.files;
+    const newFiles = await processFiles(files);
+    if (newFiles.length > 0) setAttachedFiles((prev) => [...prev, ...newFiles]);
+  };
+
+  const visibleCards = allCards.slice(cardIndex * cardsPerRow, (cardIndex + 1) * cardsPerRow);
+
+  const handleCardClick = (card: QuickCard) => {
+    if (isStreaming) return;
+    sendMessage(card.prompt, "");
+  };
+
+  const handleSend = () => {
+    if ((!homeInput.trim() && attachedFiles.length === 0) || isStreaming) return;
+    sendMessage("", homeInput.trim(), attachedFiles.length > 0 ? attachedFiles : undefined);
+    setHomeInput("");
+    setAttachedFiles([]);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
     }
   };
 
-  useEffect(() => {
-    loadHermesInfo();
-    // 每 30s 自动刷新状态
-    const timer = setInterval(loadHermesInfo, 30000);
-    return () => clearInterval(timer);
-  }, []);
-
   const handleRefresh = () => {
-    setRefreshing(true);
-    loadHermesInfo();
+    const maxIndex = Math.floor((allCards.length - 1) / cardsPerRow);
+    if (maxIndex <= 0) return;
+    let next = cardIndex + 1;
+    if (next > maxIndex) next = 0;
+    setCardIndex(next);
   };
-
-  const isOnline = hermesInfo?.installed && hermesInfo?.running;
-  const versionShort = hermesInfo?.version?.match(/v[\d.]+/)?.[0] || "-";
-  const configuredKeys = hermesInfo?.api_keys?.filter(k => k.configured) || [];
 
   return (
     <div className="panel home-panel">
@@ -515,98 +753,127 @@ function HomePanel({ t, onStartChat, conversationCount }: { t: (key: string, par
         <p>{t("app.desc")}</p>
       </div>
 
-      <div className="home-quick-actions">
-        <button className="quick-action-btn" onClick={onStartChat}>
-          {t("home.quickChat")}
-        </button>
-        <button className="quick-action-btn" onClick={() => window.location.search = "?tab=settings"}>
-          {t("home.openSettings")}
-        </button>
-        <button className="quick-action-btn" onClick={() => window.location.search = "?tab=skills"}>
-          {t("tabs.skills")}
-        </button>
-      </div>
-
-      {/* Agent 状态概览 */}
-      <div className="home-stats">
-        <div className="stat-card">
-          <span className="stat-num">{loading ? "..." : versionShort}</span>
-          <span className="stat-label">{t("home.agentVersion")}</span>
-        </div>
-        <div className="stat-card">
-          <span className={`stat-num status-dot ${isOnline ? "online" : "offline"}`}>
-            {loading ? "..." : isOnline ? "● " + t("home.online") : "● " + t("home.offline")}
-          </span>
-          <span className="stat-label">{t("home.agentStatus")}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-num">{conversationCount}</span>
-          <span className="stat-label">{t("home.conversations")}</span>
-        </div>
-      </div>
-
-      {/* Agent 详细信息卡片 */}
-      {hermesInfo && hermesInfo.installed && (
-        <div className="agent-info-section">
-          <div className="agent-info-header">
-            <h3>🤖 Hermes Agent</h3>
-            <button
-              className="refresh-btn"
-              onClick={handleRefresh}
-              disabled={refreshing}
+      <div className="home-cards-section">
+        <div className="home-cards-grid">
+          {visibleCards.map((card, i) => (
+            <div
+              key={`${card.id}-${i}`}
+              className={`home-card ${card.source}`}
+              onClick={() => handleCardClick(card)}
             >
-              {refreshing ? "刷新中..." : "🔄 刷新"}
-            </button>
-          </div>
-          <div className="agent-info-grid">
-            <div className="agent-info-item">
-              <span className="info-label">版本</span>
-              <span className="info-value">{hermesInfo.version || "-"}</span>
-            </div>
-            <div className="agent-info-item">
-              <span className="info-label">模型</span>
-              <span className="info-value highlight">{hermesInfo.model || "未配置"}</span>
-            </div>
-            <div className="agent-info-item">
-              <span className="info-label">Provider</span>
-              <span className="info-value">{hermesInfo.provider || "未配置"}</span>
-            </div>
-            <div className="agent-info-item">
-              <span className="info-label">Python</span>
-              <span className="info-value">{hermesInfo.python || "-"}</span>
-            </div>
-            <div className="agent-info-item full-width">
-              <span className="info-label">项目路径</span>
-              <span className="info-value mono">{hermesInfo.project_path || "-"}</span>
-            </div>
-          </div>
-
-          {/* API Keys 状态 */}
-          {hermesInfo.api_keys.length > 0 && (
-            <div className="api-keys-section">
-              <h4>🔑 API Keys ({configuredKeys.length}/{hermesInfo.api_keys.length})</h4>
-              <div className="api-keys-grid">
-                {hermesInfo.api_keys.map((key) => (
-                  <div key={key.name} className={`api-key-badge ${key.configured ? "configured" : "missing"}`}>
-                    <span className="key-indicator">{key.configured ? "✓" : "✗"}</span>
-                    <span className="key-name">{key.name}</span>
-                  </div>
-                ))}
+              <span className="home-card-icon">{card.icon}</span>
+              <div className="home-card-info">
+                <span className="home-card-name">{t(`home.card.${card.id}`) || card.name}</span>
+                <span className="home-card-desc">{t(`home.card.${card.id}Desc`) || card.prompt.slice(0, 30)}</span>
               </div>
             </div>
-          )}
+          ))}
         </div>
-      )}
+        {allCards.length > cardsPerRow && (
+          <button
+            className="home-refresh-btn"
+            onClick={handleRefresh}
+            title={t("home.cardRefresh")}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+            <span>{t("home.cardRefresh")}</span>
+          </button>
+        )}
+      </div>
 
-      {/* Agent 未安装提示 */}
-      {hermesInfo && !hermesInfo.installed && (
-        <div className="agent-not-found">
-          <span className="warning-icon">⚠️</span>
-          <h3>Hermes Agent 未安装</h3>
-          <p>请先安装 Hermes Agent 以使用对话功能</p>
-          <code>pip install hermes-agent</code>
+      <div
+        className={`home-input-area ${isDragging ? "dragging" : ""}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {isDragging && (
+          <div className="drag-overlay">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span>{t("chat.dropFiles")}</span>
+          </div>
+        )}
+        {attachedFiles.length > 0 && (
+          <div className="file-display-area">
+            <div className="file-display-list">
+              {attachedFiles.map((f, i) => (
+                <div key={i} className="file-display-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                    <polyline points="13 2 13 9 20 9" />
+                  </svg>
+                  <span className="file-display-name">{f.name}</span>
+                  <button className="file-display-remove" onClick={() => removeFile(i)}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="chat-input-box home-input-box">
+          <textarea
+            ref={textareaRef}
+            className="chat-input"
+            value={homeInput}
+            onChange={(e) => setHomeInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={t("home.cardInputPlaceholder")}
+            rows={1}
+            disabled={isStreaming}
+          />
+          <div className="chat-input-toolbar">
+            <div className="toolbar-left">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                style={{ display: "none" }}
+                onChange={handleFileSelect}
+              />
+              <button
+                className="toolbar-btn"
+                onClick={() => fileInputRef.current?.click()}
+                title="上传附件"
+                disabled={isStreaming}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
+              </button>
+              <button
+                className="toolbar-btn mic-btn"
+                title="语音输入（即将推出）"
+                disabled
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              </button>
+            </div>
+            <div className="toolbar-right">
+              <button
+                className="send-btn"
+                onClick={handleSend}
+                disabled={isStreaming || (!homeInput.trim() && attachedFiles.length === 0)}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -629,11 +896,6 @@ interface ChatPanelProps {
   streamedContent: string;
   toolProgress: string;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
-}
-
-interface AttachedFile {
-  name: string;
-  path: string;
 }
 
 function ChatPanel({
@@ -668,6 +930,10 @@ function ChatPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [convSearch, setConvSearch] = useState("");
+  const [convPage, setConvPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -832,6 +1098,38 @@ function ChatPanel({
     setRenamingId(null);
   };
 
+  const groupConversations = (convs: Conversation[]) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today.getTime() - 86400000);
+    const weekAgo = new Date(today.getTime() - 7 * 86400000);
+    const groups: { label: string; items: Conversation[] }[] = [];
+    const todayItems: Conversation[] = [];
+    const yesterdayItems: Conversation[] = [];
+    const weekItems: Conversation[] = [];
+    const earlierItems: Conversation[] = [];
+    convs.forEach((c) => {
+      const d = new Date(c.createdAt);
+      if (d >= today) todayItems.push(c);
+      else if (d >= yesterday) yesterdayItems.push(c);
+      else if (d >= weekAgo) weekItems.push(c);
+      else earlierItems.push(c);
+    });
+    if (todayItems.length) groups.push({ label: "chat.today", items: todayItems });
+    if (yesterdayItems.length) groups.push({ label: "chat.yesterday", items: yesterdayItems });
+    if (weekItems.length) groups.push({ label: "chat.thisWeek", items: weekItems });
+    if (earlierItems.length) groups.push({ label: "chat.earlier", items: earlierItems });
+    return groups;
+  };
+
+  const filteredConvs = conversations
+    .filter((c) => convSearch ? c.title.toLowerCase().includes(convSearch.toLowerCase()) : true)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const totalFiltered = filteredConvs.length;
+  const totalPages = Math.ceil(totalFiltered / PAGE_SIZE);
+  const paginatedConvs = filteredConvs.slice((convPage - 1) * PAGE_SIZE, convPage * PAGE_SIZE);
+  const paginatedGroups = groupConversations(paginatedConvs);
+
   const renderConvItem = (conv: Conversation, extraClass: string = "") => {
     const isRenaming = renamingId === conv.id;
     return (
@@ -855,6 +1153,9 @@ function ChatPanel({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
+          <span className="conv-icon">💬</span>
+        )}
+        {isRenaming ? null : (
           <span className="conv-title">{conv.title}</span>
         )}
         <button
@@ -873,12 +1174,69 @@ function ChatPanel({
   return (
     <div className="chat-layout">
       {/* 侧边栏 - 对话列表 */}
-      <div className="chat-sidebar">
-        <button className="new-chat-btn" onClick={onNewConversation}>
-          {t("chat.newChat")}
-        </button>
-        <div className="conversation-list">
-          {conversations.map((conv) => renderConvItem(conv))}
+      <div className={`chat-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
+        <div className="chat-sidebar-header">
+          {!sidebarCollapsed && (
+            <>
+              <button className="new-chat-btn" onClick={onNewConversation}>
+                {t("chat.newChat")}
+              </button>
+              <div className="chat-search-box">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  className="chat-search-input"
+                  type="text"
+                  placeholder={t("chat.search")}
+                  value={convSearch}
+                  onChange={(e) => { setConvSearch(e.target.value); setConvPage(1); }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+        {!sidebarCollapsed && (
+          <div className="conversation-list">
+            {paginatedGroups.map((group) => (
+              <div key={group.label} className="conv-group">
+                <div className="conv-group-label">{t(group.label)}</div>
+                {group.items.map((conv) => renderConvItem(conv))}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="chat-sidebar-footer">
+          {!sidebarCollapsed && (
+            <div className="conv-pagination">
+              <button className="page-nav-btn" disabled={convPage <= 1} onClick={() => setConvPage(1)}>
+                {t("chat.firstPage")}
+              </button>
+              <button className="page-nav-btn" disabled={convPage <= 1} onClick={() => setConvPage((p) => Math.max(1, p - 1))}>
+                {t("chat.prevPage")}
+              </button>
+              <button className="page-nav-btn" disabled={convPage >= totalPages} onClick={() => setConvPage((p) => Math.min(totalPages, p + 1))}>
+                {t("chat.nextPage")}
+              </button>
+              <button className="page-nav-btn" disabled={convPage >= totalPages} onClick={() => setConvPage(totalPages)}>
+                {t("chat.lastPage")}
+              </button>
+            </div>
+          )}
+          <button
+            className="sidebar-toggle-btn"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? t("chat.expand") : t("chat.collapse")}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {sidebarCollapsed ? (
+                <polyline points="9 18 15 12 9 6" />
+              ) : (
+                <polyline points="15 18 9 12 15 6" />
+              )}
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -887,7 +1245,7 @@ function ChatPanel({
         <div className="messages-list">
           {messages.length === 0 && !isStreaming && (
             <div className="empty-chat">
-              <span>🗨️ 开始和小跃对话吧</span>
+              <span>{t("chat.emptyChat")}</span>
             </div>
           )}
           {messages.map((msg) => {
@@ -900,7 +1258,7 @@ function ChatPanel({
                 <div className="message-bubble">
                   {msg.thinking && (
                     <div className="thinking-block">
-                      <span className="thinking-label thinking-label-done">思考过程</span>
+                      <span className="thinking-label thinking-label-done">{t("chat.thinkingProcess")}</span>
                       <pre className="thinking-content">{msg.thinking}</pre>
                     </div>
                   )}
@@ -964,7 +1322,7 @@ function ChatPanel({
                 <polyline points="17 8 12 3 7 8" />
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
-              <span>释放文件以上传</span>
+              <span>{t("chat.dropFiles")}</span>
             </div>
           )}
           {attachedFiles.length > 0 && (
@@ -990,7 +1348,7 @@ function ChatPanel({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDownLocal}
-              placeholder="输入消息，Enter 发送，Shift+Enter 换行..."
+              placeholder={t("chat.inputPlaceholder")}
               rows={1}
               disabled={isStreaming}
             />
@@ -1089,6 +1447,137 @@ function ChatPanel({
                 </div>
               </div>
             </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 卡片管理 ──
+function CardManagerPanel({ t }: { t: (key: string, params?: Record<string, string | number>) => string }) {
+  const [cards, setCards] = useState<QuickCard[]>(loadCustomCards());
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", icon: "📌", prompt: "" });
+
+  const handleSave = () => {
+    if (!form.name.trim() || !form.prompt.trim()) return;
+    const newCards = cards.slice();
+    if (editId) {
+      const idx = newCards.findIndex((c) => c.id === editId);
+      if (idx >= 0) {
+        newCards[idx] = { ...newCards[idx], name: form.name, icon: form.icon, prompt: form.prompt };
+      }
+    } else {
+      newCards.push({
+        id: `custom_${Date.now()}`,
+        name: form.name,
+        icon: form.icon,
+        prompt: form.prompt,
+        source: "custom",
+      });
+    }
+    setCards(newCards);
+    saveCustomCards(newCards);
+    setShowForm(false);
+    setEditId(null);
+    setForm({ name: "", icon: "📌", prompt: "" });
+  };
+
+  const handleDelete = (id: string) => {
+    const newCards = cards.filter((c) => c.id !== id);
+    setCards(newCards);
+    saveCustomCards(newCards);
+  };
+
+  const handleEdit = (card: QuickCard) => {
+    setEditId(card.id);
+    setForm({ name: card.name, icon: card.icon, prompt: card.prompt });
+    setShowForm(true);
+  };
+
+  return (
+    <div className="settings-section-card">
+      <div className="settings-section">
+        <div className="card-manager-header">
+          <h3>{t("card.title")}</h3>
+          <button
+            className="card-add-btn"
+            onClick={() => { setEditId(null); setForm({ name: "", icon: "📌", prompt: "" }); setShowForm(true); }}
+          >
+            {t("card.add")}
+          </button>
+        </div>
+
+        {showForm && (
+          <div className="card-form">
+            <div className="card-form-row">
+              <label>{t("card.name")}</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder={t("card.nameHolder")}
+              />
+            </div>
+            <div className="card-form-row">
+              <label>{t("card.icon")}</label>
+              <input
+                type="text"
+                value={form.icon}
+                onChange={(e) => setForm({ ...form, icon: e.target.value })}
+                placeholder={t("card.iconHolder")}
+                maxLength={4}
+              />
+            </div>
+            <div className="card-form-row">
+              <label>{t("card.prompt")}</label>
+              <textarea
+                value={form.prompt}
+                onChange={(e) => setForm({ ...form, prompt: e.target.value })}
+                placeholder={t("card.promptHolder")}
+                rows={3}
+              />
+            </div>
+            <div className="card-form-actions">
+              <button className="card-form-btn save" onClick={handleSave}>{t("card.save")}</button>
+              <button className="card-form-btn cancel" onClick={() => { setShowForm(false); setEditId(null); }}>{t("modal.cancel")}</button>
+            </div>
+          </div>
+        )}
+
+        <div className="card-manager-builtin">
+          <h4>{t("card.builtin")}</h4>
+          <div className="card-manager-grid">
+            {BUILTIN_CARDS.map((card) => (
+              <div key={card.id} className="card-manager-item builtin">
+                <span className="card-manager-icon">{card.icon}</span>
+                <span className="card-manager-name">{t(`home.card.${card.id}`)}</span>
+                <span className="card-manager-desc">{t(`home.card.${card.id}Desc`)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card-manager-custom">
+          <h4>{t("card.custom")}</h4>
+          {cards.length === 0 ? (
+            <div className="card-manager-empty">{t("card.empty")}</div>
+          ) : (
+            <div className="card-manager-grid">
+              {cards.map((card) => (
+                <div key={card.id} className="card-manager-item custom">
+                  <span className="card-manager-icon">{card.icon}</span>
+                  <span className="card-manager-name">{card.name}</span>
+                  <span className="card-manager-desc">{card.prompt.slice(0, 50)}...</span>
+                  <div className="card-manager-actions">
+                    <button onClick={() => handleEdit(card)}>✏️</button>
+                    <button onClick={() => handleDelete(card.id)}>🗑️</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1486,6 +1975,7 @@ function SettingsPanel() {
             { key: "agent", icon: "👾", labelKey: "nav.agent" as const, dirty: sectionDirtyCount("model") },
             { key: "provider", icon: "🔌", labelKey: "nav.provider" as const, dirty: 0 },
             { key: "gesture", icon: "💃", labelKey: "nav.gesture" as const, dirty: 0 },
+            { key: "cardManager", icon: "🃏", labelKey: "nav.cardManager" as const, dirty: 0 },
             { key: "system", icon: "⚙️", labelKey: "nav.system" as const, dirty: sectionDirtyCount("system") },
             { key: "about", icon: "ℹ️", labelKey: "nav.about" as const, dirty: 0 },
           ] as const).map((item) => (
@@ -1953,6 +2443,11 @@ function SettingsPanel() {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* 卡片管理 */}
+          {activeSection === "cardManager" && (
+            <CardManagerPanel t={t} />
           )}
 
           {/* 关于 */}

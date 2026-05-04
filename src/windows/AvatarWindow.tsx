@@ -3,6 +3,7 @@ import { getCurrentWindow, primaryMonitor } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useI18n } from "../contexts/I18nContext";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRMHumanBoneName } from "@pixiv/three-vrm";
@@ -130,6 +131,7 @@ const typewriterEffect = (element: HTMLElement, text: string, speed = 50) => {
 };
 
 export default function AvatarWindow() {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -143,6 +145,10 @@ export default function AvatarWindow() {
   const bonesRef = useRef<Record<string, THREE.Object3D | null>>({});
 
   const gestureRef = useRef<{ index: number; start: number; active: boolean }>({ index: -1, start: 0, active: false });
+  const greetingRef = useRef(t("avatar.greeting"));
+  useEffect(() => {
+    greetingRef.current = t("avatar.greeting");
+  }, [t]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -497,7 +503,7 @@ export default function AvatarWindow() {
                 lookAt: { x: g.lookAtX, y: g.lookAtY },
                 tilt: g.tilt,
                 target,
-                greeting: g.name === "greeting" ? "你好呀！" : undefined,
+                greeting: g.name === "greeting" ? true : undefined,
               };
             });
           }
@@ -766,10 +772,10 @@ export default function AvatarWindow() {
                 if (g.greeting && bubble) {
                   if (t > 0.08 && !bubbleShown) {
                     bubbleShown = true;
-                    bubble.textContent = g.greeting;
+                    bubble.textContent = greetingRef.current;
                     bubble.style.opacity = "1";
                     bubble.style.transform = "translateX(-50%) scale(1)";
-                    typewriterEffect(bubble, g.greeting, 40);
+                    typewriterEffect(bubble, greetingRef.current, 40);
                   }
                   if (t > 0.6 && bubbleShown) {
                     bubbleShown = false;
@@ -922,7 +928,7 @@ export default function AvatarWindow() {
         className={`avatar-close-btn ${isHovering ? "visible" : ""}`}
         onClick={() => invoke("hide_avatar_window")}
         onMouseDown={(e) => e.stopPropagation()}
-        title="关闭数字人"
+        title={t("avatar.close")}
       >
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <line x1="18" y1="6" x2="6" y2="18" />
@@ -983,7 +989,7 @@ export default function AvatarWindow() {
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            <span>释放文件</span>
+            <span>{t("avatar.dropFiles")}</span>
           </div>
         )}
         <div className="avatar-input-row">
@@ -1033,7 +1039,7 @@ export default function AvatarWindow() {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息..."
+            placeholder={t("avatar.inputPlaceholder")}
             disabled={isWaitingResponse}
           />
           <button
