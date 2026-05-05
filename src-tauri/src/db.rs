@@ -1,12 +1,22 @@
 use serde::{Deserialize, Serialize};
 
 pub fn db_path() -> std::path::PathBuf {
-    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    let data_dir = home.join("Library").join("Application Support").join("com.hermes-desktop");
+    let data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("hermes-desktop");
     if let Err(e) = std::fs::create_dir_all(&data_dir) {
         eprintln!("Failed to create data directory: {}", e);
     }
     data_dir.join("hermes.db")
+}
+
+pub fn log_dir() -> std::path::PathBuf {
+    let dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("hermes-desktop")
+        .join("logs");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
 }
 
 pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {

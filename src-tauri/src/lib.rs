@@ -49,6 +49,37 @@ fn which_exists(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[allow(dead_code)]
+fn show_error_dialog(message: &str) {
+    eprintln!("ERROR: {}", message);
+    #[cfg(target_os = "windows")]
+    {
+        let ps_cmd = format!(
+            "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); [System.Windows.Forms.MessageBox]::Show('{}', 'Hermes Desktop Error')",
+            message.replace("'", "''").replace("\n", " ")
+        );
+        let _ = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps_cmd])
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "display dialog \"{}\" with title \"Hermes Desktop 错误\" buttons {{\"确定\"}} default button \"确定\" with icon stop",
+            message.replace("\\", "\\\\").replace("\"", "\\\"")
+        );
+        let _ = Command::new("osascript")
+            .args(["-e", &script])
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = Command::new("zenity")
+            .args(["--error", "--title=Hermes Desktop 错误", &format!("--text={}", message)])
+            .spawn();
+    }
+}
+
 fn default_shell() -> &'static str {
     if which_exists("zsh") { "zsh" } else { "bash" }
 }
@@ -2238,12 +2269,7 @@ async fn chat_with_hermes_api(
 /// 打开日志目录
 #[tauri::command]
 fn open_log_dir() -> Result<(), String> {
-    let log_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("hermes-desktop")
-        .join("logs");
-
-    std::fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
+    let log_dir = db::log_dir();
 
     #[cfg(target_os = "macos")]
     Command::new("open")
@@ -2361,26 +2387,45 @@ pub fn run() {
                 }
             }
 
-            let db_url = format!("sqlite:{}", db_path.to_str().unwrap());
+            let db_url = format!("sqlite:{}", db_path.to_str().unwrap_or("sqlite:hermes.db"));
 
             let app_handle = app.handle().clone();
             tauri::async_runtime::block_on(async {
-                let pool = SqlitePool::connect(&db_url)
-                    .await
-                    .expect("Failed to connect to database");
-                db::init_db(&pool)
-                    .await
-                    .expect("Failed to initialize database");
-                app_handle.manage(AppState { db_pool: pool });
+                match SqlitePool::connect(&db_url).await {
+                    Ok(pool) => {
+                        if let Err(e) = db::init_db(&pool).await {
+                            log::error!("Failed to initialize database: {}", e);
+                        }
+                        app_handle.manage(AppState { db_pool: pool });
+                    }
+                    Err(e) => {
+                        log::error!("Failed to connect to database: {}", e);
+                        show_error_dialog(&format!("数据库连接失败\n\n{}\n\n应用将退出。", e));
+                        std::process::exit(1);
+                    }
+                }
             });
 
-            let hermes_installed = hermes_command()
-                .arg("version")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false);
+            let hermes_installed = {
+                let mut cmd = hermes_command();
+                cmd.arg("version")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null());
+                #[cfg(target_os = "windows")]
+                {
+                    match cmd.output() {
+                        Ok(o) => o.status.success(),
+                        Err(e) => {
+                            log::info!("hermes not found (expected on fresh Windows): {}", e);
+                            false
+                        }
+                    }
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    cmd.output().map(|o| o.status.success()).unwrap_or(false)
+                }
+            };
 
             if hermes_installed {
         ensure_gateway_config(app.handle());
