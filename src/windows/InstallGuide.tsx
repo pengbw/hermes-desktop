@@ -104,7 +104,7 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
               <div className="ig-method-info">
                 <span className="ig-method-name">一键安装</span>
                 <span className="ig-method-desc">
-                  {isWindows ? "WSL2 · 官方脚本" : "官方脚本 · 推荐"}
+                  {isWindows ? "Windows 原生安装" : "官方脚本 · 推荐"}
                 </span>
               </div>
               <svg className="ig-method-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -112,6 +112,7 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
               </svg>
             </button>
 
+            {/*
             {isWindows && (
               <div className="ig-notice">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -121,6 +122,7 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
                 <span>一键安装需要 WSL2，未安装请先在 PowerShell 运行 <code>wsl --install</code></span>
               </div>
             )}
+            */}
           </div>
         )}
 

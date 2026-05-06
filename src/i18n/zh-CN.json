@@ -164,7 +164,7 @@
   "install.desc": "安装 Hermes Agent 核心引擎以启用 AI 对话能力",
   "install.quick": "一键安装",
   "install.quickDescMac": "官方脚本 · 推荐",
-  "install.quickDescWin": "WSL2 · 官方脚本",
+  "install.quickDescWin": "Windows 原生安装",
   "install.pip": "pip 安装",
   "install.pipDesc": "包管理器安装",
   "install.installing": "正在安装",

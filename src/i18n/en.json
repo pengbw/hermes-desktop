@@ -164,7 +164,7 @@
   "install.desc": "Install Hermes Agent engine to enable AI conversation",
   "install.quick": "Quick Install",
   "install.quickDescMac": "Official script",
-  "install.quickDescWin": "WSL2 · Official script",
+  "install.quickDescWin": "Windows Native Install",
   "install.pip": "pip Install",
   "install.pipDesc": "Package manager install",
   "install.installing": "Installing",
