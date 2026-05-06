@@ -150,6 +150,7 @@ export default function AvatarWindow() {
 
 
   const [inputText, setInputText] = useState("");
+  const [isInputFocused, setIsInputFocused] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const isThinkingRef = useRef(false);
@@ -960,7 +961,7 @@ export default function AvatarWindow() {
       )}
 
       <div
-        className={`chat-input-wrapper ${isHovering || isWaitingResponse ? "visible" : ""} ${isDragging ? "dragging" : ""}`}
+        className={`chat-input-wrapper ${isHovering || isWaitingResponse || isInputFocused || inputText.length > 0 ? "visible" : ""} ${isDragging ? "dragging" : ""}`}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
@@ -1034,6 +1035,8 @@ export default function AvatarWindow() {
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
+            onFocus={() => setIsInputFocused(true)}
+            onBlur={() => setIsInputFocused(false)}
             onKeyDown={handleKeyDown}
             placeholder={t("avatar.inputPlaceholder")}
             disabled={isWaitingResponse}
