@@ -622,22 +622,38 @@ pub async fn update_provider(
 }
 
 fn hermes_bin() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let candidates = [
-        format!("{}/.hermes/hermes-agent/venv/bin/hermes", home),
-        format!("{}/.local/bin/hermes", home),
-        "/usr/local/bin/hermes".to_string(),
-    ];
-    for path in &candidates {
-        if std::path::Path::new(path).exists() {
-            return path.clone();
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let candidates = [
+            format!("{}/.hermes/hermes-agent/venv/bin/hermes", home),
+            format!("{}/.local/bin/hermes", home),
+            "/usr/local/bin/hermes".to_string(),
+        ];
+        for path in &candidates {
+            if std::path::Path::new(path).exists() {
+                return path.clone();
+            }
+        }
+        if let Ok(output) = std::process::Command::new("which").arg("hermes").output() {
+            if output.status.success() {
+                let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !p.is_empty() {
+                    return p;
+                }
+            }
         }
     }
-    if let Ok(output) = std::process::Command::new("which").arg("hermes").output() {
-        if output.status.success() {
-            let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !p.is_empty() {
-                return p;
+    #[cfg(target_os = "windows")]
+    {
+        let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let candidates = [
+            format!("{}\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe", local_appdata),
+            format!("{}\\hermes\\hermes-agent\\.venv\\Scripts\\hermes.exe", local_appdata),
+        ];
+        for path in &candidates {
+            if std::path::Path::new(path).exists() {
+                return path.clone();
             }
         }
     }

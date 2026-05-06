@@ -1,13 +1,39 @@
 use serde::{Deserialize, Serialize};
 
+fn load_gesture_json(name: &str) -> &'static str {
+    let raw = match name {
+        "silent" => include_str!("../../public/silent.json"),
+        "greeting" => include_str!("../../public/greeting.json"),
+        "think" => include_str!("../../public/think.json"),
+        _ => return "{}",
+    };
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
+        if let Some(pose) = v.get("pose") {
+            return Box::leak(pose.to_string().into_boxed_str());
+        }
+    }
+    "{}"
+}
+
 pub fn db_path() -> std::path::PathBuf {
     let data_dir = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("hermes-desktop");
-    if let Err(e) = std::fs::create_dir_all(&data_dir) {
-        eprintln!("Failed to create data directory: {}", e);
+
+    let _ = std::fs::create_dir_all(&data_dir);
+
+    let test_file = data_dir.join(".write_test");
+    if std::fs::write(&test_file, b"test").is_ok() {
+        let _ = std::fs::remove_file(&test_file);
+        return data_dir.join("hermes.db");
     }
-    data_dir.join("hermes.db")
+
+    let fallback = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join(".hermes-data");
+    let _ = std::fs::create_dir_all(&fallback);
+    eprintln!("Data directory not writable, using fallback: {}", fallback.display());
+    fallback.join("hermes.db")
 }
 
 pub fn log_dir() -> std::path::PathBuf {
@@ -179,7 +205,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             0.0_f64,
             0.0_f64,
             0.0_f64,
-            r#"{}"#,
+            load_gesture_json("silent"),
         ),
         (
             "greeting",
@@ -187,7 +213,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             0.0_f64,
             0.0_f64,
             0.0_f64,
-            r#"{"leftUpperArm":{"position":[0,0,0],"rotation":[0,0,0.605186,0.796084]},"rightUpperArm":{"position":[0,0,0],"rotation":[-0.303564,0.511747,-0.032165,0.803075]},"leftLowerArm":{"position":[0,0,0],"rotation":[0,0,0.049979,0.99875]},"rightLowerArm":{"position":[0,0,0],"rotation":[0.454649,0.454649,0.708073,0.291927]},"rightHand":{"position":[0,0,0],"rotation":[-0.104175,0.039527,-0.104175,0.988298]},"rightThumbMetacarpal":{"position":[0,0,0],"rotation":[0.161773,0.132271,0.119824,0.970555]},"rightThumbProximal":{"position":[0,0,0],"rotation":[0.099833,0,0,0.995004]},"rightThumbDistal":{"position":[0,0,0],"rotation":[0.099833,0,0,0.995004]},"rightIndexProximal":{"position":[0,0,0],"rotation":[0,0,-0.149438,0.988771]},"rightIndexIntermediate":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightIndexDistal":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightMiddleProximal":{"position":[0,0,0],"rotation":[0,0,-0.149438,0.988771]},"rightMiddleIntermediate":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightMiddleDistal":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightRingProximal":{"position":[0,0,0],"rotation":[0,0,-0.149438,0.988771]},"rightRingIntermediate":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightRingDistal":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightLittleProximal":{"position":[0,0,0],"rotation":[0,0,-0.149438,0.988771]},"rightLittleIntermediate":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]},"rightLittleDistal":{"position":[0,0,0],"rotation":[0,0,-0.099833,0.995004]}}"#,
+            load_gesture_json("greeting"),
         ),
         (
             "think",
@@ -195,7 +221,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             0.3_f64,
             -0.3_f64,
             -0.08_f64,
-            r#"{"hips":{"position":[0,0,0],"rotation":[0,0,0,1]},"spine":{"position":[0,0,0],"rotation":[0,0,0,1]},"chest":{"position":[0,0,0],"rotation":[0,0,0,1]},"upperChest":{"position":[0,0,0],"rotation":[0,0,0,1]},"neck":{"position":[0,0,0],"rotation":[0.00858609197003729,-0.10388657662891106,0.021573862350766193,0.9943180711846074]},"head":{"position":[0,0,0],"rotation":[0.08345126655993985,0.0002492061031117632,0.10551524183241544,0.9909098635834176]},"leftEye":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightEye":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftUpperLeg":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftLowerLeg":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftFoot":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftToes":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightUpperLeg":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightLowerLeg":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightFoot":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightToes":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftShoulder":{"position":[0,0,0],"rotation":[0.10962026202597093,0.043166549335375996,0.061320421791995185,0.9911406827706579]},"leftUpperArm":{"position":[0,0,0],"rotation":[0.12851175634296264,-0.18954069849938737,0.5631267213387391,0.7940071459428395]},"leftLowerArm":{"position":[0,0,0],"rotation":[-0.412089952600085,-0.5094295288093464,0.538231329277798,0.5300664697252615]},"leftHand":{"position":[0,0,0],"rotation":[0.1035218740803728,-0.003866041239642172,0.2669691652636122,0.9581209423191163]},"rightShoulder":{"position":[0,0,0],"rotation":[0.008859390483535335,0.07251303666101228,-0.012103436329397876,0.9972546703543078]},"rightUpperArm":{"position":[0,0,0],"rotation":[0.11919197561956842,0.10165827989205732,-0.5886242552333382,0.7930828161221819]},"rightLowerArm":{"position":[0,0,0],"rotation":[0,0.9598211130776013,0,0.2806125993081466]},"rightHand":{"position":[0,0,0],"rotation":[0.2054241973541633,0.14666635184503019,-0.18085714238946418,0.9505685532483099]},"leftThumbMetacarpal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftThumbProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftThumbDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftIndexProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftIndexIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftIndexDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftMiddleProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftMiddleIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftMiddleDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftRingProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftRingIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftRingDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftLittleProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftLittleIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"leftLittleDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightThumbMetacarpal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightThumbProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightThumbDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightIndexProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightIndexIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightIndexDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightMiddleProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightMiddleIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightMiddleDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightRingProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightRingIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightRingDistal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightLittleProximal":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightLittleIntermediate":{"position":[0,0,0],"rotation":[0,0,0,1]},"rightLittleDistal":{"position":[0,0,0],"rotation":[0,0,0,1]}}"#,
+            load_gesture_json("think"),
         ),
     ];
 
@@ -214,6 +240,13 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string()).ok();
+            if *name == "silent" {
+                sqlx::query("UPDATE avatar_gestures SET target_json = ?, duration = 0 WHERE name = 'silent'")
+                    .bind(target_json)
+                    .execute(pool)
+                    .await
+                    .map_err(|e| e.to_string()).ok();
+            }
             continue;
         }
         sqlx::query(

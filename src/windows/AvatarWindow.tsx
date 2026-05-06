@@ -94,10 +94,6 @@ function applyRestPose(bones: Record<string, THREE.Object3D | null>) {
     for (const [key, rot] of Object.entries(silentTarget)) {
       setBoneRotation(bones[key], rot as { x: number; y: number; z: number; w: number });
     }
-  } else {
-    for (const [, bone] of Object.entries(bones)) {
-      if (bone) bone.quaternion.set(0, 0, 0, 1);
-    }
   }
 }
 

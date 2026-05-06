@@ -25,3 +25,6 @@ npm-debug.log*
 # Env
 .env
 .env.local
+
+# Runtime data
+src-tauri/.hermes-data/
