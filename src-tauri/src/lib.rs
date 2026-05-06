@@ -1450,7 +1450,6 @@ fn auto_install_git(app: &AppHandle) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        // Try winget first
         let winget_check = Command::new("winget")
             .arg("--version")
             .stdout(Stdio::null())
@@ -1468,29 +1467,48 @@ fn auto_install_git(app: &AppHandle) -> Result<(), String> {
                        "--accept-package-agreements", "--silent"])
                 .output()
                 .map_err(|e| format!("winget install git 失败: {}", e))?;
-            if !output.status.success() {
-                // winget failed, fall through to manual download
+            if output.status.success() && check_git_installed() {
                 let _ = app.emit("install-progress", InstallProgress {
-                    line: "winget 安装失败，尝试直接下载安装...".to_string(), done: false, success: false,
+                    line: "Git 安装完成".to_string(), done: false, success: false,
                 });
+                return Ok(());
             }
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "winget 安装失败，尝试国内镜像下载安装...".to_string(), done: false, success: false,
+            });
         }
 
         if !check_git_installed() {
             let _ = app.emit("install-progress", InstallProgress {
-                line: "正在下载 Git 安装包...".to_string(), done: false, success: false,
+                line: "正在从国内镜像下载 Git...".to_string(), done: false, success: false,
             });
             let installer_path = format!("{}\\git-installer.exe", std::env::temp_dir().to_str().unwrap_or("."));
-            let download_output = Command::new("curl")
-                .args(["-L", "-o", &installer_path,
-                       "https://github.com/git-for-windows/git/releases/download/v2.48.1.windows.1/Git-2.48.1-64-bit.exe"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .output()
-                .map_err(|e| format!("下载 Git 安装包失败: {}", e))?;
-            if !download_output.status.success() {
-                return Err("下载 Git 安装包失败".to_string());
+            let _ = std::fs::remove_file(&installer_path);
+
+            let download_urls = [
+                "https://registry.npmmirror.com/-/binary/git-for-windows/v2.48.1.windows.1/Git-2.48.1-64-bit.exe",
+                "https://mirrors.huaweicloud.com/git-for-windows/v2.48.1.windows.1/Git-2.48.1-64-bit.exe",
+            ];
+
+            let mut download_ok = false;
+            for url in &download_urls {
+                let output = Command::new("curl")
+                    .args(["-L", "--connect-timeout", "15", "--max-time", "120", "-o", &installer_path, url])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .output();
+                if let Ok(o) = &output {
+                    if o.status.success() && std::path::Path::new(&installer_path).exists() {
+                        download_ok = true;
+                        break;
+                    }
+                }
             }
+
+            if !download_ok {
+                return Err("下载 Git 安装包失败，请检查网络连接".to_string());
+            }
+
             let _ = app.emit("install-progress", InstallProgress {
                 line: "正在静默安装 Git...".to_string(), done: false, success: false,
             });
@@ -1503,6 +1521,7 @@ fn auto_install_git(app: &AppHandle) -> Result<(), String> {
             if let Err(e) = install_output {
                 return Err(format!("运行 Git 安装程序失败: {}", e));
             }
+            std::thread::sleep(std::time::Duration::from_secs(2));
         }
     }
 
