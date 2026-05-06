@@ -8,6 +8,12 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+  files?: string;
+}
+
+interface AttachedFile {
+  name: string;
+  path: string;
 }
 
 export default function ChatWindow() {
@@ -18,12 +24,13 @@ export default function ChatWindow() {
   useEffect(() => {
     const fetchMessages = async () => {
       try {
-        const history = await invoke<Array<{ id: string; role: string; content: string; timestamp: number }>>("get_avatar_messages");
+        const history = await invoke<Array<{ id: string; role: string; content: string; timestamp: number; files?: string }>>("get_avatar_messages");
         const msgs: ChatMessage[] = history.map((m) => ({
           id: m.id,
           role: m.role as "user" | "assistant",
           content: m.content,
           timestamp: m.timestamp,
+          files: m.files,
         }));
         if (msgs.length !== lastCountRef.current) {
           lastCountRef.current = msgs.length;
@@ -80,19 +87,35 @@ export default function ChatWindow() {
         {messages.length === 0 && (
           <div className="chat-empty">暂无对话</div>
         )}
-        {messages.map((msg) => (
-          <div key={msg.id} className={`chat-msg ${msg.role}`}>
-            <div className="chat-msg-avatar">
-              {msg.role === "user" ? "👤" : <img src="/bot.svg" alt="bot" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
-            </div>
-            <div className="chat-msg-content">
-              <div className="chat-msg-bubble">
-                {msg.content}
+        {messages.map((msg) => {
+          const msgFiles: AttachedFile[] = msg.files ? (() => { try { return JSON.parse(msg.files); } catch { return []; } })() : [];
+          return (
+            <div key={msg.id} className={`chat-msg ${msg.role}`}>
+              <div className="chat-msg-avatar">
+                {msg.role === "user" ? "👤" : <img src="/bot.svg" alt="bot" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
               </div>
-              <div className="chat-msg-time">{formatTime(msg.timestamp)}</div>
+              <div className="chat-msg-content">
+                <div className="chat-msg-bubble">
+                  {msgFiles.length > 0 && (
+                    <div className="chat-msg-files">
+                      {msgFiles.map((f, i) => (
+                        <div key={i} className="chat-msg-file-item">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                            <polyline points="13 2 13 9 20 9" />
+                          </svg>
+                          <span className="chat-msg-file-name">{f.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {msg.content}
+                </div>
+                <div className="chat-msg-time">{formatTime(msg.timestamp)}</div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
     </div>

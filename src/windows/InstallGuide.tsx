@@ -11,7 +11,6 @@ interface InstallProgress {
 
 export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => void }) {
   const [installing, setInstalling] = useState(false);
-  const [method, setMethod] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [installSuccess, setInstallSuccess] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
@@ -31,7 +30,7 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
         if (payload.success) {
           setInstallSuccess(true);
         } else {
-          setInstallError("安装失败，请查看日志或尝试其他方式");
+          setInstallError("Installation failed, please check logs or try another method");
         }
       }
     });
@@ -47,7 +46,6 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
 
   const handleInstall = async (selectedMethod: string) => {
     setInstalling(true);
-    setMethod(selectedMethod);
     setLogs([]);
     setInstallSuccess(false);
     setInstallError(null);
@@ -69,7 +67,6 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
 
   const handleRetry = () => {
     setInstalling(false);
-    setMethod(null);
     setLogs([]);
     setInstallSuccess(false);
     setInstallError(null);
@@ -90,7 +87,7 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
           </div>
           <h1>Hermes Desktop</h1>
           <p className="ig-desc">
-            安装 Hermes Agent 核心引擎以启用 AI 对话能力
+            Install Hermes Agent core engine to enable AI conversation capabilities
           </p>
         </div>
 
@@ -105,9 +102,9 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
                 </svg>
               </div>
               <div className="ig-method-info">
-                <span className="ig-method-name">一键安装</span>
+                <span className="ig-method-name">One-Click Install</span>
                 <span className="ig-method-desc">
-                  {isWindows ? "WSL2 · 官方脚本" : "官方脚本 · 推荐"}
+                  {isWindows ? "Windows Native" : "Official Script · Recommended"}
                 </span>
               </div>
               <svg className="ig-method-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -115,22 +112,7 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
               </svg>
             </button>
 
-            <button className="ig-method ig-method--secondary" onClick={() => handleInstall("pip")}>
-              <div className="ig-method-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
-                  <path d="M16 7V5a4 4 0 00-8 0v2" />
-                </svg>
-              </div>
-              <div className="ig-method-info">
-                <span className="ig-method-name">pip 安装</span>
-                <span className="ig-method-desc">全平台 · 需要 Python</span>
-              </div>
-              <svg className="ig-method-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </button>
-
+            {/*
             {isWindows && (
               <div className="ig-notice">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -140,24 +122,7 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
                 <span>一键安装需要 WSL2，未安装请先在 PowerShell 运行 <code>wsl --install</code></span>
               </div>
             )}
-
-            <details className="ig-manual">
-              <summary>手动安装</summary>
-              <div className="ig-commands">
-                <div className="ig-cmd">
-                  <label>macOS / Linux</label>
-                  <code>curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash</code>
-                </div>
-                <div className="ig-cmd">
-                  <label>Windows (WSL2)</label>
-                  <code>wsl bash -c 'curl -fsSL .../install.sh | bash'</code>
-                </div>
-                <div className="ig-cmd">
-                  <label>pip</label>
-                  <code>pip install hermes-agent</code>
-                </div>
-              </div>
-            </details>
+            */}
           </div>
         )}
 
@@ -165,7 +130,7 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
           <div className="ig-progress">
             <div className="ig-progress-head">
               <div className="ig-spinner" />
-              <span>正在安装{method === "curl" ? "（官方脚本）" : "（pip）"}…</span>
+              <span>Installing...</span>
             </div>
             <div className="ig-terminal">
               {logs.map((log, i) => (
@@ -183,8 +148,8 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
                 <path d="M20 6L9 17l-5-5" />
               </svg>
             </div>
-            <h3>安装完成</h3>
-            <p>正在进入主界面…</p>
+            <h3>Installation Complete</h3>
+            <p>Entering main interface...</p>
           </div>
         )}
 
@@ -195,14 +160,14 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </div>
-            <h3>安装失败</h3>
+            <h3>Installation Failed</h3>
             <p>{installError}</p>
             <div className="ig-terminal ig-terminal--error">
               {logs.map((log, i) => (
                 <div key={i} className="ig-terminal-line">{log}</div>
               ))}
             </div>
-            <button className="ig-retry" onClick={handleRetry}>重新尝试</button>
+            <button className="ig-retry" onClick={handleRetry}>Retry</button>
           </div>
         )}
       </div>

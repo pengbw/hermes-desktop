@@ -1,4 +1,6 @@
+use crate::command;
 use crate::db;
+use base64::Engine;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
 
@@ -106,10 +108,10 @@ pub async fn list_models(
     .bind(&provider_value)
     .fetch_one(&pool)
     .await
-    .map_err(|e| format!("供应商不存在: {}", e))?;
+    .map_err(|e| format!("Provider not found: {}", e))?;
 
     if base_url.is_empty() {
-        return Err("该供应商未配置 API Base URL".to_string());
+        return Err("Provider has no API Base URL configured".to_string());
     }
 
     let models_url = format!("{}/models", base_url.trim_end_matches('/'));
@@ -125,18 +127,18 @@ pub async fn list_models(
     let response = request
         .send()
         .await
-        .map_err(|e| format!("请求模型列表失败: {}", e))?;
+        .map_err(|e| format!("Failed to request model list: {}", e))?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(format!("请求模型列表失败 ({}): {}", status, body));
+        return Err(format!("Failed to request model list ({}): {}", status, body));
     }
 
     let body: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| format!("解析模型列表失败: {}", e))?;
+        .map_err(|e| format!("Failed to parse model list: {}", e))?;
 
     let models = body
         .get("data")
@@ -154,16 +156,30 @@ pub async fn list_models(
 
     Ok(models)
 }
+
+#[tauri::command]
+pub async fn save_temp_file(file_name: String, file_bytes: Vec<u8>) -> Result<String, String> {
+    let temp_dir = std::env::temp_dir().join("hermes-desktop");
+    std::fs::create_dir_all(&temp_dir)
+        .map_err(|e| format!("Failed to create temp directory: {}", e))?;
+
+    let file_path = temp_dir.join(&file_name);
+    std::fs::write(&file_path, &file_bytes)
+        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+
+    Ok(file_path.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 pub async fn sync_provider_keys(app: AppHandle) -> Result<i64, String> {
     let pool = get_pool(&app)?;
 
-    let env_path_output = std::process::Command::new(hermes_bin())
+    let env_path_output = command(&hermes_bin())
         .args(&["config", "env-path"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .output()
-        .map_err(|e| format!("获取 env 路径失败: {}", e))?;
+        .map_err(|e| format!("Failed to get env path: {}", e))?;
     let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
 
     if env_path.is_empty() {
@@ -175,7 +191,7 @@ pub async fn sync_provider_keys(app: AppHandle) -> Result<i64, String> {
     }
 
     let env_content = std::fs::read_to_string(&env_path)
-        .map_err(|e| format!("读取 env 文件失败: {}", e))?;
+        .map_err(|e| format!("Failed to read env file: {}", e))?;
 
     let mut env_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for line in env_content.lines() {
@@ -247,7 +263,7 @@ pub async fn create_avatar_conversation(app: AppHandle) -> Result<db::Conversati
 
     sqlx::query("INSERT INTO conversations (id, title, hermes_session_id, status, source, last_active_at, created_at, updated_at) VALUES (?, ?, NULL, 'active', 'avatar', ?, ?, ?)")
         .bind(&id)
-        .bind("数字助手对话")
+        .bind("Digital Assistant Chat")
         .bind(now)
         .bind(now)
         .bind(now)
@@ -257,7 +273,7 @@ pub async fn create_avatar_conversation(app: AppHandle) -> Result<db::Conversati
 
     Ok(db::Conversation {
         id,
-        title: "数字助手对话".to_string(),
+        title: "Digital Assistant Chat".to_string(),
         hermes_session_id: None,
         status: "active".to_string(),
         source: Some("avatar".to_string()),
@@ -282,8 +298,8 @@ pub async fn get_avatar_messages(app: AppHandle) -> Result<Vec<db::Message>, Str
         None => return Ok(vec![]),
     };
 
-    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, i64)>(
-        "SELECT id, role, content, thinking, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
+    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, i64)>(
+        "SELECT id, role, content, thinking, files, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
     )
     .bind(&conv_id)
     .fetch_all(&pool)
@@ -292,11 +308,12 @@ pub async fn get_avatar_messages(app: AppHandle) -> Result<Vec<db::Message>, Str
 
     let messages = rows
         .into_iter()
-        .map(|(id, role, content, thinking, timestamp)| db::Message {
+        .map(|(id, role, content, thinking, files, timestamp)| db::Message {
             id,
             role,
             content,
             thinking: thinking.filter(|s| !s.is_empty()),
+            files: files.filter(|s| !s.is_empty()),
             timestamp,
         })
         .collect();
@@ -304,7 +321,7 @@ pub async fn get_avatar_messages(app: AppHandle) -> Result<Vec<db::Message>, Str
     Ok(messages)
 }
 
-/// 激活归档会话（将 status 改为 active）
+/// Activate archived conversation (set status to active)
 #[tauri::command]
 pub async fn activate_conversation(
     app: AppHandle,
@@ -321,7 +338,7 @@ pub async fn activate_conversation(
     Ok(())
 }
 
-/// 修改会话名称
+/// Modify conversation title
 #[tauri::command]
 pub async fn rename_conversation(
     app: AppHandle,
@@ -338,7 +355,7 @@ pub async fn rename_conversation(
     Ok(())
 }
 
-/// 归档超时会话（超过指定分钟数未使用的会话标记为 archived）
+/// Archive timed-out conversations (mark conversations unused for specified minutes as archived)
 #[tauri::command]
 pub async fn archive_stale_conversations(
     app: AppHandle,
@@ -379,18 +396,19 @@ pub async fn create_message(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
-    sqlx::query("INSERT INTO messages (id, conversation_id, role, content, thinking, timestamp) VALUES (?, ?, ?, ?, ?, ?)")
+    sqlx::query("INSERT INTO messages (id, conversation_id, role, content, thinking, files, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .bind(&id)
         .bind(&req.conversation_id)
         .bind(&req.role)
         .bind(&req.content)
         .bind(req.thinking.as_deref().unwrap_or(""))
+        .bind(req.files.as_deref().unwrap_or(""))
         .bind(now)
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
 
-    // 更新会话的 updated_at 和 last_active_at，并激活会话
+    // Update conversation updated_at and last_active_at, and activate conversation
     sqlx::query("UPDATE conversations SET updated_at = ?, last_active_at = ?, status = 'active' WHERE id = ?")
         .bind(now)
         .bind(now)
@@ -404,6 +422,7 @@ pub async fn create_message(
         role: req.role,
         content: req.content,
         thinking: req.thinking,
+        files: req.files,
         timestamp: now,
     })
 }
@@ -414,8 +433,8 @@ pub async fn list_messages(
     conversation_id: String,
 ) -> Result<Vec<db::Message>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, i64)>(
-        "SELECT id, role, content, thinking, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
+    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, i64)>(
+        "SELECT id, role, content, thinking, files, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
     )
     .bind(&conversation_id)
     .fetch_all(&pool)
@@ -424,11 +443,12 @@ pub async fn list_messages(
 
     let messages = rows
         .into_iter()
-        .map(|(id, role, content, thinking, timestamp)| db::Message {
+        .map(|(id, role, content, thinking, files, timestamp)| db::Message {
             id,
             role,
             content,
             thinking: thinking.filter(|s| !s.is_empty()),
+            files: files.filter(|s| !s.is_empty()),
             timestamp,
         })
         .collect();
@@ -603,22 +623,38 @@ pub async fn update_provider(
 }
 
 fn hermes_bin() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let candidates = [
-        format!("{}/.hermes/hermes-agent/venv/bin/hermes", home),
-        format!("{}/.local/bin/hermes", home),
-        "/usr/local/bin/hermes".to_string(),
-    ];
-    for path in &candidates {
-        if std::path::Path::new(path).exists() {
-            return path.clone();
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let candidates = [
+            format!("{}/.hermes/hermes-agent/venv/bin/hermes", home),
+            format!("{}/.local/bin/hermes", home),
+            "/usr/local/bin/hermes".to_string(),
+        ];
+        for path in &candidates {
+            if std::path::Path::new(path).exists() {
+                return path.clone();
+            }
+        }
+        if let Ok(output) = command("which").arg("hermes").output() {
+            if output.status.success() {
+                let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !p.is_empty() {
+                    return p;
+                }
+            }
         }
     }
-    if let Ok(output) = std::process::Command::new("which").arg("hermes").output() {
-        if output.status.success() {
-            let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !p.is_empty() {
-                return p;
+    #[cfg(target_os = "windows")]
+    {
+        let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let candidates = [
+            format!("{}\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe", local_appdata),
+            format!("{}\\hermes\\hermes-agent\\.venv\\Scripts\\hermes.exe", local_appdata),
+        ];
+        for path in &candidates {
+            if std::path::Path::new(path).exists() {
+                return path.clone();
             }
         }
     }
@@ -626,16 +662,16 @@ fn hermes_bin() -> String {
 }
 
 fn write_hermes_env(key: &str, value: &str) -> Result<(), String> {
-    let env_path_output = std::process::Command::new(hermes_bin())
+    let env_path_output = command(&hermes_bin())
         .args(&["config", "env-path"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .output()
-        .map_err(|e| format!("获取 env 路径失败: {}", e))?;
+        .map_err(|e| format!("Failed to get env path: {}", e))?;
     let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
 
     if env_path.is_empty() {
-        return Err("无法获取 Hermes env 文件路径".to_string());
+        return Err("Cannot get Hermes env file path".to_string());
     }
 
     if !std::path::Path::new(&env_path).exists() {
@@ -643,11 +679,11 @@ fn write_hermes_env(key: &str, value: &str) -> Result<(), String> {
             let _ = std::fs::create_dir_all(parent);
         }
         std::fs::write(&env_path, "")
-            .map_err(|e| format!("创建 env 文件失败: {}", e))?;
+            .map_err(|e| format!("Failed to create env file: {}", e))?;
     }
 
     let env_content = std::fs::read_to_string(&env_path)
-        .map_err(|e| format!("读取 env 文件失败: {}", e))?;
+        .map_err(|e| format!("Failed to read env file: {}", e))?;
 
     let mut lines: Vec<String> = env_content.lines().map(|s| s.to_string()).collect();
     let key_upper = key.to_uppercase();
@@ -669,7 +705,7 @@ fn write_hermes_env(key: &str, value: &str) -> Result<(), String> {
 
     let new_content = lines.join("\n");
     std::fs::write(&env_path, new_content)
-        .map_err(|e| format!("写入 env 文件失败: {}", e))?;
+        .map_err(|e| format!("Failed to write env file: {}", e))?;
 
     Ok(())
 }
@@ -688,7 +724,7 @@ pub async fn delete_provider(
         .map_err(|e| e.to_string())?;
 
     if is_builtin {
-        return Err("内置供应商不可删除".to_string());
+        return Err("Built-in providers cannot be deleted".to_string());
     }
 
     sqlx::query("DELETE FROM providers WHERE id = ?")
@@ -764,35 +800,35 @@ pub async fn update_avatar_gesture(
 
     let mut query = String::from("UPDATE avatar_gestures SET updated_at = ?");
     let mut args: sqlx::sqlite::SqliteArguments = Default::default();
-    sqlx::Arguments::add(&mut args, now);
+    let _ = sqlx::Arguments::add(&mut args, now);
 
     if let Some(name) = &req.name {
         query.push_str(", name = ?");
-        sqlx::Arguments::add(&mut args, name);
+        let _ = sqlx::Arguments::add(&mut args, name);
     }
     if let Some(duration) = req.duration {
         query.push_str(", duration = ?");
-        sqlx::Arguments::add(&mut args, duration);
+        let _ = sqlx::Arguments::add(&mut args, duration);
     }
     if let Some(look_at_x) = req.look_at_x {
         query.push_str(", look_at_x = ?");
-        sqlx::Arguments::add(&mut args, look_at_x);
+        let _ = sqlx::Arguments::add(&mut args, look_at_x);
     }
     if let Some(look_at_y) = req.look_at_y {
         query.push_str(", look_at_y = ?");
-        sqlx::Arguments::add(&mut args, look_at_y);
+        let _ = sqlx::Arguments::add(&mut args, look_at_y);
     }
     if let Some(tilt) = req.tilt {
         query.push_str(", tilt = ?");
-        sqlx::Arguments::add(&mut args, tilt);
+        let _ = sqlx::Arguments::add(&mut args, tilt);
     }
     if let Some(target_json) = &req.target_json {
         query.push_str(", target_json = ?");
-        sqlx::Arguments::add(&mut args, target_json);
+        let _ = sqlx::Arguments::add(&mut args, target_json);
     }
 
     query.push_str(" WHERE id = ?");
-    sqlx::Arguments::add(&mut args, &req.id);
+    let _ = sqlx::Arguments::add(&mut args, &req.id);
 
     sqlx::query_with(&query, args)
         .execute(&pool)
@@ -823,5 +859,75 @@ pub async fn delete_avatar_gesture(app: AppHandle, id: String) -> Result<(), Str
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct FileContent {
+    pub name: String,
+    pub path: String,
+    pub is_image: bool,
+    pub size: u64,
+}
+
+#[tauri::command]
+pub async fn read_file_for_chat(path: String) -> Result<FileContent, String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err("File not found".to_string());
+    }
+
+    let name = p
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let metadata = std::fs::metadata(&path).map_err(|e| format!("Failed to read file info: {}", e))?;
+    let size = metadata.len();
+
+    if size > 10 * 1024 * 1024 {
+        return Err("File size exceeds 10MB limit".to_string());
+    }
+
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    let image_exts = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+    let is_image = image_exts.contains(&ext.as_str());
+
+    Ok(FileContent {
+        name,
+        path: path.clone(),
+        is_image,
+        size,
+    })
+}
+
+#[tauri::command]
+pub async fn prepare_temp_file(name: String, base64_content: String) -> Result<FileContent, String> {
+    let bytes = base64::engine::general_purpose::STANDARD.decode(&base64_content)
+        .map_err(|e| format!("base64 decode failed: {}", e))?;
+
+    if bytes.len() > 10 * 1024 * 1024 {
+        return Err("File size exceeds 10MB limit".to_string());
+    }
+
+    let tmp = std::env::temp_dir().join(format!("hermes_upload_{}", name));
+    std::fs::write(&tmp, &bytes).map_err(|e| format!("Failed to write temp file: {}", e))?;
+
+    let ext = std::path::Path::new(&name)
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let image_exts = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+    let is_image = image_exts.contains(&ext.as_str());
+
+    Ok(FileContent {
+        name,
+        path: tmp.to_string_lossy().to_string(),
+        is_image,
+        size: bytes.len() as u64,
+    })
 }
 

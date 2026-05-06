@@ -1,7 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./styles/index.css";
+import "./styles/themes.css";
 
+import { ThemeProvider } from "./contexts/ThemeContext";
+import { I18nProvider } from "./contexts/I18nContext";
 import AvatarWindow from "./windows/AvatarWindow";
 import ChatWindow from "./windows/ChatWindow";
 import MainWindow from "./windows/MainWindow";
@@ -21,7 +24,11 @@ async function bootstrap() {
       document.documentElement.style.background = "transparent";
       ReactDOM.createRoot(root).render(
         <React.StrictMode>
-          <AvatarWindow />
+          <ThemeProvider>
+            <I18nProvider>
+              <AvatarWindow />
+            </I18nProvider>
+          </ThemeProvider>
         </React.StrictMode>
       );
     } else if (label === "chat") {
@@ -30,13 +37,21 @@ async function bootstrap() {
       document.documentElement.style.background = "transparent";
       ReactDOM.createRoot(root).render(
         <React.StrictMode>
-          <ChatWindow />
+          <ThemeProvider>
+            <I18nProvider>
+              <ChatWindow />
+            </I18nProvider>
+          </ThemeProvider>
         </React.StrictMode>
       );
     } else {
       ReactDOM.createRoot(root).render(
         <React.StrictMode>
-          <MainWindow />
+          <ThemeProvider>
+            <I18nProvider>
+              <MainWindow />
+            </I18nProvider>
+          </ThemeProvider>
         </React.StrictMode>
       );
     }

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { getCurrentWindow, primaryMonitor } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { useI18n } from "../contexts/I18nContext";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRMHumanBoneName } from "@pixiv/three-vrm";
@@ -14,6 +16,12 @@ interface ChatMessage {
   content: string;
   timestamp: number;
   emotion?: string;
+  files?: string;
+}
+
+interface AttachedFile {
+  name: string;
+  path: string;
 }
 
 // VRM 模型路径
@@ -86,10 +94,6 @@ function applyRestPose(bones: Record<string, THREE.Object3D | null>) {
     for (const [key, rot] of Object.entries(silentTarget)) {
       setBoneRotation(bones[key], rot as { x: number; y: number; z: number; w: number });
     }
-  } else {
-    for (const [, bone] of Object.entries(bones)) {
-      if (bone) bone.quaternion.set(0, 0, 0, 1);
-    }
   }
 }
 
@@ -123,6 +127,7 @@ const typewriterEffect = (element: HTMLElement, text: string, speed = 50) => {
 };
 
 export default function AvatarWindow() {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -136,11 +141,16 @@ export default function AvatarWindow() {
   const bonesRef = useRef<Record<string, THREE.Object3D | null>>({});
 
   const gestureRef = useRef<{ index: number; start: number; active: boolean }>({ index: -1, start: 0, active: false });
+  const greetingRef = useRef(t("avatar.greeting"));
+  useEffect(() => {
+    greetingRef.current = t("avatar.greeting");
+  }, [t]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
 
   const [inputText, setInputText] = useState("");
+  const [isInputFocused, setIsInputFocused] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const isThinkingRef = useRef(false);
@@ -289,12 +299,44 @@ export default function AvatarWindow() {
     });
   }, [calcChatPosition]);
 
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleSendMessage = useCallback(async () => {
     const text = inputText.trim();
-    if (!text || isWaitingResponse) return;
+    if ((!text && attachedFiles.length === 0) || isWaitingResponse) return;
 
     console.log("[Avatar] 发送消息:", text);
     setInputText("");
+
+    const filesJson = attachedFiles.length > 0 ? JSON.stringify(attachedFiles) : undefined;
+
+    const imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+    const firstImage = attachedFiles.find((f) => {
+      const ext = f.name.split(".").pop()?.toLowerCase();
+      return ext && imageExtensions.includes(ext);
+    });
+    const imagePath = firstImage?.path;
+
+    setAttachedFiles([]);
+
+    let messageContent = text || (filesJson ? "请分析附件中的文件" : "");
+    let sendContent = messageContent;
+
+    if (filesJson) {
+      try {
+        const files: AttachedFile[] = JSON.parse(filesJson);
+        const nonImageFiles = files.filter((f) => {
+          const ext = f.name.split(".").pop()?.toLowerCase();
+          return !imageExtensions.includes(ext || "");
+        });
+        if (nonImageFiles.length > 0) {
+          const fileList = nonImageFiles.map((f) => `- ${f.name}: ${f.path}`).join("\n");
+          sendContent = `${sendContent}\n\n附件文件路径：\n${fileList}`;
+        }
+      } catch {}
+    }
 
     if (!avatarConvIdRef.current) {
       try {
@@ -316,7 +358,8 @@ export default function AvatarWindow() {
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: "user",
-      content: text,
+      content: messageContent,
+      files: filesJson,
       timestamp: Date.now(),
     };
 
@@ -326,7 +369,7 @@ export default function AvatarWindow() {
 
     try {
       await invoke("create_message", {
-        req: { conversationId: avatarConvIdRef.current, role: userMsg.role, content: userMsg.content },
+        req: { conversationId: avatarConvIdRef.current, role: userMsg.role, content: userMsg.content, files: filesJson || null },
       });
     } catch (e) {
       console.error("[Avatar] 保存用户消息失败:", e);
@@ -341,45 +384,65 @@ export default function AvatarWindow() {
     }
 
     try {
-      console.log("[Avatar] 调用 chat_with_agent...");
-      const result = await invoke<{ content: string; sessionId: string | null }>("chat_with_agent", {
-        message: text,
-        sessionId: hermesSessionIdRef.current,
-      });
-      console.log("[Avatar] 收到回复:", result.content);
+      console.log("[Avatar] 调用 chat_with_hermes_api...");
+      const eventId = `avatar_chat_stream_${Date.now()}`;
+      let fullContent = "";
 
-      if (result.sessionId && result.sessionId !== hermesSessionIdRef.current) {
-        hermesSessionIdRef.current = result.sessionId;
-        try {
-          await invoke("update_conversation_session_id", {
-            id: avatarConvIdRef.current,
-            hermesSessionId: result.sessionId,
-          });
-        } catch (e) {
-          console.error("[Avatar] 保存 sessionId 失败:", e);
+      const unlisten = await listen<{
+        chunk: string;
+        done: boolean;
+        event_type?: string;
+        tool_name?: string;
+        tool_label?: string;
+      }>(eventId, (event) => {
+        const { chunk, done, event_type, tool_label } = event.payload;
+
+        if (done) {
+          const aiMsg: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: fullContent,
+            timestamp: Date.now(),
+            emotion: "happy",
+          };
+
+          setIsThinking(false);
+          isThinkingRef.current = false;
+          setIsWaitingResponse(false);
+          applyExpression("happy", 0.8, 3000);
+
+          (async () => {
+            try {
+              await invoke("create_message", {
+                req: { conversationId: avatarConvIdRef.current, role: aiMsg.role, content: aiMsg.content },
+              });
+            } catch (e) {
+              console.error("[Avatar] 保存AI消息失败:", e);
+            }
+          })();
+
+          unlisten();
+        } else if (event_type === "tool_progress") {
+          console.log("[Avatar] 工具进度:", tool_label || chunk);
+          applyExpression("surprised", 0.4);
+        } else if (event_type === "error") {
+          setIsThinking(false);
+          isThinkingRef.current = false;
+          setIsWaitingResponse(false);
+          applyExpression("sad", 0.5, 2000);
+        } else {
+          fullContent += chunk;
         }
-      }
+      });
 
-      const aiMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: result.content,
-        timestamp: Date.now(),
-        emotion: "happy",
-      };
-
-      setIsThinking(false);
-      isThinkingRef.current = false;
-      setIsWaitingResponse(false);
-      applyExpression("happy", 0.8, 3000);
-
-      try {
-        await invoke("create_message", {
-          req: { conversationId: avatarConvIdRef.current, role: aiMsg.role, content: aiMsg.content },
-        });
-      } catch (e) {
-        console.error("[Avatar] 保存AI消息失败:", e);
-      }
+      await invoke("chat_with_hermes_api", {
+        message: sendContent,
+        sessionId: hermesSessionIdRef.current,
+        model: null,
+        provider: null,
+        image: imagePath || null,
+        eventId: eventId,
+      });
     } catch (err) {
       console.error("[Avatar] Chat error:", err);
       setIsThinking(false);
@@ -401,7 +464,7 @@ export default function AvatarWindow() {
         console.error("[Avatar] 保存错误消息失败:", e);
       }
     }
-  }, [inputText, isWaitingResponse, applyExpression, openChatWindow]);
+  }, [inputText, isWaitingResponse, attachedFiles, applyExpression, openChatWindow]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -437,7 +500,7 @@ export default function AvatarWindow() {
                 lookAt: { x: g.lookAtX, y: g.lookAtY },
                 tilt: g.tilt,
                 target,
-                greeting: g.name === "greeting" ? "你好呀！" : undefined,
+                greeting: g.name === "greeting" ? true : undefined,
               };
             });
           }
@@ -706,10 +769,10 @@ export default function AvatarWindow() {
                 if (g.greeting && bubble) {
                   if (t > 0.08 && !bubbleShown) {
                     bubbleShown = true;
-                    bubble.textContent = g.greeting;
+                    bubble.textContent = greetingRef.current;
                     bubble.style.opacity = "1";
                     bubble.style.transform = "translateX(-50%) scale(1)";
-                    typewriterEffect(bubble, g.greeting, 40);
+                    typewriterEffect(bubble, greetingRef.current, 40);
                   }
                   if (t > 0.6 && bubbleShown) {
                     bubbleShown = false;
@@ -862,7 +925,7 @@ export default function AvatarWindow() {
         className={`avatar-close-btn ${isHovering ? "visible" : ""}`}
         onClick={() => invoke("hide_avatar_window")}
         onMouseDown={(e) => e.stopPropagation()}
-        title="关闭数字人"
+        title={t("avatar.close")}
       >
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
           <line x1="18" y1="6" x2="6" y2="18" />
@@ -880,32 +943,116 @@ export default function AvatarWindow() {
         </div>
       )}
 
+      {(isHovering || isWaitingResponse) && attachedFiles.length > 0 && (
+        <div className="avatar-file-display-area">
+          <div className="avatar-file-display-list">
+            {attachedFiles.map((f, i) => (
+              <div key={i} className="avatar-file-display-item">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                  <polyline points="13 2 13 9 20 9" />
+                </svg>
+                <span className="avatar-file-display-name">{f.name}</span>
+                <button className="avatar-file-display-remove" onClick={(e) => { e.stopPropagation(); setAttachedFiles(prev => prev.filter((_, j) => j !== i)); }}>×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div
-        className={`chat-input-wrapper ${isHovering || isWaitingResponse ? "visible" : ""}`}
+        className={`chat-input-wrapper ${isHovering || isWaitingResponse || isInputFocused || inputText.length > 0 ? "visible" : ""} ${isDragging ? "dragging" : ""}`}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+        onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(false);
+          const files = e.dataTransfer.files;
+          const newFiles: AttachedFile[] = [];
+          for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            newFiles.push({ name: f.name, path: (f as any).path || f.name });
+          }
+          if (newFiles.length > 0) setAttachedFiles(prev => [...prev, ...newFiles]);
+        }}
       >
-        <input
-          ref={inputRef}
-          className="chat-input"
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="输入消息..."
-          disabled={isWaitingResponse}
-        />
-        <button
-          className="chat-send-btn"
-          onClick={(e) => { e.stopPropagation(); handleSendMessage(); }}
-          disabled={isWaitingResponse || !inputText.trim()}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </button>
+        {isDragging && (
+          <div className="avatar-drag-overlay">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span>{t("avatar.dropFiles")}</span>
+          </div>
+        )}
+        <div className="avatar-input-row">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={async (e) => {
+              const files = e.target.files;
+              if (!files) return;
+              const newFiles: AttachedFile[] = [];
+              for (let i = 0; i < files.length; i++) {
+                const f = files[i];
+                try {
+                  const buffer = await f.arrayBuffer();
+                  const bytes = Array.from(new Uint8Array(buffer));
+                  const tempPath = await invoke<string>("save_temp_file", {
+                    fileName: f.name,
+                    fileBytes: bytes,
+                  });
+                  newFiles.push({ name: f.name, path: tempPath });
+                } catch (err) {
+                  console.error("Failed to save temp file:", f.name, err);
+                }
+              }
+              if (newFiles.length > 0) {
+                setAttachedFiles(prev => [...prev, ...newFiles]);
+              }
+              e.target.value = "";
+            }}
+          />
+          <button
+            className="avatar-attach-btn"
+            onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+            disabled={isWaitingResponse}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
+          <input
+            ref={inputRef}
+            className="chat-input"
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onFocus={() => setIsInputFocused(true)}
+            onBlur={() => setIsInputFocused(false)}
+            onKeyDown={handleKeyDown}
+            placeholder={t("avatar.inputPlaceholder")}
+            disabled={isWaitingResponse}
+          />
+          <button
+            className="chat-send-btn"
+            onClick={(e) => { e.stopPropagation(); handleSendMessage(); }}
+            disabled={isWaitingResponse || (!inputText.trim() && attachedFiles.length === 0)}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {!isLoaded && !loadError && (

@@ -7,37 +7,188 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+pub(crate) fn command(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    cmd
+}
+
 fn hermes_bin() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let candidates = [
-        format!("{}/.hermes/hermes-agent/venv/bin/hermes", home),
-        format!("{}/.local/bin/hermes", home),
-        "/usr/local/bin/hermes".to_string(),
-    ];
-    for path in &candidates {
-        if std::path::Path::new(path).exists() {
-            return path.clone();
-        }
-    }
-    if let Ok(output) = Command::new("which").arg("hermes").output() {
-        if output.status.success() {
-            let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !p.is_empty() {
-                return p;
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let candidates = [
+            format!("{}/.hermes/hermes-agent/venv/bin/hermes", home),
+            format!("{}/.local/bin/hermes", home),
+            "/usr/local/bin/hermes".to_string(),
+        ];
+        for path in &candidates {
+            if std::path::Path::new(path).exists() {
+                return path.clone();
             }
         }
+        if let Ok(output) = command("which").arg("hermes").output() {
+            if output.status.success() {
+                let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !p.is_empty() {
+                    return p;
+                }
+            }
+        }
+        "hermes".to_string()
     }
-    "hermes".to_string()
+    #[cfg(target_os = "windows")]
+    {
+        let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let candidates = [
+            format!("{}\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe", local_appdata),
+            format!("{}\\hermes\\hermes-agent\\.venv\\Scripts\\hermes.exe", local_appdata),
+            format!("{}\\hermes\\hermes-agent\\python.exe", local_appdata),
+        ];
+        for path in &candidates {
+            if std::path::Path::new(path).exists() {
+                return path.clone();
+            }
+        }
+        "hermes".to_string()
+    }
+}
+
+fn which_exists(cmd: &str) -> bool {
+    command("which")
+        .arg(cmd)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[allow(dead_code)]
+fn show_error_dialog(message: &str) {
+    eprintln!("ERROR: {}", message);
+    #[cfg(target_os = "windows")]
+    {
+        let ps_cmd = format!(
+            "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); [System.Windows.Forms.MessageBox]::Show('{}', 'Hermes Desktop Error')",
+            message.replace("'", "''").replace("\n", " ")
+        );
+        let _ = command("powershell")
+            .args(["-NoProfile", "-Command", &ps_cmd])
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "display dialog \"{}\" with title \"Hermes Desktop Error\" buttons {{\"OK\"}} default button \"OK\" with icon stop",
+            message.replace("\\", "\\\\").replace("\"", "\\\"")
+        );
+        let _ = command("osascript")
+            .args(["-e", &script])
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = command("zenity")
+            .args(["--error", "--title=Hermes Desktop Error", &format!("--text={}", message)])
+            .spawn();
+    }
+}
+
+fn default_shell() -> &'static str {
+    if which_exists("zsh") { "zsh" } else { "bash" }
+}
+
+fn spawn_log_reader(
+    reader: impl std::io::Read + Send + 'static,
+    app: AppHandle,
+) -> std::thread::JoinHandle<()> {
+    use std::io::{BufReader, Read};
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut buf = Vec::new();
+        let mut line = String::new();
+        loop {
+            let mut tmp = [0u8; 512];
+            match reader.read(&mut tmp) {
+                Ok(0) => {
+                    emit_line(&app, &mut line);
+                    break;
+                }
+                Ok(n) => {
+                    buf.extend_from_slice(&tmp[..n]);
+                    while let Some(pos) = buf.iter().position(|&b| b == b'\n' || b == b'\r') {
+                        let before: Vec<u8> = buf.drain(..pos).collect();
+                        buf.drain(..1);
+                        if let Ok(text) = String::from_utf8(before) {
+                            line.push_str(&text);
+                        }
+                        emit_line(&app, &mut line);
+                        line.clear();
+                    }
+                    if let Ok(text) = String::from_utf8(buf.clone()) {
+                        line.push_str(&text);
+                        buf.clear();
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+}
+
+fn emit_line(app: &AppHandle, line: &mut String) {
+    if !line.is_empty() {
+        let cleaned = strip_ansi(line);
+        if !cleaned.trim().is_empty() {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: cleaned, done: false, success: false,
+            });
+        }
+    }
 }
 
 fn path_with_local_bin() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let local_bin = format!("{}/.local/bin", home);
-    let current_path = std::env::var("PATH").unwrap_or_default();
-    if current_path.contains(&local_bin) {
-        current_path
-    } else {
-        format!("{}:{}", local_bin, current_path)
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let local_bin = format!("{}/.local/bin", home);
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        if current_path.contains(&local_bin) {
+            current_path
+        } else {
+            format!("{}:{}", local_bin, current_path)
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let userprofile = std::env::var("USERPROFILE").unwrap_or_default();
+        let local_bin = format!("{}\\AppData\\Local\\hermes", userprofile);
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        if current_path.to_lowercase().contains(&local_bin.to_lowercase()) {
+            current_path
+        } else {
+            format!("{};{}", local_bin, current_path)
+        }
+    }
+}
+
+fn hermes_command() -> Command {
+    command(&hermes_bin())
+}
+
+fn home_dir() -> String {
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::env::var("HOME").unwrap_or_default()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("USERPROFILE").unwrap_or_default()
     }
 }
 
@@ -45,12 +196,12 @@ async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
     let pool = match app.try_state::<AppState>() {
         Some(s) => s.db_pool.clone(),
         None => {
-            log::warn!("无法获取数据库连接，跳过 API key 同步");
+            log::warn!("Cannot get database connection, skipping API key sync");
             return;
         }
     };
 
-    let env_path_output = match std::process::Command::new(hermes_bin())
+    let env_path_output = match hermes_command()
         .args(&["config", "env-path"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -89,7 +240,7 @@ async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
     .fetch_all(&pool)
     .await
     .unwrap_or_else(|e| {
-        log::warn!("查询 providers 失败: {}", e);
+        log::warn!("Failed to query providers: {}", e);
         Vec::new()
     });
 
@@ -110,8 +261,8 @@ async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
     if changed {
         let content: String = env_map.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join("\n");
         match std::fs::write(&env_path, content) {
-            Ok(_) => log::info!("已同步 {} 个 API key 到 Hermes .env", env_map.len()),
-            Err(e) => log::warn!("写入 .env 失败: {}", e),
+            Ok(_) => log::info!("Synced {} API keys to Hermes .env", env_map.len()),
+            Err(e) => log::warn!("Failed to write .env: {}", e),
         }
     }
 }
@@ -122,9 +273,22 @@ async fn sync_hermes_providers_to_db(app: &tauri::AppHandle) {
         None => return,
     };
 
-    let venv_python = hermes_bin().replace("/bin/hermes", "/bin/python");
+    let hermes_bin_path = hermes_bin();
+    #[cfg(not(target_os = "windows"))]
+    let venv_python = std::path::Path::new(&hermes_bin_path)
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("bin").join("python"))
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| hermes_bin_path.replace("/bin/hermes", "/bin/python"));
+    #[cfg(target_os = "windows")]
+    let venv_python = std::path::Path::new(&hermes_bin_path)
+        .parent()
+        .map(|p| p.join("python.exe"))
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| hermes_bin_path.replace("hermes.exe", "python.exe"));
     if !std::path::Path::new(&venv_python).exists() {
-        log::warn!("hermes venv python 不存在: {}", venv_python);
+        log::warn!("hermes venv python not found: {}", venv_python);
         return;
     }
 
@@ -149,7 +313,7 @@ except Exception as e:
     sys.exit(1)
 "#;
 
-    let output = match std::process::Command::new(&venv_python)
+    let output = match command(&venv_python)
         .args(["-c", script])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -157,7 +321,7 @@ except Exception as e:
     {
         Ok(o) => o,
         Err(e) => {
-            log::warn!("查询 hermes 供应商失败: {}", e);
+            log::warn!("Failed to query hermes providers: {}", e);
             return;
         }
     };
@@ -166,7 +330,7 @@ except Exception as e:
     let providers: Vec<serde_json::Value> = match serde_json::from_str(&json_str) {
         Ok(v) => v,
         Err(e) => {
-            log::warn!("解析 hermes 供应商 JSON 失败: {}", e);
+            log::warn!("Failed to parse hermes provider JSON: {}", e);
             return;
         }
     };
@@ -206,7 +370,7 @@ except Exception as e:
             .execute(&pool)
             .await
             .map_err(|e| {
-                log::warn!("更新 hermes 供应商 {} 失败: {}", pid, e);
+                log::warn!("Failed to update hermes provider {}: {}", pid, e);
             });
         } else {
             let _ = sqlx::query(
@@ -224,12 +388,12 @@ except Exception as e:
             .execute(&pool)
             .await
             .map_err(|e| {
-                log::warn!("插入 hermes 供应商 {} 失败: {}", pid, e);
+                log::warn!("Failed to insert hermes provider {}: {}", pid, e);
             });
         }
     }
 
-    log::info!("已同步 {} 个 Hermes 供应商到本地数据库", providers.len());
+    log::info!("Synced {} Hermes providers to local database", providers.len());
 }
 
 pub struct AppState {
@@ -242,14 +406,12 @@ struct AgentProcess(Mutex<Option<std::process::Child>>);
 struct ChatStreamEvent {
     chunk: String,
     done: bool,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ChatResponse {
-    content: String,
-    thinking: Option<String>,
-    session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    event_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_label: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -270,11 +432,11 @@ struct ApiKeyStatus {
     configured: bool,
 }
 
-/// 获取 Hermes Agent 信息（版本、状态、模型等）
+/// Get Hermes Agent info (version, status, model, etc.)
 #[tauri::command]
 async fn get_hermes_info() -> Result<HermesInfo, String> {
-    // 1. 检查 hermes 是否安装（运行 hermes version）
-    let version_output = Command::new(&hermes_bin())
+    // 1. Check if hermes is installed (run hermes version)
+    let version_output = hermes_command()
         .arg("version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -316,8 +478,8 @@ async fn get_hermes_info() -> Result<HermesInfo, String> {
         });
     }
 
-    // 2. 运行 hermes status 获取模型和 API 信息
-    let status_output = Command::new(&hermes_bin())
+    // 2. Run hermes status to get model and API info
+    let status_output = hermes_command()
         .arg("status")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -333,7 +495,7 @@ async fn get_hermes_info() -> Result<HermesInfo, String> {
 
             for line in stdout.lines() {
                 let line_trimmed = line.trim();
-                // 去掉 ANSI 颜色码
+                // Strip ANSI color codes
                 let clean = strip_ansi(line_trimmed);
                 let clean = clean.trim();
 
@@ -343,13 +505,13 @@ async fn get_hermes_info() -> Result<HermesInfo, String> {
                     provider = clean.replace("Provider:", "").trim().to_string();
                 } else if clean.contains("API Keys") {
                     in_api_section = true;
-                } else if clean.starts_with("◆") && in_api_section {
+                } else if clean.starts_with("✔") && in_api_section {
                     in_api_section = false;
-                } else if in_api_section && (clean.contains("✓") || clean.contains("✗")) {
-                    let configured = clean.contains("✓");
+                } else if in_api_section && (clean.contains("✔") || clean.contains("✘")) {
+                    let configured = clean.contains("✔");
                     let name = clean
-                        .replace("✓", "")
-                        .replace("✗", "")
+                        .replace("✔", "")
+                        .replace("✘", "")
                         .split("(")
                         .next()
                         .unwrap_or("")
@@ -365,7 +527,7 @@ async fn get_hermes_info() -> Result<HermesInfo, String> {
         Err(_) => (String::new(), String::new(), vec![]),
     };
 
-    // 3. 检查 hermes 进程是否在运行
+    // 3. Check if hermes process is running
     let running = check_hermes_process();
 
     Ok(HermesInfo {
@@ -400,15 +562,15 @@ fn strip_ansi(s: &str) -> String {
 fn kill_hermes_process() {
     #[cfg(unix)]
     {
-        let _ = Command::new("pkill")
-            .args(&["-f", "hermes acp"])
+        let _ = command("pkill")
+            .args(&["-f", "hermes (acp|gateway)"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .output();
     }
     #[cfg(windows)]
     {
-        let _ = Command::new("taskkill")
+        let _ = command("taskkill")
             .args(&["/F", "/IM", "hermes.exe"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -425,7 +587,7 @@ fn get_install_shell_args<'a>(method: &str, install_cmd: &'a str) -> (&'static s
 #[cfg(windows)]
 fn get_install_shell_args<'a>(method: &str, install_cmd: &'a str) -> (&'static str, Vec<&'a str>) {
     if method == "curl" {
-        ("wsl", vec!["bash", "-lc", install_cmd])
+        ("powershell", vec!["-ExecutionPolicy", "Bypass", "-NoProfile", "-Command", install_cmd])
     } else {
         ("cmd", vec!["/C", install_cmd])
     }
@@ -434,9 +596,9 @@ fn get_install_shell_args<'a>(method: &str, install_cmd: &'a str) -> (&'static s
 fn check_hermes_process() -> bool {
     #[cfg(target_os = "macos")]
     {
-        if let Ok(output) = Command::new("pgrep")
+        if let Ok(output) = command("pgrep")
             .arg("-f")
-            .arg("hermes")
+            .arg("hermes (acp|gateway)")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -446,7 +608,7 @@ fn check_hermes_process() -> bool {
     }
     #[cfg(target_os = "windows")]
     {
-        if let Ok(output) = Command::new("tasklist")
+        if let Ok(output) = command("tasklist")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -458,7 +620,7 @@ fn check_hermes_process() -> bool {
     false
 }
 
-/// 获取会话数量
+/// Get conversation count
 #[tauri::command]
 async fn get_conversation_count(app: AppHandle) -> Result<i64, String> {
     let state = app.state::<AppState>();
@@ -469,13 +631,16 @@ async fn get_conversation_count(app: AppHandle) -> Result<i64, String> {
         .map_err(|e| e.to_string())?;
     Ok(row.0)
 }
-
 #[derive(Serialize, Clone)]
 struct HermesSkill {
     name: String,
     category: String,
     source: String,
     trust: String,
+    enabled: bool,
+    description: String,
+    version: String,
+    tags: Vec<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -485,31 +650,149 @@ struct HermesSkillsResult {
     hub_installed: usize,
     builtin: usize,
     local: usize,
+    enabled_count: usize,
+    disabled_count: usize,
+    categories: Vec<SkillCategory>,
 }
 
-/// 获取 Hermes Agent 已安装的技能列表
+#[derive(Serialize, Clone)]
+struct SkillCategory {
+    id: String,
+    name: String,
+    description: String,
+    icon: String,
+    count: usize,
+}
+
+fn parse_skill_frontmatter(category: &str, skill_name: &str) -> (String, String, Vec<String>) {
+    let home = dirs::home_dir().unwrap_or_default();
+    let skill_path = format!("{}/.hermes/skills/{}/{}/SKILL.md", home.display(), category, skill_name);
+
+    let content = match std::fs::read_to_string(&skill_path) {
+        Ok(c) => c,
+        Err(_) => return (String::new(), String::new(), Vec::new()),
+    };
+
+    let mut description = String::new();
+    let mut version = String::new();
+    let mut tags: Vec<String> = Vec::new();
+    let mut in_tags_list = false;
+
+    if let Some(fm) = content.strip_prefix("---") {
+        if let Some(end) = fm.find("---") {
+            let frontmatter = &fm[..end];
+            for line in frontmatter.lines() {
+                let line = line.trim();
+                if in_tags_list && line.starts_with("- ") {
+                    let tag = line.trim_start_matches("- ").trim().trim_matches('"').to_string();
+                    if !tag.is_empty() {
+                        tags.push(tag);
+                    }
+                    continue;
+                }
+                in_tags_list = false;
+
+                if let Some(val) = line.strip_prefix("description:") {
+                    description = val.trim().trim_matches('"').to_string();
+                } else if let Some(val) = line.strip_prefix("version:") {
+                    version = val.trim().trim_matches('"').to_string();
+                } else if line.contains("tags:") {
+                    if let Some(start) = line.find('[') {
+                        if let Some(end_bracket) = line.find(']') {
+                            let inner = &line[start + 1..end_bracket];
+                            tags = inner.split(',')
+                                .map(|t| t.trim().trim_matches('"').to_string())
+                                .filter(|t| !t.is_empty())
+                                .collect();
+                        }
+                    } else {
+                        in_tags_list = true;
+                    }
+                }
+            }
+        }
+    }
+
+    (description, version, tags)
+}
+
+fn parse_category_description(category: &str) -> String {
+    let home = dirs::home_dir().unwrap_or_default();
+    let desc_path = format!("{}/.hermes/skills/{}/DESCRIPTION.md", home.display(), category);
+
+    let content = match std::fs::read_to_string(&desc_path) {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+
+    if let Some(fm) = content.strip_prefix("---") {
+        if let Some(end) = fm.find("---") {
+            let frontmatter = &fm[..end];
+            for line in frontmatter.lines() {
+                let line = line.trim();
+                if let Some(val) = line.strip_prefix("description:") {
+                    return val.trim().trim_matches('"').to_string();
+                }
+            }
+        }
+    }
+
+    String::new()
+}
+
+fn category_icon(cat: &str) -> String {
+    match cat {
+        "apple" => "\u{1F34E}",
+        "autonomous-ai-agents" => "\u{1F916}",
+        "creative" => "\u{1F3A8}",
+        "data-science" => "\u{1F4CA}",
+        "devops" => "\u{1F527}",
+        "diagramming" => "\u{1F4D0}",
+        "dogfood" => "\u{1F415}",
+        "domain" => "\u{1F310}",
+        "email" => "\u{1F4E7}",
+        "gaming" => "\u{1F3AE}",
+        "gifs" => "🎞️",
+        "github" => "\u{1F419}",
+        "inference-sh" => "\u{26A1}",
+        "mcp" => "\u{1F50C}",
+        "media" => "\u{1F3B5}",
+        "mlops" => "\u{1F9E0}",
+        "note-taking" => "\u{1F4DD}",
+        "productivity" => "\u{1F4CB}",
+        "red-teaming" => "\u{1F534}",
+        "research" => "\u{1F52C}",
+        "smart-home" => "\u{1F3E0}",
+        "social-media" => "\u{1F4F1}",
+        "software-development" => "\u{1F4BB}",
+        _ => "\u{1F4C2}",
+    }.to_string()
+}
+
 #[tauri::command]
 async fn list_hermes_skills() -> Result<HermesSkillsResult, String> {
-    let output = Command::new(&hermes_bin())
+    let output = hermes_command()
         .args(&["skills", "list"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|e| format!("运行 hermes skills list 失败: {}", e))?;
+        .map_err(|e| format!("\u{8FD0}\u{884C} hermes skills list \u{5931}\u{8D25}: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let mut skills: Vec<HermesSkill> = Vec::new();
     let mut hub_installed: usize = 0;
     let mut builtin: usize = 0;
     let mut local: usize = 0;
+    let mut enabled_count: usize = 0;
+    let mut disabled_count: usize = 0;
+    let mut category_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 
     for line in stdout.lines() {
         let clean = strip_ansi(line);
         let clean = clean.trim();
 
-        // 解析表格行：“│ name │ category │ source │ trust │”
-        if clean.starts_with("│") || clean.starts_with("|") {
-            let sep = if clean.contains("│") { "│" } else { "|" };
+        if clean.starts_with("\u{2502}") || clean.starts_with("|") {
+            let sep = if clean.contains("\u{2502}") { "\u{2502}" } else { "|" };
             let parts: Vec<&str> = clean.split(sep)
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
@@ -520,17 +803,38 @@ async fn list_hermes_skills() -> Result<HermesSkillsResult, String> {
                 let category = parts[1].to_string();
                 let source = parts[2].to_string();
                 let trust = parts[3].to_string();
+                let enabled = if parts.len() >= 5 {
+                    parts[4].eq_ignore_ascii_case("enabled")
+                } else {
+                    true
+                };
 
-                // 跳过表头
-                if name == "Name" || name.contains("━") || name.contains("-") && category.contains("-") {
+                if name == "Name" || name.contains("\u{2501}") || name.contains("-") && category.contains("-") {
                     continue;
                 }
 
-                skills.push(HermesSkill { name, category, source, trust });
+                let (description, version, tags) = parse_skill_frontmatter(&category, &name);
+
+                if enabled {
+                    enabled_count += 1;
+                } else {
+                    disabled_count += 1;
+                }
+                *category_counts.entry(category.clone()).or_insert(0) += 1;
+
+                skills.push(HermesSkill {
+                    name,
+                    category,
+                    source,
+                    trust,
+                    enabled,
+                    description,
+                    version,
+                    tags,
+                });
             }
         }
 
-        // 解析统计行：“0 hub-installed, 74 builtin, 12 local”
         if clean.contains("hub-installed") && clean.contains("builtin") {
             for part in clean.split(',') {
                 let part = part.trim();
@@ -548,6 +852,26 @@ async fn list_hermes_skills() -> Result<HermesSkillsResult, String> {
         }
     }
 
+    let mut categories: Vec<SkillCategory> = category_counts.into_iter().map(|(id, count)| {
+        let desc = parse_category_description(&id);
+        let icon = category_icon(&id);
+        let display_name = id.split('-').map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            }
+        }).collect::<Vec<_>>().join(" ");
+        SkillCategory {
+            id,
+            name: display_name,
+            description: desc,
+            icon,
+            count,
+        }
+    }).collect();
+    categories.sort_by(|a, b| a.id.cmp(&b.id));
+
     let total = skills.len();
     Ok(HermesSkillsResult {
         skills,
@@ -555,8 +879,249 @@ async fn list_hermes_skills() -> Result<HermesSkillsResult, String> {
         hub_installed,
         builtin,
         local,
+        enabled_count,
+        disabled_count,
+        categories,
     })
 }
+
+#[derive(Serialize, Clone)]
+struct BrowseSkill {
+    name: String,
+    description: String,
+    source: String,
+    trust: String,
+    identifier: String,
+}
+
+#[derive(Serialize, Clone)]
+struct BrowseResult {
+    skills: Vec<BrowseSkill>,
+    page: usize,
+    total_pages: usize,
+    total_skills: usize,
+}
+
+#[tauri::command]
+async fn browse_skills(page: Option<usize>, size: Option<usize>, source: Option<String>) -> Result<BrowseResult, String> {
+    let page = page.unwrap_or(1);
+    let size = size.unwrap_or(20);
+    let source = source.unwrap_or_else(|| "all".to_string());
+
+    let mut cmd = hermes_command();
+    cmd.args(&["skills", "browse", "--page", &page.to_string(), "--size", &size.to_string(), "--source", &source]);
+
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("\u{8FD0}\u{884C} hermes skills browse \u{5931}\u{8D25}: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let mut skills = Vec::new();
+    let mut total_pages = 1usize;
+    let mut total_skills = 0usize;
+
+    for line in stdout.lines() {
+        let clean = strip_ansi(line);
+        let clean = clean.trim();
+
+        if clean.contains("page") && clean.contains('/') {
+            if let Some(idx) = clean.rfind("page ") {
+                let rest = &clean[idx + 5..];
+                let parts: Vec<&str> = rest.split('/').collect();
+                if parts.len() >= 2 {
+                    total_pages = parts[1].split_whitespace().next()
+                        .and_then(|n| n.parse().ok()).unwrap_or(1);
+                }
+            }
+        }
+
+        if clean.contains("skills loaded") {
+            if let Some(idx) = clean.find(|c: char| c.is_ascii_digit()) {
+                let rest = &clean[idx..];
+                total_skills = rest.split_whitespace().next()
+                    .and_then(|n| n.parse().ok()).unwrap_or(0);
+            }
+        }
+
+        if clean.starts_with("\u{2502}") || clean.starts_with("|") {
+            let sep = if clean.contains("\u{2502}") { "\u{2502}" } else { "|" };
+            let parts: Vec<&str> = clean.split(sep)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            if parts.len() >= 4 {
+                let first = parts[0].to_string();
+                if first == "#" {
+                    continue;
+                }
+
+                let skill_name = if parts.len() >= 5 { parts[1].to_string() } else { first.clone() };
+                let desc = if parts.len() >= 5 { parts[2].to_string() } else { parts[1].to_string() };
+                let src = if parts.len() >= 5 { parts[3].to_string() } else { parts[2].to_string() };
+                let trust_val = if parts.len() >= 6 { parts[4].to_string() } else { parts[3].to_string() };
+                let identifier = if parts.len() >= 7 { parts[5].to_string() } else { String::new() };
+
+                if skill_name == "Name" || skill_name.contains("\u{2501}") {
+                    continue;
+                }
+
+                skills.push(BrowseSkill {
+                    name: skill_name,
+                    description: desc,
+                    source: src,
+                    trust: trust_val,
+                    identifier,
+                });
+            }
+        }
+    }
+
+    Ok(BrowseResult {
+        skills,
+        page,
+        total_pages,
+        total_skills,
+    })
+}
+
+#[tauri::command]
+async fn search_skills(query: String, source: Option<String>, limit: Option<usize>) -> Result<Vec<BrowseSkill>, String> {
+    let mut cmd = hermes_command();
+    cmd.args(&["skills", "search", &query]);
+    if let Some(s) = source {
+        cmd.args(&["--source", &s]);
+    }
+    if let Some(l) = limit {
+        cmd.args(&["--limit", &l.to_string()]);
+    }
+
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("\u{8FD0}\u{884C} hermes skills search \u{5931}\u{8D25}: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let mut skills = Vec::new();
+
+    for line in stdout.lines() {
+        let clean = strip_ansi(line);
+        let clean = clean.trim();
+
+        if clean.starts_with("\u{2502}") || clean.starts_with("|") {
+            let sep = if clean.contains("\u{2502}") { "\u{2502}" } else { "|" };
+            let parts: Vec<&str> = clean.split(sep)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            if parts.len() >= 4 {
+                let name = parts[0].to_string();
+                if name == "Name" || name.contains("\u{2501}") {
+                    continue;
+                }
+
+                let desc = parts[1].to_string();
+                let src = parts[2].to_string();
+                let trust_val = parts[3].to_string();
+                let identifier = if parts.len() >= 5 { parts[4].to_string() } else { String::new() };
+
+                skills.push(BrowseSkill {
+                    name,
+                    description: desc,
+                    source: src,
+                    trust: trust_val,
+                    identifier,
+                });
+            }
+        }
+    }
+
+    Ok(skills)
+}
+
+#[tauri::command]
+async fn install_skill(identifier: String, category: Option<String>, name: Option<String>) -> Result<String, String> {
+    let mut cmd = hermes_command();
+    cmd.args(&["skills", "install", &identifier, "-y"]);
+    if let Some(cat) = category {
+        cmd.args(&["--category", &cat]);
+    }
+    if let Some(n) = name {
+        cmd.args(&["--name", &n]);
+    }
+
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("\u{8FD0}\u{884C} hermes skills install \u{5931}\u{8D25}: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        Err(format!("\u{5B89}\u{88C5}\u{5931}\u{8D25}: {}", stderr))
+    }
+}
+
+#[tauri::command]
+async fn uninstall_skill(name: String) -> Result<String, String> {
+    let output = hermes_command()
+        .args(&["skills", "uninstall", &name])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("\u{8FD0}\u{884C} hermes skills uninstall \u{5931}\u{8D25}: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        Err(format!("\u{5378}\u{8F7D}\u{5931}\u{8D25}: {}", stderr))
+    }
+}
+
+#[tauri::command]
+async fn inspect_skill(identifier: String) -> Result<String, String> {
+    let output = hermes_command()
+        .args(&["skills", "inspect", &identifier])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("\u{8FD0}\u{884C} hermes skills inspect \u{5931}\u{8D25}: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+
+    if output.status.success() && !stdout.trim().is_empty() {
+        return Ok(stdout);
+    }
+
+    let home = dirs::home_dir().unwrap_or_default();
+    let local_path = format!("{}/.hermes/skills/{}/SKILL.md", home.display(), identifier);
+    if let Ok(content) = std::fs::read_to_string(&local_path) {
+        return Ok(content);
+    }
+
+    let parts: Vec<&str> = identifier.split('/').collect();
+    if parts.len() >= 2 {
+        let cat_name = format!("{}/{}", parts[parts.len() - 2], parts[parts.len() - 1]);
+        let local_path2 = format!("{}/.hermes/skills/{}/SKILL.md", home.display(), cat_name);
+        if let Ok(content) = std::fs::read_to_string(&local_path2) {
+            return Ok(content);
+        }
+    }
+
+    Err(format!("Failed to view details: skill {} not found", identifier))
+}
+
 
 #[derive(Serialize, Clone)]
 struct HermesConfig {
@@ -576,29 +1141,29 @@ struct HermesConfig {
     env_path: String,
 }
 
-/// 获取 Hermes Agent 配置
+/// Get Hermes Agent config
 #[tauri::command]
 async fn get_hermes_config() -> Result<HermesConfig, String> {
-    // 获取配置文件路径
-    let config_path_output = Command::new(&hermes_bin())
+    // Get config file path
+    let config_path_output = hermes_command()
         .args(&["config", "path"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|e| format!("获取配置路径失败: {}", e))?;
+        .map_err(|e| format!("Failed to get config path: {}", e))?;
     let config_path = String::from_utf8_lossy(&config_path_output.stdout).trim().to_string();
 
-    let env_path_output = Command::new(&hermes_bin())
+    let env_path_output = hermes_command()
         .args(&["config", "env-path"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|e| format!("获取 env 路径失败: {}", e))?;
+        .map_err(|e| format!("Failed to get env path: {}", e))?;
     let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
 
-    // 读取 config.yaml
+    // Read config.yaml
     let yaml_content = std::fs::read_to_string(&config_path)
-        .map_err(|e| format!("读取配置文件失败: {}", e))?;
+        .map_err(|e| format!("Failed to read config file: {}", e))?;
 
     let yaml = serde_yaml_to_json(&yaml_content);
 
@@ -645,7 +1210,7 @@ async fn get_hermes_config() -> Result<HermesConfig, String> {
     })
 }
 
-/// 简化版 YAML 解析（转为 JSON Value）
+/// Simplified YAML parser (convert to JSON Value)
 fn serde_yaml_to_json(yaml_str: &str) -> serde_json::Value {
     let mut root = serde_json::Map::new();
     let mut current_section = String::new();
@@ -707,15 +1272,15 @@ fn parse_yaml_value(s: &str) -> serde_json::Value {
     serde_json::Value::String(unquoted.to_string())
 }
 
-/// 修改 Hermes Agent 配置
+/// Modify Hermes Agent config
 #[tauri::command]
 async fn set_hermes_config(key: String, value: String) -> Result<String, String> {
-    let output = Command::new(&hermes_bin())
+    let output = hermes_command()
         .args(&["config", "set", &key, &value])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
-        .map_err(|e| format!("修改配置失败: {}", e))?;
+        .map_err(|e| format!("Failed to modify config: {}", e))?;
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -727,7 +1292,7 @@ async fn set_hermes_config(key: String, value: String) -> Result<String, String>
     }
 }
 
-/// 重启 Hermes Agent
+/// Restart Hermes Agent
 #[tauri::command]
 fn restart_hermes(state: State<'_, AgentProcess>) -> Result<String, String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
@@ -738,16 +1303,16 @@ fn restart_hermes(state: State<'_, AgentProcess>) -> Result<String, String> {
 
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    let child = Command::new(&hermes_bin())
-        .arg("acp")
+    let child = hermes_command()
+        .args(["gateway", "run", "--accept-hooks"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| format!("启动 hermes 失败: {}", e))?;
+        .map_err(|e| format!("Failed to start hermes: {}", e))?;
 
     *guard = Some(child);
-    Ok("Hermes Agent 已重启".to_string())
+    Ok("Hermes Agent restarted".to_string())
 }
 
 #[derive(Serialize, Clone)]
@@ -760,7 +1325,7 @@ struct InstallProgress {
 
 #[tauri::command]
 async fn check_hermes_installed() -> Result<serde_json::Value, String> {
-    let version_output = Command::new(&hermes_bin())
+    let version_output = hermes_command()
         .arg("version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -793,256 +1358,684 @@ async fn check_hermes_installed() -> Result<serde_json::Value, String> {
     }
 }
 
+fn check_git_installed() -> bool {
+    if let Some(git_path) = find_git_exe() {
+        return check_cmd_installed(&git_path, &["--version"]);
+    }
+    check_cmd_installed("git", &["--version"])
+}
+
+fn find_git_exe() -> Option<String> {
+    if check_cmd_installed("git", &["--version"]) {
+        return Some("git".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let common_paths = [
+            "C:\\Program Files\\Git\\bin\\git.exe",
+            "C:\\Program Files (x86)\\Git\\bin\\git.exe",
+            &format!("{}\\Programs\\Git\\bin\\git.exe", std::env::var("LOCALAPPDATA").unwrap_or_default()),
+        ];
+        for p in &common_paths {
+            if std::path::Path::new(p).exists() {
+                return Some(p.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn refresh_git_path() {
+    #[cfg(target_os = "windows")]
+    {
+        let git_bin = "C:\\Program Files\\Git\\bin";
+        let git_cmd = "C:\\Program Files\\Git\\cmd";
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        let mut new_path = current_path.clone();
+        for dir in &[git_bin, git_cmd] {
+            let sep = if cfg!(windows) { ";" } else { ":" };
+            if !new_path.to_lowercase().contains(&dir.to_lowercase()) {
+                if !new_path.is_empty() {
+                    new_path.push_str(sep);
+                }
+                new_path.push_str(dir);
+            }
+        }
+        if new_path != current_path {
+            unsafe { std::env::set_var("PATH", &new_path); }
+        }
+    }
+}
+
+fn check_cmd_installed(cmd: &str, args: &[&str]) -> bool {
+    command(cmd)
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn check_brew_installed() -> bool {
+    check_cmd_installed("/opt/homebrew/bin/brew", &["--version"])
+}
+
+#[cfg(target_os = "macos")]
+fn auto_install_brew(app: &AppHandle) -> Result<(), String> {
+    let _ = app.emit(
+        "install-progress",
+        InstallProgress { line: "Installing Homebrew...".to_string(), done: false, success: false },
+    );
+    let output = command("bash")
+        .arg("-c")
+        .arg("NONINTERACTIVE=1 /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to start Homebrew install script: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for line in stdout.lines().chain(stderr.lines()) {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: trimmed.to_string(), done: false, success: false,
+            });
+        }
+    }
+    if check_brew_installed() {
+        let _ = app.emit("install-progress", InstallProgress {
+            line: "Homebrew installation complete".to_string(), done: false, success: false,
+        });
+        Ok(())
+    } else {
+        Err(format!("Homebrew still unavailable after install. Exit code: {}", output.status))
+    }
+}
+
+fn auto_install_git(app: &AppHandle) -> Result<(), String> {
+    log::info!("[git-install] Checking if git is already installed...");
+    if check_git_installed() {
+        log::info!("[git-install] Git already installed, skipping");
+        return Ok(());
+    }
+    log::info!("[git-install] Git not found, starting installation");
+
+    let _ = app.emit(
+        "install-progress",
+        InstallProgress { line: "Git not found, installing automatically...".to_string(), done: false, success: false },
+    );
+
+    #[cfg(target_os = "macos")]
+    {
+        if !check_brew_installed() {
+            auto_install_brew(app)?;
+        }
+        let _ = app.emit(
+            "install-progress",
+            InstallProgress { line: "Installing Git via Homebrew...".to_string(), done: false, success: false },
+        );
+        let output = command("/opt/homebrew/bin/brew")
+            .args(["install", "git"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .map_err(|e| format!("brew install git failed: {}", e))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Git installation failed: {}", stderr));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        log::info!("[git-install] Checking winget availability...");
+        let winget_check = command("winget")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        log::info!("[git-install] winget available: {}", winget_check);
+
+        if winget_check {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Installing Git via winget (30s timeout)...".to_string(), done: false, success: false,
+            });
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let output = command("winget")
+                    .args(["install", "--id", "Git.Git", "-e", "--source", "winget",
+                           "--accept-package-agreements", "--silent", "--scope", "machine"])
+                    .output();
+                let _ = tx.send(output);
+            });
+            let winget_ok = match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+                Ok(Ok(o)) => {
+                    log::info!("[git-install] winget finished, exit: {}", o.status);
+                    refresh_git_path();
+                    check_git_installed()
+                }
+                Ok(Err(e)) => {
+                    log::warn!("[git-install] winget spawn failed: {}", e);
+                    false
+                }
+                Err(_) => {
+                    log::warn!("[git-install] winget timed out after 30s");
+                    false
+                }
+            };
+
+            if winget_ok {
+                let _ = app.emit("install-progress", InstallProgress {
+                    line: "Git installation complete".to_string(), done: false, success: false,
+                });
+                return Ok(());
+            }
+            log::warn!("[git-install] winget did not install git successfully, trying manual download...");
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "winget install did not complete, trying manual download...".to_string(), done: false, success: false,
+            });
+        }
+
+        if !check_git_installed() {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Downloading Git from mirror...".to_string(), done: false, success: false,
+            });
+            let installer_path = format!("{}\\git-installer.exe", std::env::temp_dir().to_str().unwrap_or("."));
+            let _ = std::fs::remove_file(&installer_path);
+
+            let download_urls = [
+                "https://registry.npmmirror.com/-/binary/git-for-windows/v2.47.1.windows.1/Git-2.47.1-64-bit.exe",
+                "https://registry.npmmirror.com/-/binary/git-for-windows/v2.46.2.windows.1/Git-2.46.2-64-bit.exe",
+                "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe",
+            ];
+
+            let mut download_ok = false;
+            for url in &download_urls {
+                log::info!("[git-install] Trying download: {}", url);
+                let _ = std::fs::remove_file(&installer_path);
+
+                let curl_output = command("curl")
+                    .args(["-L", "-f", "--connect-timeout", "15", "--max-time", "300",
+                           "-o", &installer_path, url])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped())
+                    .output();
+
+                let curl_ok = match &curl_output {
+                    Ok(o) => {
+                        if !o.status.success() {
+                            let err = String::from_utf8_lossy(&o.stderr);
+                            log::warn!("[git-install] curl failed: {}", err.trim());
+                        }
+                        o.status.success()
+                    }
+                    Err(e) => {
+                        log::warn!("[git-install] curl error: {}", e);
+                        false
+                    }
+                };
+
+                if curl_ok && std::path::Path::new(&installer_path).exists() {
+                    let meta = std::fs::metadata(&installer_path).unwrap_or(std::fs::metadata(".").unwrap());
+                    if meta.len() > 1024 * 1024 {
+                        download_ok = true;
+                        log::info!("[git-install] Download successful via curl, size: {} bytes", meta.len());
+                        break;
+                    }
+                    log::warn!("[git-install] Downloaded file too small: {} bytes", meta.len());
+                }
+
+                log::info!("[git-install] curl failed, trying powershell fallback...");
+                let _ = std::fs::remove_file(&installer_path);
+                let ps_output = command("powershell")
+                    .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                           &format!("& {{ [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; $wc=New-Object System.Net.WebClient; try {{ $wc.DownloadFile('{}','{}'); exit 0 }} catch {{ exit 1 }} }}",
+                                   url.replace('\'', "''"), installer_path.replace('\'', "''"))])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped())
+                    .output();
+
+                let ps_ok = match &ps_output {
+                    Ok(o) => {
+                        if !o.status.success() {
+                            let err = String::from_utf8_lossy(&o.stderr);
+                            log::warn!("[git-install] powershell download failed: {}", err.trim());
+                        }
+                        o.status.success()
+                    }
+                    Err(e) => {
+                        log::warn!("[git-install] powershell error: {}", e);
+                        false
+                    }
+                };
+
+                if ps_ok && std::path::Path::new(&installer_path).exists() {
+                    let meta = std::fs::metadata(&installer_path).unwrap_or(std::fs::metadata(".").unwrap());
+                    if meta.len() > 1024 * 1024 {
+                        download_ok = true;
+                        log::info!("[git-install] Download successful via powershell, size: {} bytes", meta.len());
+                        break;
+                    }
+                    log::warn!("[git-install] Downloaded file too small: {} bytes", meta.len());
+                }
+            }
+
+            if !download_ok {
+                return Err("Failed to download Git installer, please check network".to_string());
+            }
+
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Installing Git silently...".to_string(), done: false, success: false,
+            });
+            let install_output = command(&installer_path)
+                .args(["/VERYSILENT", "/NORESTART", "/NOCANCEL", "/SP-",
+                       "/SUPPRESSMSGBOXES", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .output();
+            let _ = std::fs::remove_file(&installer_path);
+
+            match &install_output {
+                Ok(o) => log::info!("Git installer exited with status: {}", o.status),
+                Err(e) => log::warn!("Git installer spawn error: {}", e),
+            }
+
+            refresh_git_path();
+
+            for retry in 0..10 {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                if check_git_installed() {
+                    log::info!("Git detected after {} retries", retry + 1);
+                    break;
+                }
+                log::info!("Waiting for Git installation to complete... retry {}", retry + 1);
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let output = command("sudo")
+            .args(["apt", "install", "-y", "git"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .map_err(|e| format!("apt install git failed: {}", e))?;
+        if !output.status.success() {
+            // try yum
+            let yum_output = command("sudo")
+                .args(["yum", "install", "-y", "git"])
+                .output()
+                .map_err(|e| format!("yum install git failed: {}", e))?;
+            if !yum_output.status.success() {
+                return Err("Git installation failed: neither apt nor yum available".to_string());
+            }
+        }
+    }
+
+    if check_git_installed() {
+        let _ = app.emit("install-progress", InstallProgress {
+            line: "Git installation complete".to_string(), done: false, success: false,
+        });
+        Ok(())
+    } else {
+        Err("Git installation failed, please check system environment".to_string())
+    }
+}
+
+fn ensure_gateway_config(app: &AppHandle) {
+    let home = home_dir();
+    let hermes_home = format!("{}/.hermes", home);
+    let config_path = format!("{}/config.yaml", hermes_home);
+    let env_path = format!("{}/.env", hermes_home);
+
+    if let Err(e) = std::fs::create_dir_all(&hermes_home) {
+        log::warn!("Failed to create .hermes directory: {}", e);
+        return;
+    }
+
+    let mut env_content = String::new();
+    if let Ok(existing) = std::fs::read_to_string(&env_path) {
+        env_content = existing;
+    }
+    if !env_content.contains("GATEWAY_ALLOW_ALL_USERS") {
+        env_content.push_str("\nGATEWAY_ALLOW_ALL_USERS=true\n");
+        if let Err(e) = std::fs::write(&env_path, &env_content) {
+            log::warn!("Failed to write gateway env config: {}", e);
+        } else {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Gateway API access configured".to_string(), done: false, success: false,
+            });
+        }
+    }
+
+    let mut config_content = String::new();
+    if let Ok(existing) = std::fs::read_to_string(&config_path) {
+        config_content = existing;
+    }
+    if !config_content.contains("api_server") {
+        config_content.push_str("\n\nplatforms:\n  api_server:\n    port: 8642\n    enabled: true\n");
+        if let Err(e) = std::fs::write(&config_path, &config_content) {
+            log::warn!("Failed to write gateway api_server config: {}", e);
+        } else {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Local API Server enabled (port 8642)".to_string(), done: false, success: false,
+            });
+        }
+    }
+}
+
 #[tauri::command]
+#[allow(unused_variables)]
 async fn install_hermes_agent(app: AppHandle, method: String) -> Result<bool, String> {
-    let already_installed = Command::new(&hermes_bin())
-        .arg("version")
+    log::info!("[install] Starting installation, method={}", method);
+    let _ = app.emit(
+        "install-progress",
+        InstallProgress { line: "Detecting system environment...".to_string(), done: false, success: false },
+    );
+    log::info!("[install] Checking Git...");
+    auto_install_git(&app)?;
+    log::info!("[install] Git check done, proceeding with native install");
+
+    #[cfg(target_os = "windows")]
+    {
+        return windows_native_install(&app).await;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let already_installed = hermes_command()
+            .arg("version")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        let hermes_dir = format!("{}/.hermes/hermes-agent", home_dir());
+        if std::path::Path::new(&hermes_dir).exists() {
+            let venv_hermes = format!("{}/venv/bin/hermes", hermes_dir);
+            if std::path::Path::new(&venv_hermes).exists() {
+                let _ = command("git")
+                    .args(["stash", "clear"])
+                    .current_dir(&hermes_dir)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+            } else {
+                let _ = std::fs::remove_dir_all(&hermes_dir);
+            }
+        }
+
+        let install_cmd: String = if already_installed && method == "curl" {
+            format!("{} update", hermes_bin())
+        } else {
+            match method.as_str() {
+                "curl" => r#"bash -c 'export GIT_SSH_COMMAND="ssh -o ConnectTimeout=30 -o BatchMode=yes"; export GIT_TERMINAL_PROMPT=0; curl -fsSL --connect-timeout 30 --max-time 300 https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup'"#.to_string(),
+                "pip" => "pip install --upgrade --timeout 60 hermes-agent".to_string(),
+                _ => return Err(format!("Unsupported install method: {}", method)),
+            }
+        };
+
+        let (shell, args) = get_install_shell_args(&method, &install_cmd);
+        let new_path = path_with_local_bin();
+        let mut child = command(shell)
+            .args(&args)
+            .env("PATH", &new_path)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("CI", "1")
+            .env("HERMES_NO_PROMPT", "1")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to start install process: {}", e))?;
+
+        let stdout = child.stdout.take().ok_or("Cannot get stdout")?;
+        let stderr = child.stderr.take().ok_or("Cannot get stderr")?;
+        let app_stdout = app.clone();
+        let stdout_thread = spawn_log_reader(stdout, app_stdout);
+        let app_stderr = app.clone();
+        let stderr_thread = spawn_log_reader(stderr, app_stderr);
+
+        let status = child.wait().map_err(|e| format!("Failed to wait for install process: {}", e))?;
+        let _ = stdout_thread.join();
+        let _ = stderr_thread.join();
+
+        let script_success = status.success();
+
+        let home = std::env::var("HOME").unwrap_or_default();
+        let local_bin = format!("{}/.local/bin", home);
+        let hermes_link = format!("{}/hermes", local_bin);
+        let venv_hermes = format!("{}/.hermes/hermes-agent/venv/bin/hermes", home);
+        if std::path::Path::new(&venv_hermes).exists() && !std::path::Path::new(&hermes_link).exists() {
+            let _ = std::fs::create_dir_all(&local_bin);
+            let _ = std::os::unix::fs::symlink(&venv_hermes, &hermes_link);
+        }
+
+        let actual_installed = hermes_command()
+            .arg("version")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if actual_installed {
+            ensure_gateway_config(&app);
+            sync_hermes_providers_to_db(&app).await;
+            sync_api_keys_to_hermes_env(&app).await;
+        }
+
+        let success = actual_installed || script_success;
+        let _ = app.emit("install-progress", InstallProgress {
+            line: if success { "Installation complete".to_string() } else { "Installation failed".to_string() },
+            done: true, success,
+        });
+        return Ok(success);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn find_windows_python() -> Option<String> {
+    let candidates = [
+        "python",
+        "python3",
+    ];
+    for cmd in &candidates {
+        if let Ok(output) = command(cmd).arg("--version").output() {
+            if output.status.success() {
+                return Some(cmd.to_string());
+            }
+        }
+    }
+    let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let paths = [
+        format!("{}\\Programs\\Python\\Python311\\python.exe", local_appdata),
+        format!("{}\\Programs\\Python\\Python312\\python.exe", local_appdata),
+        format!("{}\\Microsoft\\WindowsApps\\python.exe", local_appdata),
+    ];
+    for path in &paths {
+        if std::path::Path::new(path).exists() {
+            return Some(path.clone());
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn try_install_python_via_uv(app: &AppHandle) -> Option<String> {
+    let uv_exe = {
+        let local = format!("{}\\AppData\\Local\\hermes", std::env::var("USERPROFILE").unwrap_or_default());
+        let custom_path = format!("{};{}", local, std::env::var("PATH").unwrap_or_default());
+        let candidates = [
+            format!("{}\\.local\\bin\\uv.exe", std::env::var("USERPROFILE").unwrap_or_default()),
+            format!("{}\\.cargo\\bin\\uv.exe", std::env::var("USERPROFILE").unwrap_or_default()),
+        ];
+        let mut found = None;
+        for p in &candidates {
+            if std::path::Path::new(p).exists() {
+                found = Some(p.clone());
+                break;
+            }
+        }
+        if found.is_none() {
+            if let Ok(output) = command("uv").arg("--version").env("PATH", &custom_path).output() {
+                if output.status.success() {
+                    found = Some("uv".to_string());
+                }
+            }
+        }
+        found
+    };
+
+    if let Some(uv) = &uv_exe {
+        let _ = app.emit("install-progress", InstallProgress {
+            line: "Installing Python 3.11 via uv...".to_string(), done: false, success: false,
+        });
+        let _ = command(uv).args(["python", "install", "3.11"]).output();
+        let _ = command(uv).args(["python", "install", "3.12"]).output();
+        if let Some(py) = find_windows_python() {
+            return Some(py);
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
+    let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let hermes_dir = format!("{}\\hermes\\hermes-agent", local_appdata);
+    let venv_dir = format!("{}\\venv", hermes_dir);
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: "Cloning project from mirror...".to_string(), done: false, success: false,
+    });
+
+    refresh_git_path();
+
+    if std::path::Path::new(&hermes_dir).exists() {
+        let _ = std::fs::remove_dir_all(&hermes_dir);
+    }
+    let _ = std::fs::create_dir_all(&hermes_dir);
+
+    let clone_urls = [
+        "https://gitcode.com/GitHub_Trending/he/hermes-agent.git",
+        "https://github.com/NousResearch/hermes-agent.git",
+    ];
+
+    let mut clone_result = None;
+    for url in &clone_urls {
+        log::info!("[install] Cloning from: {}", url);
+        let output = command("git")
+            .args(["clone", "--depth", "1", url, &hermes_dir])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_SSL_NO_VERIFY", "1")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .map_err(|e| format!("git clone failed: {}", e))?;
+
+        if output.status.success() {
+            clone_result = Some(output);
+            break;
+        }
+        log::warn!("[install] Clone from {} failed: {}", url, String::from_utf8_lossy(&output.stderr).trim());
+        let _ = std::fs::remove_dir_all(&hermes_dir);
+        let _ = std::fs::create_dir_all(&hermes_dir);
+    }
+
+    let _clone = clone_result.ok_or_else(|| "git clone failed: all mirrors unreachable".to_string())?;
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: "Project clone complete".to_string(), done: false, success: false,
+    });
+
+    let python = find_windows_python()
+        .or_else(|| try_install_python_via_uv(app))
+        .ok_or("Python not found, please install Python 3.11 or higher")?;
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: format!("Using Python: {}", python), done: false, success: false,
+    });
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: "Creating virtual environment...".to_string(), done: false, success: false,
+    });
+
+    let venv = command(&python)
+        .args(["-m", "venv", &venv_dir])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Failed to create venv: {}", e))?;
+
+    if !venv.status.success() {
+        return Err("Failed to create virtual environment, please ensure Python 3.11+ is installed".to_string());
+    }
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: "Virtual environment created, installing dependencies (Tsinghua mirror)...".to_string(), done: false, success: false,
+    });
+
+    let python_exe = format!("{}\\Scripts\\python.exe", venv_dir);
+    let install = command(&python_exe)
+        .args(["-m", "pip", "install", "--upgrade", "pip",
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
+               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+
+    let install = command(&python_exe)
+        .args(["-m", "pip", "install", "-e", &hermes_dir,
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
+               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("pip install failed: {}", e))?;
+
+    if !install.status.success() {
+        let stderr = String::from_utf8_lossy(&install.stderr);
+        return Err(format!("pip install failed: {}", stderr.trim()));
+    }
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: "Dependencies installed, verifying...".to_string(), done: false, success: false,
+    });
+
+    let version_check = command(&python_exe)
+        .args(["-m", "hermes", "version"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
 
-    let hermes_dir = format!(
-        "{}/.hermes/hermes-agent",
-        std::env::var("HOME").unwrap_or_default()
-    );
-    if std::path::Path::new(&hermes_dir).exists() {
-        let venv_exists = std::path::Path::new(&format!("{}/venv/bin/hermes", hermes_dir)).exists();
-        if venv_exists {
-            let _ = Command::new("git")
-                .args(["stash", "clear"])
-                .current_dir(&hermes_dir)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-        } else {
-            let _ = app.emit(
-                "install-progress",
-                InstallProgress {
-                    line: "检测到损坏的安装目录，正在清理...".to_string(),
-                    done: false,
-                    success: false,
-                },
-            );
-            let _ = std::fs::remove_dir_all(&hermes_dir);
+    if !version_check {
+        let _ = app.emit("install-progress", InstallProgress {
+            line: "hermes command not found, trying to install hermes-agent package directly...".to_string(), done: false, success: false,
+        });
+        let pip_install = command(&python_exe)
+            .args(["-m", "pip", "install", "hermes-agent",
+                   "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
+                   "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !pip_install {
+            return Err("Hermes Agent installation failed, please check network".to_string());
         }
     }
 
-    let install_cmd: String = if already_installed && method == "curl" {
-        let _ = app.emit(
-            "install-progress",
-            InstallProgress {
-                line: "检测到已有安装，使用 hermes update 更新...".to_string(),
-                done: false,
-                success: false,
-            },
-        );
-        let bin = hermes_bin();
-        #[cfg(unix)]
-        {
-            format!("{} update", bin)
-        }
-        #[cfg(windows)]
-        {
-            format!("wsl {} update", bin)
-        }
-    } else {
-        match method.as_str() {
-            "curl" => {
-                #[cfg(unix)]
-                {
-                    r#"bash -c 'export GIT_SSH_COMMAND="ssh -o ConnectTimeout=30 -o BatchMode=yes"; export GIT_TERMINAL_PROMPT=0; curl -fsSL --connect-timeout 30 --max-time 300 https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup'"#.to_string()
-                }
-                #[cfg(windows)]
-                {
-                    "wsl bash -c 'export GIT_SSH_COMMAND=\"ssh -o ConnectTimeout=30 -o BatchMode=yes\"; export GIT_TERMINAL_PROMPT=0; curl -fsSL --connect-timeout 30 --max-time 300 https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup'".to_string()
-                }
-            }
-            "pip" => {
-                #[cfg(unix)]
-                {
-                    "pip install --upgrade --timeout 60 hermes-agent".to_string()
-                }
-                #[cfg(windows)]
-                {
-                    "pip install --upgrade --timeout 60 hermes-agent".to_string()
-                }
-            }
-            _ => return Err(format!("不支持的安装方式: {}", method)),
-        }
-    };
-
-    let (shell, args) = get_install_shell_args(&method, &install_cmd);
-
-    let new_path = path_with_local_bin();
-    let mut child = Command::new(shell)
-        .args(&args)
-        .env("PATH", &new_path)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("CI", "1")
-        .env("HERMES_NO_PROMPT", "1")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("启动安装进程失败: {}", e))?;
-
-    let stdout = child.stdout.take().ok_or("无法获取标准输出")?;
-    let stderr = child.stderr.take().ok_or("无法获取标准错误")?;
-
-    use std::io::{BufReader, Read};
-
-    let app_stdout = app.clone();
-    let stdout_thread = std::thread::spawn(move || {
-        let mut reader = BufReader::new(stdout);
-        let mut buf = Vec::new();
-        let mut line = String::new();
-        loop {
-            let mut tmp = [0u8; 512];
-            match reader.read(&mut tmp) {
-                Ok(0) => {
-                    if !line.is_empty() {
-                        let cleaned = strip_ansi(&line);
-                        if !cleaned.trim().is_empty() {
-                            let _ = app_stdout.emit(
-                                "install-progress",
-                                InstallProgress { line: cleaned, done: false, success: false },
-                            );
-                        }
-                    }
-                    break;
-                }
-                Ok(n) => {
-                    buf.extend_from_slice(&tmp[..n]);
-                    while let Some(pos) = buf.iter().position(|&b| b == b'\n' || b == b'\r') {
-                        let before: Vec<u8> = buf.drain(..pos).collect();
-                        buf.drain(..1);
-                        if let Ok(text) = String::from_utf8(before) {
-                            line.push_str(&text);
-                        }
-                        if !line.is_empty() {
-                            let cleaned = strip_ansi(&line);
-                            if !cleaned.trim().is_empty() {
-                                let _ = app_stdout.emit(
-                                    "install-progress",
-                                    InstallProgress { line: cleaned, done: false, success: false },
-                                );
-                            }
-                            line.clear();
-                        }
-                    }
-                    if let Ok(text) = String::from_utf8(buf.clone()) {
-                        line.push_str(&text);
-                        buf.clear();
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-    });
-
-    let app_stderr = app.clone();
-    let stderr_thread = std::thread::spawn(move || {
-        let mut reader = BufReader::new(stderr);
-        let mut buf = Vec::new();
-        let mut line = String::new();
-        loop {
-            let mut tmp = [0u8; 512];
-            match reader.read(&mut tmp) {
-                Ok(0) => {
-                    if !line.is_empty() {
-                        let cleaned = strip_ansi(&line);
-                        if !cleaned.trim().is_empty() {
-                            let _ = app_stderr.emit(
-                                "install-progress",
-                                InstallProgress { line: cleaned, done: false, success: false },
-                            );
-                        }
-                    }
-                    break;
-                }
-                Ok(n) => {
-                    buf.extend_from_slice(&tmp[..n]);
-                    while let Some(pos) = buf.iter().position(|&b| b == b'\n' || b == b'\r') {
-                        let before: Vec<u8> = buf.drain(..pos).collect();
-                        buf.drain(..1);
-                        if let Ok(text) = String::from_utf8(before) {
-                            line.push_str(&text);
-                        }
-                        if !line.is_empty() {
-                            let cleaned = strip_ansi(&line);
-                            if !cleaned.trim().is_empty() {
-                                let _ = app_stderr.emit(
-                                    "install-progress",
-                                    InstallProgress { line: cleaned, done: false, success: false },
-                                );
-                            }
-                            line.clear();
-                        }
-                    }
-                    if let Ok(text) = String::from_utf8(buf.clone()) {
-                        line.push_str(&text);
-                        buf.clear();
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-    });
-
-    let status = child.wait().map_err(|e| format!("等待安装进程失败: {}", e))?;
-
-    let _ = stdout_thread.join();
-    let _ = stderr_thread.join();
-
-    let script_success = status.success();
-
-    let home = std::env::var("HOME").unwrap_or_default();
-    let local_bin = format!("{}/.local/bin", home);
-    let hermes_link = format!("{}/hermes", local_bin);
-    let venv_hermes = format!("{}/.hermes/hermes-agent/venv/bin/hermes", home);
-    if std::path::Path::new(&venv_hermes).exists() && !std::path::Path::new(&hermes_link).exists() {
-        let _ = std::fs::create_dir_all(&local_bin);
-        let _ = std::os::unix::fs::symlink(&venv_hermes, &hermes_link);
-        let _ = app.emit(
-            "install-progress",
-            InstallProgress {
-                line: "已修复 hermes 命令链接".to_string(),
-                done: false,
-                success: false,
-            },
-        );
-    }
-
-    let path_line = "export PATH=\"$HOME/.local/bin:$PATH\"";
-    let mut path_written = false;
-    for rc_file in [format!("{}/.zshrc", home), format!("{}/.bashrc", home)] {
-        if !std::path::Path::new(&rc_file).exists() {
-            continue;
-        }
-        if let Ok(content) = std::fs::read_to_string(&rc_file) {
-            if content.contains("$HOME/.local/bin") || content.contains("~/.local/bin") {
-                path_written = true;
-                continue;
-            }
-        }
-        if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(&rc_file) {
-            let _ = std::io::Write::write_fmt(&mut f, format_args!("\n{}\n", path_line));
-            path_written = true;
-        }
-    }
-    if !path_written {
-        let zprofile = format!("{}/.zprofile", home);
-        if let Ok(content) = std::fs::read_to_string(&zprofile) {
-            if !content.contains("$HOME/.local/bin") && !content.contains("~/.local/bin") {
-                if let Ok(mut f) = std::fs::OpenOptions::new().append(true).open(&zprofile) {
-                    let _ = std::io::Write::write_fmt(&mut f, format_args!("\n{}\n", path_line));
-                }
-            }
-        }
-    }
-
-    let actual_installed = Command::new(&hermes_bin())
+    let actual_installed = hermes_command()
         .arg("version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1051,37 +2044,17 @@ async fn install_hermes_agent(app: AppHandle, method: String) -> Result<bool, St
         .unwrap_or(false);
 
     if actual_installed {
-        sync_hermes_providers_to_db(&app).await;
-        sync_api_keys_to_hermes_env(&app).await;
+        ensure_gateway_config(app);
+        sync_hermes_providers_to_db(app).await;
+        sync_api_keys_to_hermes_env(app).await;
     }
 
-    let success = actual_installed || script_success;
+    let _ = app.emit("install-progress", InstallProgress {
+        line: if actual_installed { "Installation complete".to_string() } else { "Installation failed".to_string() },
+        done: true, success: actual_installed,
+    });
 
-    if !script_success && actual_installed {
-        let _ = app.emit(
-            "install-progress",
-            InstallProgress {
-                line: "安装脚本返回非零退出码，但 Hermes Agent 已可用".to_string(),
-                done: false,
-                success: false,
-            },
-        );
-    }
-
-    let _ = app.emit(
-        "install-progress",
-        InstallProgress {
-            line: if success {
-                "安装完成".to_string()
-            } else {
-                "安装失败".to_string()
-            },
-            done: true,
-            success,
-        },
-    );
-
-    Ok(success)
+    Ok(actual_installed)
 }
 
 #[tauri::command]
@@ -1094,8 +2067,8 @@ async fn start_hermes_agent(_app: AppHandle, state: State<'_, AgentProcess>) -> 
 
     let new_path = path_with_local_bin();
 
-    match Command::new(&hermes_bin())
-        .arg("acp")
+    match hermes_command()
+        .args(["gateway", "run", "--accept-hooks"])
         .env("PATH", &new_path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -1103,274 +2076,58 @@ async fn start_hermes_agent(_app: AppHandle, state: State<'_, AgentProcess>) -> 
         .spawn()
     {
         Ok(child) => {
-            log::info!("Hermes Agent 已启动");
+            log::info!("Hermes Agent started");
             *guard = Some(child);
-            Ok("Hermes Agent 已启动".to_string())
+            Ok("Hermes Agent started".to_string())
         }
         Err(e) => {
-            log::error!("启动 Hermes Agent 失败: {}", e);
-            Err(format!("启动 Hermes Agent 失败: {}", e))
+            log::error!("Failed to start Hermes Agent: {}", e);
+            Err(format!("Failed to start Hermes Agent: {}", e))
         }
     }
 }
 
-/// 与 Hermes Agent 对话（阻塞式，使用 hermes chat -q）
-/// 支持 session_id 恢复上下文
-#[tauri::command]
-async fn chat_with_hermes(message: String, session_id: Option<String>) -> Result<ChatResponse, String> {
-    log::info!("[chat] 开始: message={}, session_id={:?}", message, session_id);
-
-    let bin = hermes_bin();
-    let new_path = path_with_local_bin();
-    let mut last_session_id = session_id.clone();
-
-    for attempt in 0..2 {
-        let resume_arg = match &last_session_id {
-            Some(sid) => format!(" --resume '{}'", sid.replace('\'', "'\"'\"'")),
-            None => String::new(),
-        };
-        let shell_cmd = format!(
-            "{} chat -q '{}' -Q{}",
-            bin,
-            message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
-            resume_arg
-        );
-        log::info!("[chat] 执行命令(attempt={}): zsh -lc {}", attempt, shell_cmd);
-
-        let output = match tokio::time::timeout(
-            tokio::time::Duration::from_secs(60),
-            tokio::process::Command::new("zsh")
-                .args(["-lc", &shell_cmd])
-                .env("PATH", &new_path)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .output(),
-        )
-        .await
-        {
-            Ok(Ok(o)) => {
-                log::info!("[chat] 命令完成, exit={:?}", o.status.code());
-                o
-            }
-            Ok(Err(e)) => {
-                log::error!("[chat] 启动失败: {}", e);
-                return Err(format!("启动 hermes chat 失败: {}", e));
-            }
-            Err(_) => {
-                log::error!("[chat] 超时");
-                return Err("请求超时，请检查网络或模型配置".to_string());
-            }
-        };
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::info!("[chat] stdout 长度={}, stderr 长度={}", stdout.len(), stderr.len());
-
-        if !output.status.success() {
-            let err_text = if stderr.trim().is_empty() {
-                stdout.trim().to_string()
-            } else {
-                stderr.trim().to_string()
-            };
-            if attempt == 0 && last_session_id.is_some() && err_text.contains("Session not found") {
-                log::warn!("[chat] Session 无效，去掉 resume 重试");
-                last_session_id = None;
-                continue;
-            }
-            log::error!("[chat] 命令失败: {}", err_text);
-            return Err(format!("hermes chat 出错: {}", err_text));
-        }
-
-        let mut new_session_id: Option<String> = None;
-
-        for line in stderr.lines() {
-            let line = line.trim();
-            if line.starts_with("session_id:") {
-                new_session_id = Some(line.replace("session_id:", "").trim().to_string());
-                break;
-            }
-        }
-
-        let content: String = stdout
-            .lines()
-            .filter(|line| {
-                let line = line.trim();
-                if line.starts_with("session_id:") {
-                    if new_session_id.is_none() {
-                        new_session_id = Some(line.replace("session_id:", "").trim().to_string());
-                    }
-                    false
-                } else if line.starts_with("↻ Resumed session") {
-                    false
-                } else {
-                    true
-                }
-            })
-            .collect::<Vec<&str>>()
-            .join("\n")
-            .trim()
-            .to_string();
-
-        if content.is_empty() {
-            return Ok(ChatResponse {
-                content: "无法获取响应".to_string(),
-                thinking: None,
-                session_id: new_session_id,
-            });
-        }
-
-        log::info!("[chat] 返回内容长度={}, session_id={:?}", content.len(), new_session_id);
-        return Ok(ChatResponse {
-            content,
-            thinking: None,
-            session_id: new_session_id,
-        });
-    }
-
-    Err("hermes chat 出错: 重试失败".to_string())
-}
-
-/// 与 Avatar 数字人对话（简化版，直接返回文本）
-#[tauri::command]
-async fn chat_with_agent(_app: AppHandle, message: String, session_id: Option<String>) -> Result<ChatResponse, String> {
-    log::info!("[avatar_chat] 开始: message={}, session_id={:?}", message, session_id);
-
-    let bin = hermes_bin();
-    let new_path = path_with_local_bin();
-
-    let mut last_session_id = session_id.clone();
-
-    for attempt in 0..2 {
-        let resume_arg = match &last_session_id {
-            Some(sid) => format!(" --resume '{}'", sid.replace('\'', "'\"'\"'")),
-            None => String::new(),
-        };
-        let shell_cmd = format!(
-            "{} chat -q '{}' -Q{}",
-            bin,
-            message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
-            resume_arg
-        );
-        log::info!("[avatar_chat] 执行命令(attempt={}): zsh -lc {}", attempt, shell_cmd);
-
-        let output = match tokio::time::timeout(
-            tokio::time::Duration::from_secs(120),
-            tokio::process::Command::new("zsh")
-                .args(["-lc", &shell_cmd])
-                .env("PATH", &new_path)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .output(),
-        )
-        .await
-        {
-            Ok(Ok(o)) => {
-                log::info!("[avatar_chat] 命令完成, exit={:?}, stdout_len={}, stderr_len={}", 
-                    o.status.code(), o.stdout.len(), o.stderr.len());
-                o
-            }
-            Ok(Err(e)) => {
-                log::error!("[avatar_chat] 启动失败: {}", e);
-                return Err(format!("启动 hermes chat 失败: {}", e));
-            }
-            Err(_) => {
-                log::error!("[avatar_chat] 超时");
-                return Err("请求超时，请检查网络或模型配置".to_string());
-            }
-        };
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::info!("[avatar_chat] stdout 长度={}, stderr 长度={}", stdout.len(), stderr.len());
-
-        if !output.status.success() {
-            let err_text = if stderr.trim().is_empty() {
-                stdout.trim().to_string()
-            } else {
-                stderr.trim().to_string()
-            };
-            if attempt == 0 && last_session_id.is_some() && err_text.contains("Session not found") {
-                log::warn!("[avatar_chat] Session 无效，去掉 resume 重试");
-                last_session_id = None;
-                continue;
-            }
-            log::error!("[avatar_chat] 命令失败: {}", err_text);
-            return Err(format!("hermes chat 出错: {}", err_text));
-        }
-
-        let mut new_session_id: Option<String> = None;
-
-        for line in stderr.lines() {
-            let line = line.trim();
-            if line.starts_with("session_id:") {
-                new_session_id = Some(line.replace("session_id:", "").trim().to_string());
-                break;
-            }
-        }
-
-        let content: String = stdout
-            .lines()
-            .filter(|line| {
-                let line = line.trim();
-                if line.starts_with("session_id:") {
-                    if new_session_id.is_none() {
-                        new_session_id = Some(line.replace("session_id:", "").trim().to_string());
-                    }
-                    false
-                } else if line.starts_with("↻ Resumed session") {
-                    false
-                } else {
-                    true
-                }
-            })
-            .collect::<Vec<&str>>()
-            .join("\n")
-            .trim()
-            .to_string();
-
-        if content.is_empty() {
-            return Ok(ChatResponse {
-                content: "抱歉，我没有理解你的意思，能再说一遍吗？".to_string(),
-                thinking: None,
-                session_id: new_session_id,
-            });
-        }
-
-        log::info!("[avatar_chat] 返回内容长度={}, session_id={:?}", content.len(), new_session_id);
-        return Ok(ChatResponse {
-            content,
-            thinking: None,
-            session_id: new_session_id,
-        });
-    }
-
-    Err("hermes chat 出错: 重试失败".to_string())
-}
-
-/// 流式对话 - 通过事件发送数据到前端（使用 hermes chat -q）
-/// 真正的流式：边读 stdout 边 emit 事件到前端
+/// Streaming chat - send data to frontend via events (using hermes chat -q)
+/// True streaming: read stdout and emit events to frontend
 #[tauri::command]
 async fn chat_with_hermes_stream(
     app: AppHandle,
     message: String,
     conversation_id: String,
+    model: Option<String>,
+    provider: Option<String>,
+    image: Option<String>,
 ) -> Result<(), String> {
     let event_id = format!("chat_stream_{}", conversation_id);
-    log::info!("[chat_stream] 开始: conversation_id={}, message={}", conversation_id, message);
+    log::info!("[chat_stream] start conversation_id={}, message={}, model={:?}, provider={:?}, image={:?}", conversation_id, message, model, provider, image);
 
-    // 使用 zsh -lc 确保加载用户的 shell 环境（PATH 等）
     let bin = hermes_bin();
+    let model_arg = match &model {
+        Some(m) => format!(" -m '{}'", m.replace('\'', "'\"'\"'")),
+        None => String::new(),
+    };
+    let provider_arg = match &provider {
+        Some(p) => format!(" --provider '{}'", p.replace('\'', "'\"'\"'")),
+        None => String::new(),
+    };
+    let image_arg = match &image {
+        Some(img) => format!(" --image '{}'", img.replace('\'', "'\"'\"'")),
+        None => String::new(),
+    };
     let shell_cmd = format!(
-        "{} chat -q '{}' -Q",
+        "{} chat -q '{}' -Q{}{}{}",
         bin,
-        message.replace('\\', "\\\\").replace('\'', "'\"'\"'")
+        message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
+        model_arg,
+        provider_arg,
+        image_arg
     );
-    log::info!("[chat_stream] 执行命令: zsh -lc {}", shell_cmd);
+    let shell = default_shell();
+    log::info!("[chat_stream] executing command: {} -lc {}", shell, shell_cmd);
 
     let new_path = path_with_local_bin();
 
-    // spawn 子进程，实时读取 stdout
-    let mut child = match tokio::process::Command::new("zsh")
+    let mut child = match tokio::process::Command::from(command(shell))
         .args(["-lc", &shell_cmd])
         .env("PATH", &new_path)
         .stdout(std::process::Stdio::piped())
@@ -1379,12 +2136,18 @@ async fn chat_with_hermes_stream(
     {
         Ok(c) => c,
         Err(e) => {
-            log::error!("[chat_stream] 启动命令失败: {}", e);
+            log::error!("[chat_stream] failed to start command: {}", e);
             let _ = app.emit(&event_id, ChatStreamEvent {
-                chunk: format!("[错误] 启动 hermes chat 失败: {}", e),
+                event_type: None,
+                tool_name: None,
+                tool_label: None,
+                chunk: format!("[Error] Failed to start hermes chat: {}", e),
                 done: false,
             });
             let _ = app.emit(&event_id, ChatStreamEvent {
+                event_type: None,
+                tool_name: None,
+                tool_label: None,
                 chunk: "".to_string(),
                 done: true,
             });
@@ -1395,7 +2158,7 @@ async fn chat_with_hermes_stream(
     let stdout = child.stdout.take();
     let stderr_child = child.stderr.take();
 
-    // 在后台读取 stderr
+    // Read stderr in background
     let stderr_task = tokio::spawn(async move {
         if let Some(mut stderr) = stderr_child {
             use tokio::io::AsyncReadExt;
@@ -1407,7 +2170,7 @@ async fn chat_with_hermes_stream(
         }
     });
 
-    // 实时读取 stdout 并 emit 事件
+    // Read stdout in real-time and emit events
     use tokio::io::{AsyncBufReadExt, BufReader};
 
     let result = if let Some(stdout) = stdout {
@@ -1415,24 +2178,27 @@ async fn chat_with_hermes_stream(
         let mut lines = reader.lines();
         let mut total_content = String::new();
 
-        // 带超时的逐行读取循环
+        // Line-by-line read loop with timeout
         loop {
             let line_result = tokio::time::timeout(
-                tokio::time::Duration::from_secs(60),
+                tokio::time::Duration::from_secs(180),
                 lines.next_line(),
             ).await;
 
             match line_result {
                 Ok(Ok(Some(line))) => {
-                    // 跳过 session_id 行
+                    // Skip session_id line
                     if line.starts_with("session_id:") {
-                        log::info!("[chat_stream] 跳过 session_id 行: {}", line);
+                        log::info!("[chat_stream] skip session_id line: {}", line);
                         continue;
                     }
                     if !line.is_empty() {
                         total_content.push_str(&line);
                         total_content.push('\n');
                         let _ = app.emit(&event_id, ChatStreamEvent {
+                            event_type: None,
+                            tool_name: None,
+                            tool_label: None,
                             chunk: line,
                             done: false,
                         });
@@ -1440,17 +2206,20 @@ async fn chat_with_hermes_stream(
                 }
                 Ok(Ok(None)) => {
                     // stdout EOF
-                    log::info!("[chat_stream] stdout EOF, 总长度={}", total_content.len());
+                    log::info!("[chat_stream] stdout EOF, total length: {}", total_content.len());
                     break;
                 }
                 Ok(Err(e)) => {
-                    log::error!("[chat_stream] 读取 stdout 错误: {}", e);
+                    log::warn!("[chat_stream] read stdout error: {}", e);
                     break;
                 }
                 Err(_) => {
-                    log::error!("[chat_stream] 读取超时");
+                    log::warn!("[chat_stream] read timeout");
                     let _ = app.emit(&event_id, ChatStreamEvent {
-                        chunk: "[错误] 请求超时，请检查网络或模型配置".to_string(),
+                        event_type: None,
+                        tool_name: None,
+                        tool_label: None,
+                        chunk: "[Error] Request timeout, please check network or model config".to_string(),
                         done: false,
                     });
                     break;
@@ -1459,60 +2228,291 @@ async fn chat_with_hermes_stream(
         }
 
         if total_content.is_empty() {
-            log::warn!("[chat_stream] stdout 为空");
+            log::warn!("[chat_stream] stdout empty");
             let _ = app.emit(&event_id, ChatStreamEvent {
-                chunk: "[无回复]".to_string(),
+                event_type: None,
+                tool_name: None,
+                tool_label: None,
+                chunk: "[No response]".to_string(),
                 done: false,
             });
         }
 
         Ok(())
     } else {
-        log::error!("[chat_stream] 无法获取 stdout");
+        log::error!("[chat_stream] cannot get stdout");
         let _ = app.emit(&event_id, ChatStreamEvent {
-            chunk: "[错误] 无法获取命令输出".to_string(),
+            event_type: None,
+            tool_name: None,
+            tool_label: None,
+            chunk: "[Error] Cannot get command output".to_string(),
             done: false,
         });
         Ok(())
     };
 
-    // 等待子进程退出
+    // Wait for child process to exit
     let _ = child.wait().await;
 
-    // 检查 stderr
+    // Check stderr
     let stderr_output = stderr_task.await.unwrap_or_default();
     if !stderr_output.trim().is_empty() {
         log::warn!("[chat_stream] stderr: {}", stderr_output.trim());
     }
 
-    // 发送 done 事件
+    // Send done event
     let _ = app.emit(&event_id, ChatStreamEvent {
+        event_type: None,
+        tool_name: None,
+        tool_label: None,
         chunk: "".to_string(),
         done: true,
     });
 
-    log::info!("[chat_stream] 完成");
+    log::info!("[chat_stream] done");
     result
 }
 
-/// 打开日志目录
+fn tool_label(tool_name: &str) -> &str {
+    match tool_name {
+        "read_file" => "Reading file...",
+        "write_file" => "Writing file...",
+        "execute_code" => "Executing code...",
+        "web_search" => "Searching web...",
+        "browser" => "Browsing web...",
+        "terminal" => "Executing command...",
+        "bash" => "Executing command...",
+        "list_files" => "Listing files...",
+        "search_files" => "Searching files...",
+        "grep" => "Searching code...",
+        "memory_search" => "Searching memory...",
+        "delegate_task" => "Delegating task...",
+        "clarify" => "Requesting clarification...",
+        _ => "Processing...",
+    }
+}
+
+#[tauri::command]
+async fn chat_with_hermes_api(
+    app: AppHandle,
+    message: String,
+    session_id: Option<String>,
+    model: Option<String>,
+    provider: Option<String>,
+    image: Option<String>,
+    event_id: Option<String>,
+) -> Result<(), String> {
+    let event_id = event_id.unwrap_or_else(|| format!("chat-stream-{}", uuid::Uuid::new_v4()));
+    log::info!("[chat_api] start event_id={}, message={}, session_id={:?}, model={:?}, provider={:?}, image={:?}", event_id, message, session_id, model, provider, image);
+
+    let api_base = "http://127.0.0.1:8642/v1";
+    let api_key = "hermes-desktop-local-dev-key";
+
+    let mut messages: Vec<serde_json::Value> = Vec::new();
+
+    if let Some(img) = &image {
+        messages.push(serde_json::json!({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": message},
+                {"type": "image_url", "image_url": {"url": format!("file://{}", img)}}
+            ]
+        }));
+    } else {
+        messages.push(serde_json::json!({
+            "role": "user",
+            "content": message
+        }));
+    }
+
+    let mut request_body = serde_json::json!({
+        "model": "hermes-agent",
+        "messages": messages,
+        "stream": true
+    });
+
+    if let Some(m) = &model {
+        request_body["hermes_model"] = serde_json::json!(m);
+    }
+    if let Some(p) = &provider {
+        request_body["hermes_provider"] = serde_json::json!(p);
+    }
+    if let Some(sid) = &session_id {
+        request_body["hermes_session_id"] = serde_json::json!(sid);
+    }
+
+    let client = reqwest::Client::new();
+    let response = match client
+        .post(format!("{}/chat/completions", api_base))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("[chat_api] HTTP request failed: {}", e);
+            let _ = app.emit(&event_id, ChatStreamEvent {
+                event_type: Some("error".to_string()),
+                tool_name: None,
+                tool_label: None,
+                chunk: format!("[Error] API request failed: {}", e),
+                done: false,
+            });
+            let _ = app.emit(&event_id, ChatStreamEvent {
+                event_type: None,
+                tool_name: None,
+                tool_label: None,
+                chunk: "".to_string(),
+                done: true,
+            });
+            return Ok(());
+        }
+    };
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        log::error!("[chat_api] API returned error ({}): {}", status, body);
+        let _ = app.emit(&event_id, ChatStreamEvent {
+            event_type: Some("error".to_string()),
+            tool_name: None,
+            tool_label: None,
+            chunk: format!("[Error] API returned {}: {}", status, body),
+            done: false,
+        });
+        let _ = app.emit(&event_id, ChatStreamEvent {
+            event_type: None,
+            tool_name: None,
+            tool_label: None,
+            chunk: "".to_string(),
+            done: true,
+        });
+        return Ok(());
+    }
+
+    use futures_util::StreamExt;
+
+    let mut stream = response.bytes_stream();
+    let mut buffer = String::new();
+    let mut current_event: Option<String> = None;
+    let mut first_chunk = true;
+
+    while let Some(chunk_result) = stream.next().await {
+        match chunk_result {
+            Ok(chunk) => {
+                buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+                if first_chunk && buffer.trim_start().starts_with('{') {
+                    if let Ok(err) = serde_json::from_str::<serde_json::Value>(buffer.trim()) {
+                        let msg = err["error"]["message"].as_str().unwrap_or("Unknown error");
+                        log::error!("[chat_api] API returned error: {}", msg);
+                        let _ = app.emit(&event_id, ChatStreamEvent {
+                            event_type: Some("error".to_string()),
+                            tool_name: None,
+                            tool_label: None,
+                            chunk: format!("[Error] {}", msg),
+                            done: false,
+                        });
+                        let _ = app.emit(&event_id, ChatStreamEvent {
+                            event_type: None,
+                            tool_name: None,
+                            tool_label: None,
+                            chunk: "".to_string(),
+                            done: true,
+                        });
+                        return Ok(());
+                    }
+                }
+                first_chunk = false;
+
+                while let Some(line_end) = buffer.find('\n') {
+                    let line = buffer[..line_end].trim().to_string();
+                    buffer = buffer[line_end + 1..].to_string();
+
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    if line.starts_with("event: ") {
+                        current_event = Some(line[7..].trim().to_string());
+                        continue;
+                    }
+
+                    if line.starts_with("data: ") {
+                        let data = line[6..].trim();
+
+                        if data == "[DONE]" {
+                            continue;
+                        }
+
+                        match serde_json::from_str::<serde_json::Value>(data) {
+                            Ok(parsed) => {
+                                let event_type = current_event.take();
+
+                                if event_type.as_deref() == Some("hermes.tool.progress") {
+                                    let tool_name = parsed["tool_name"].as_str().unwrap_or("unknown");
+                                    let label = tool_label(tool_name);
+                                    log::info!("[chat_api] tool progress: {} -> {}", tool_name, label);
+                                    let _ = app.emit(&event_id, ChatStreamEvent {
+                                        event_type: Some("tool_progress".to_string()),
+                                        tool_name: Some(tool_name.to_string()),
+                                        tool_label: Some(label.to_string()),
+                                        chunk: label.to_string(),
+                                        done: false,
+                                    });
+                                } else {
+                                    if let Some(delta) = parsed["choices"][0]["delta"]["content"].as_str() {
+                                        let _ = app.emit(&event_id, ChatStreamEvent {
+                                            event_type: Some("text".to_string()),
+                                            tool_name: None,
+                                            tool_label: None,
+                                            chunk: delta.to_string(),
+                                            done: false,
+                                        });
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("[chat_api] failed to parse SSE data: {} data={}", e, data);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("[chat_api] stream read error: {}", e);
+                break;
+            }
+        }
+    }
+
+    let _ = app.emit(&event_id, ChatStreamEvent {
+        event_type: None,
+        tool_name: None,
+        tool_label: None,
+        chunk: "".to_string(),
+        done: true,
+    });
+
+    log::info!("[chat_api] done");
+    Ok(())
+}
+
+/// Open log directory
 #[tauri::command]
 fn open_log_dir() -> Result<(), String> {
-    let log_dir = dirs::data_local_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("hermes-desktop")
-        .join("logs");
-
-    std::fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
+    let log_dir = db::log_dir();
 
     #[cfg(target_os = "macos")]
-    Command::new("open")
+    command("open")
         .arg(&log_dir)
         .spawn()
         .map_err(|e| e.to_string())?;
 
     #[cfg(target_os = "windows")]
-    Command::new("explorer")
+    command("explorer")
         .arg(&log_dir)
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -1520,7 +2520,7 @@ fn open_log_dir() -> Result<(), String> {
     Ok(())
 }
 
-/// 切换 Avatar 窗口的显示/隐藏
+/// Toggle Avatar window show/hide
 #[tauri::command]
 async fn toggle_avatar_window(app: AppHandle) -> Result<bool, String> {
     let avatar = app.get_webview_window("avatar")
@@ -1610,7 +2610,12 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .manage(AgentProcess(Mutex::new(None)))
         .setup(|app| {
-            log::info!("Hermes Desktop 启动");
+            log::info!("Hermes Desktop started");
+
+            if let Some(avatar_win) = app.get_webview_window("avatar") {
+                let _ = avatar_win.set_decorations(false);
+                let _ = avatar_win.set_shadow(false);
+            }
 
             let db_path = db::db_path();
             log::info!("Database path: {}", db_path.display());
@@ -1621,20 +2626,64 @@ pub fn run() {
                 }
             }
 
-            let db_url = format!("sqlite:{}", db_path.to_str().unwrap());
-
             let app_handle = app.handle().clone();
+
+            let wal_path = db_path.with_extension("db-wal");
+            let shm_path = db_path.with_extension("db-shm");
+            for stale in [&wal_path, &shm_path] {
+                if stale.exists() {
+                    log::info!("Cleaning up stale WAL/SHM files: {}", stale.display());
+                    let _ = std::fs::remove_file(stale);
+                }
+            }
+
+            let db_path_clone = db_path.clone();
+            let connect_fn = || {
+                db_path_clone.to_str()
+                    .unwrap_or("hermes.db")
+                    .parse::<sqlx::sqlite::SqliteConnectOptions>()
+                    .unwrap_or_else(|_| sqlx::sqlite::SqliteConnectOptions::new().filename(&db_path_clone))
+                    .create_if_missing(true)
+                    .journal_mode(sqlx::sqlite::SqliteJournalMode::Delete)
+                    .foreign_keys(true)
+            };
+
             tauri::async_runtime::block_on(async {
-                let pool = SqlitePool::connect(&db_url)
-                    .await
-                    .expect("Failed to connect to database");
-                db::init_db(&pool)
-                    .await
-                    .expect("Failed to initialize database");
-                app_handle.manage(AppState { db_pool: pool });
+                let result = SqlitePool::connect_with(connect_fn()).await;
+
+                match result {
+                    Ok(pool) => {
+                        if let Err(e) = db::init_db(&pool).await {
+                            log::error!("Failed to initialize database: {}", e);
+                        }
+                        app_handle.manage(AppState { db_pool: pool });
+                    }
+                    Err(e) => {
+                        log::warn!("Database connection failed: {}, attempting recovery...", e);
+
+                        let _ = std::fs::remove_file(&db_path);
+                        let _ = std::fs::remove_file(&wal_path);
+                        let _ = std::fs::remove_file(&shm_path);
+
+                        match SqlitePool::connect_with(connect_fn()).await {
+                            Ok(pool) => {
+                                log::info!("Database rebuilt successfully");
+                                if let Err(e) = db::init_db(&pool).await {
+                                    log::error!("Failed to initialize database: {}", e);
+                                }
+                                app_handle.manage(AppState { db_pool: pool });
+                            }
+                            Err(e2) => {
+                                log::error!("Database recovery failed: {}", e2);
+                                show_error_dialog(&format!("Database connection failed\n\n{}\n\nApplication will exit", e2));
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                }
             });
 
-            let hermes_installed = Command::new(&hermes_bin())
+            let hermes_installed = hermes_command()
                 .arg("version")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -1643,7 +2692,8 @@ pub fn run() {
                 .unwrap_or(false);
 
             if hermes_installed {
-                let handle = app.handle().clone();
+        ensure_gateway_config(app.handle());
+        let handle = app.handle().clone();
                 tauri::async_runtime::block_on(async {
                     sync_hermes_providers_to_db(&handle).await;
                     sync_api_keys_to_hermes_env(&handle).await;
@@ -1652,24 +2702,24 @@ pub fn run() {
                 kill_hermes_process();
                 std::thread::sleep(std::time::Duration::from_millis(300));
 
-                match Command::new(&hermes_bin())
-                    .arg("acp")
+                match hermes_command()
+                    .args(["gateway", "run", "--accept-hooks"])
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .spawn()
                 {
                     Ok(child) => {
-                        log::info!("Hermes Agent 已启动");
+                        log::info!("Hermes Gateway started (+API Server)");
                         app.manage(AgentProcess(Mutex::new(Some(child))));
                     }
                     Err(e) => {
-                        log::error!("启动 Hermes Agent 失败: {}", e);
+                        log::error!("Failed to start Hermes Gateway: {}", e);
                         app.manage(AgentProcess(Mutex::new(None)));
                     }
                 }
             } else {
-                log::warn!("Hermes Agent 未安装，跳过启动，等待前端引导安装");
+                log::warn!("Hermes Agent not installed, skipping startup, waiting for frontend guide");
             }
 
             Ok(())
@@ -1680,9 +2730,8 @@ pub fn run() {
             sync_chat_window,
             close_chat_window,
             hide_avatar_window,
-            chat_with_agent,
-            chat_with_hermes,
             chat_with_hermes_stream,
+            chat_with_hermes_api,
             open_log_dir,
             get_hermes_info,
             check_hermes_installed,
@@ -1690,6 +2739,11 @@ pub fn run() {
             start_hermes_agent,
             get_conversation_count,
             list_hermes_skills,
+            browse_skills,
+            search_skills,
+            install_skill,
+            uninstall_skill,
+            inspect_skill,
             get_hermes_config,
             set_hermes_config,
             commands::create_conversation,
@@ -1718,7 +2772,8 @@ pub fn run() {
             commands::delete_provider,
             commands::sync_provider_keys,
             commands::list_models,
+            commands::save_temp_file,
         ])
         .run(tauri::generate_context!())
-        .expect("Hermes Desktop 启动失败");
+        .expect("Hermes Desktop failed to start");
 }
