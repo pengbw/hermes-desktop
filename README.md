@@ -103,6 +103,12 @@ npm install
 npm run tauri dev
 ```
 
+### 获取 API Key
+
+> 支持 NVIDIA NIM（免费额度），地址：https://build.nvidia.com/settings/api-keys
+>
+> 使用邮箱注册后即可获取免费 AI API Key
+
 ### 构建
 
 ```bash
