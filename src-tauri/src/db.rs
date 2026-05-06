@@ -62,16 +62,16 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    // 迁移：为旧表添加新列
+    // Migration: add new columns to old tables
     for alter in [
         "ALTER TABLE conversations ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
         "ALTER TABLE conversations ADD COLUMN last_active_at INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE conversations ADD COLUMN source TEXT NOT NULL DEFAULT 'main'",
     ] {
-        let _ = sqlx::query(alter).execute(pool).await; // 忽略已存在的列错误
+        let _ = sqlx::query(alter).execute(pool).await; // Ignore existing column errors
     }
 
-    // 更新 last_active_at 为 updated_at（旧数据迁移）
+    // Update last_active_at to updated_at (old data migration)
     sqlx::query("UPDATE conversations SET last_active_at = updated_at WHERE last_active_at = 0")
         .execute(pool)
         .await?;
@@ -172,9 +172,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         ("anthropic", "Anthropic", "https://api.anthropic.com/v1", "ANTHROPIC_API_KEY"),
         ("nous", "Nous", "", "NOUS_API_KEY"),
         ("deepseek", "DeepSeek", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY"),
-        ("ollama", "Ollama (本地)", "http://localhost:11434/v1", ""),
+        ("ollama", "Ollama (Local)", "http://localhost:11434/v1", ""),
         ("minimax", "MiniMax", "", "MINIMAX_API_KEY"),
-        ("minimax-cn", "MiniMax (中国)", "", "MINIMAX_API_KEY"),
+        ("minimax-cn", "MiniMax (China)", "", "MINIMAX_API_KEY"),
         ("zai", "Z.AI / GLM", "", "ZAI_API_KEY"),
         ("kimi", "Kimi", "https://api.moonshot.cn/v1", "KIMI_API_KEY"),
     ];
