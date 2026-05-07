@@ -1842,26 +1842,39 @@ async fn install_hermes_agent(app: AppHandle, method: String) -> Result<bool, St
 
 #[cfg(target_os = "windows")]
 fn find_windows_python() -> Option<String> {
-    let candidates = [
-        "python",
-        "python3",
-    ];
-    for cmd in &candidates {
-        if let Ok(output) = command(cmd).arg("--version").output() {
-            if output.status.success() {
-                return Some(cmd.to_string());
-            }
-        }
-    }
     let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let program_files = std::env::var("ProgramFiles").unwrap_or_default();
     let paths = [
-        format!("{}\\Programs\\Python\\Python311\\python.exe", local_appdata),
+        format!("{}\\Programs\\Python\\Python313\\python.exe", local_appdata),
         format!("{}\\Programs\\Python\\Python312\\python.exe", local_appdata),
-        format!("{}\\Microsoft\\WindowsApps\\python.exe", local_appdata),
+        format!("{}\\Programs\\Python\\Python311\\python.exe", local_appdata),
+        format!("{}\\Python313\\python.exe", program_files),
+        format!("{}\\Python312\\python.exe", program_files),
+        format!("{}\\Python311\\python.exe", program_files),
+        format!("C:\\Python313\\python.exe"),
+        format!("C:\\Python312\\python.exe"),
+        format!("C:\\Python311\\python.exe"),
     ];
     for path in &paths {
         if std::path::Path::new(path).exists() {
             return Some(path.clone());
+        }
+    }
+    let candidates = ["python", "python3"];
+    for cmd in &candidates {
+        if let Ok(output) = command("where").arg(cmd).output() {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let line = line.trim();
+                    if line.to_lowercase().contains("windowsapps") {
+                        continue;
+                    }
+                    if std::path::Path::new(line).exists() {
+                        return Some(line.to_string());
+                    }
+                }
+            }
         }
     }
     None
