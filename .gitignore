@@ -28,3 +28,6 @@ npm-debug.log*
 
 # Runtime data
 src-tauri/.hermes-data/
+src-tauri/hermes-agent-source/
+src-tauri/_hermes-extract/
+src-tauri/hermes-agent-main.zip
