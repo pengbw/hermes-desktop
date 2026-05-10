@@ -532,6 +532,11 @@ pub async fn list_providers(app: AppHandle) -> Result<Vec<db::Provider>, String>
 }
 
 #[tauri::command]
+pub async fn read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn create_provider(
     app: AppHandle,
     req: db::CreateProviderRequest,
@@ -928,6 +933,579 @@ pub async fn prepare_temp_file(name: String, base64_content: String) -> Result<F
         path: tmp.to_string_lossy().to_string(),
         is_image,
         size: bytes.len() as u64,
+    })
+}
+
+#[tauri::command]
+pub async fn list_ai_roles(app: AppHandle) -> Result<Vec<db::AiRole>, String> {
+    let pool = get_pool(&app)?;
+    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, i64, i64, i64, i64)>(
+        "SELECT id, name, icon, description, responsibilities, soul_content, avatar_url, avatar_preset, avatar_color, sort_order, is_builtin, created_at, updated_at FROM ai_roles ORDER BY sort_order ASC, created_at ASC"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|(id, name, icon, description, responsibilities, soul_content, avatar_url, avatar_preset, avatar_color, sort_order, is_builtin, created_at, updated_at)| db::AiRole {
+        id, name, icon, description, responsibilities, soul_content, avatar_url, avatar_preset, avatar_color, sort_order, is_builtin: is_builtin != 0, created_at, updated_at,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn create_ai_role(app: AppHandle, req: db::CreateAiRoleRequest) -> Result<db::AiRole, String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let max_sort: Option<i64> = sqlx::query_scalar("SELECT MAX(sort_order) FROM ai_roles")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let sort_order = max_sort.unwrap_or(0) + 1;
+
+    let icon = req.icon.unwrap_or_default();
+    let description = req.description.unwrap_or_default();
+    let responsibilities = req.responsibilities.unwrap_or_default();
+    let soul_content = req.soul_content.unwrap_or_default();
+    let avatar_url = req.avatar_url.unwrap_or_default();
+    let avatar_preset = req.avatar_preset.unwrap_or_default();
+    let avatar_color = req.avatar_color.unwrap_or_default();
+
+    sqlx::query("INSERT INTO ai_roles (id, name, icon, description, responsibilities, soul_content, avatar_url, avatar_preset, avatar_color, sort_order, is_builtin, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)")
+        .bind(&id)
+        .bind(&req.name)
+        .bind(&icon)
+        .bind(&description)
+        .bind(&responsibilities)
+        .bind(&soul_content)
+        .bind(&avatar_url)
+        .bind(&avatar_preset)
+        .bind(&avatar_color)
+        .bind(sort_order)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(db::AiRole {
+        id, name: req.name, icon, description, responsibilities, soul_content, avatar_url, avatar_preset, avatar_color, sort_order, is_builtin: false, created_at: now, updated_at: now,
+    })
+}
+
+#[tauri::command]
+pub async fn update_ai_role(app: AppHandle, req: db::UpdateAiRoleRequest) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let role: db::AiRole = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, i64, i64, i64, i64)>(
+        "SELECT id, name, icon, description, responsibilities, soul_content, avatar_url, avatar_preset, avatar_color, sort_order, is_builtin, created_at, updated_at FROM ai_roles WHERE id = ?"
+    )
+    .bind(&req.id)
+    .fetch_one(&pool)
+    .await
+    .map(|(id, name, icon, description, responsibilities, soul_content, avatar_url, avatar_preset, avatar_color, sort_order, is_builtin, created_at, updated_at)| db::AiRole {
+        id, name, icon, description, responsibilities, soul_content, avatar_url, avatar_preset, avatar_color, sort_order, is_builtin: is_builtin != 0, created_at, updated_at,
+    })
+    .map_err(|e| e.to_string())?;
+
+    let name = req.name.unwrap_or(role.name);
+    let icon = req.icon.unwrap_or(role.icon);
+    let description = req.description.unwrap_or(role.description);
+    let responsibilities = req.responsibilities.unwrap_or(role.responsibilities);
+    let soul_content = req.soul_content.unwrap_or(role.soul_content);
+    let avatar_url = req.avatar_url.unwrap_or(role.avatar_url);
+    let avatar_preset = req.avatar_preset.unwrap_or(role.avatar_preset);
+    let avatar_color = req.avatar_color.unwrap_or(role.avatar_color);
+
+    sqlx::query("UPDATE ai_roles SET name = ?, icon = ?, description = ?, responsibilities = ?, soul_content = ?, avatar_url = ?, avatar_preset = ?, avatar_color = ?, updated_at = ? WHERE id = ?")
+        .bind(&name)
+        .bind(&icon)
+        .bind(&description)
+        .bind(&responsibilities)
+        .bind(&soul_content)
+        .bind(&avatar_url)
+        .bind(&avatar_preset)
+        .bind(&avatar_color)
+        .bind(now)
+        .bind(&req.id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_ai_role(app: AppHandle, id: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let is_builtin: bool = sqlx::query_scalar("SELECT is_builtin FROM ai_roles WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&pool)
+        .await
+        .map(|v: i64| v != 0)
+        .map_err(|e| e.to_string())?;
+    if is_builtin {
+        return Err("Cannot delete builtin role".to_string());
+    }
+    sqlx::query("DELETE FROM ai_roles WHERE id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_projects(app: AppHandle) -> Result<Vec<db::Project>, String> {
+    let pool = get_pool(&app)?;
+    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, i64, String, String, i64, i64)>(
+        "SELECT id, name, description, workspace_path, status, tag, icon, is_favorite, cover_image, project_rule, created_at, updated_at FROM projects ORDER BY is_favorite DESC, updated_at DESC"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|(id, name, description, workspace_path, status, tag, icon, is_favorite, cover_image, project_rule, created_at, updated_at)| db::Project {
+        id, name, description, workspace_path, status, tag, icon, is_favorite, cover_image, project_rule, created_at, updated_at,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn create_project(app: AppHandle, req: db::CreateProjectRequest) -> Result<db::Project, String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let workspace_root: Option<String> = sqlx::query_scalar("SELECT value FROM app_config WHERE key = 'workspace_root'")
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let workspace_root = workspace_root.unwrap_or_else(|| {
+        dirs::home_dir()
+            .map(|h| h.join("hermes-workspace").to_string_lossy().to_string())
+            .unwrap_or_else(|| "./hermes-workspace".to_string())
+    });
+
+    let slug: String = req.name
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else if c == ' ' || c == '-' { '-' } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    let workspace_path = format!("{}/{}", workspace_root.trim_end_matches('/'), slug);
+
+    let _ = std::fs::create_dir_all(&workspace_path);
+
+    let description = req.description.unwrap_or_default();
+    let icon = req.icon.unwrap_or_default();
+    let cover_image = req.cover_image.unwrap_or_default();
+    let project_rule = req.project_rule.unwrap_or_default();
+
+    sqlx::query("INSERT INTO projects (id, name, description, workspace_path, status, tag, icon, is_favorite, cover_image, project_rule, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', 'none', ?, 0, ?, ?, ?, ?)")
+        .bind(&id)
+        .bind(&req.name)
+        .bind(&description)
+        .bind(&workspace_path)
+        .bind(&icon)
+        .bind(&cover_image)
+        .bind(&project_rule)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(db::Project {
+        id, name: req.name, description, workspace_path, status: "active".to_string(), tag: "none".to_string(), icon, is_favorite: 0, cover_image, project_rule, created_at: now, updated_at: now,
+    })
+}
+
+#[tauri::command]
+pub async fn update_project(app: AppHandle, req: db::UpdateProjectRequest) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let project: db::Project = sqlx::query_as::<_, (String, String, String, String, String, String, String, i64, String, String, i64, i64)>(
+        "SELECT id, name, description, workspace_path, status, tag, icon, is_favorite, cover_image, project_rule, created_at, updated_at FROM projects WHERE id = ?"
+    )
+    .bind(&req.id)
+    .fetch_one(&pool)
+    .await
+    .map(|(id, name, description, workspace_path, status, tag, icon, is_favorite, cover_image, project_rule, created_at, updated_at)| db::Project {
+        id, name, description, workspace_path, status, tag, icon, is_favorite, cover_image, project_rule, created_at, updated_at,
+    })
+    .map_err(|e| e.to_string())?;
+
+    let name = req.name.unwrap_or(project.name);
+    let description = req.description.unwrap_or(project.description);
+    let status = req.status.unwrap_or(project.status);
+    let tag = req.tag.unwrap_or(project.tag);
+    let icon = req.icon.unwrap_or(project.icon);
+    let is_favorite = req.is_favorite.map(|v| if v { 1i64 } else { 0i64 }).unwrap_or(project.is_favorite);
+    let cover_image = req.cover_image.unwrap_or(project.cover_image);
+    let project_rule = req.project_rule.unwrap_or(project.project_rule);
+
+    sqlx::query("UPDATE projects SET name = ?, description = ?, status = ?, tag = ?, icon = ?, is_favorite = ?, cover_image = ?, project_rule = ?, updated_at = ? WHERE id = ?")
+        .bind(&name)
+        .bind(&description)
+        .bind(&status)
+        .bind(&tag)
+        .bind(&icon)
+        .bind(is_favorite)
+        .bind(&cover_image)
+        .bind(&project_rule)
+        .bind(now)
+        .bind(&req.id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_project(app: AppHandle, id: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    sqlx::query("DELETE FROM projects WHERE id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_project_members(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectMember>, String> {
+    let pool = get_pool(&app)?;
+    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, i64, i64, i64)>(
+        "SELECT id, project_id, role_id, profile_name, custom_soul, custom_responsibilities, sort_order, created_at, updated_at FROM project_members WHERE project_id = ? ORDER BY sort_order ASC"
+    )
+    .bind(&project_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|(id, project_id, role_id, profile_name, custom_soul, custom_responsibilities, sort_order, created_at, updated_at)| db::ProjectMember {
+        id, project_id, role_id, profile_name, custom_soul, custom_responsibilities, sort_order, created_at, updated_at,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn add_project_member(app: AppHandle, req: db::CreateProjectMemberRequest) -> Result<db::ProjectMember, String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let max_sort: Option<i64> = sqlx::query_scalar("SELECT MAX(sort_order) FROM project_members WHERE project_id = ?")
+        .bind(&req.project_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let sort_order = max_sort.unwrap_or(0) + 1;
+
+    let profile_name = req.profile_name.unwrap_or_default();
+    let custom_soul = req.custom_soul.unwrap_or_default();
+    let custom_responsibilities = req.custom_responsibilities.unwrap_or_default();
+
+    sqlx::query("INSERT INTO project_members (id, project_id, role_id, profile_name, custom_soul, custom_responsibilities, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(&id)
+        .bind(&req.project_id)
+        .bind(&req.role_id)
+        .bind(&profile_name)
+        .bind(&custom_soul)
+        .bind(&custom_responsibilities)
+        .bind(sort_order)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let role: Option<(String,)> = sqlx::query_as::<_, (String,)>(
+        "SELECT name FROM ai_roles WHERE id = ?"
+    )
+    .bind(&req.role_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some((role_name,)) = role {
+        let artifact_id = uuid::Uuid::new_v4().to_string();
+        let artifact_title = format!("{} - 产出物", role_name);
+        let _ = sqlx::query(
+            "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, created_at, updated_at) VALUES (?, ?, ?, '', 'auto', ?, '', '', 'pending', ?, ?)"
+        )
+        .bind(&artifact_id)
+        .bind(&req.project_id)
+        .bind(&req.role_id)
+        .bind(&artifact_title)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await;
+    }
+
+    Ok(db::ProjectMember {
+        id, project_id: req.project_id, role_id: req.role_id, profile_name, custom_soul, custom_responsibilities, sort_order, created_at: now, updated_at: now,
+    })
+}
+
+#[tauri::command]
+pub async fn remove_project_member(app: AppHandle, id: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    sqlx::query("DELETE FROM project_members WHERE id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_project_workflows(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectWorkflow>, String> {
+    let pool = get_pool(&app)?;
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, i64, i64)>(
+        "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
+    )
+    .bind(&project_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, sort_order, created_at)| db::ProjectWorkflow {
+        id, project_id, from_role_id, to_role_id, artifact_type, transition_type, sort_order, created_at,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflowRequest) -> Result<db::ProjectWorkflow, String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let max_sort: Option<i64> = sqlx::query_scalar("SELECT MAX(sort_order) FROM project_workflows WHERE project_id = ?")
+        .bind(&req.project_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let sort_order = max_sort.unwrap_or(0) + 1;
+
+    let artifact_type = req.artifact_type.unwrap_or_default();
+    let transition_type = req.transition_type.unwrap_or("auto_push".to_string());
+
+    sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(&id)
+        .bind(&req.project_id)
+        .bind(&req.from_role_id)
+        .bind(&req.to_role_id)
+        .bind(&artifact_type)
+        .bind(&transition_type)
+        .bind(sort_order)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(db::ProjectWorkflow {
+        id, project_id: req.project_id, from_role_id: req.from_role_id, to_role_id: req.to_role_id, artifact_type, transition_type, sort_order, created_at: now,
+    })
+}
+
+#[tauri::command]
+pub async fn remove_project_workflow(app: AppHandle, id: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    sqlx::query("DELETE FROM project_workflows WHERE id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn sync_workflow_to_file(app: AppHandle, project_id: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let workflows = sqlx::query_as::<_, (String, String, String, String, String, String, i64, i64)>(
+        "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
+    )
+    .bind(&project_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let project: Option<(String, String, String, String)> = sqlx::query_as::<_, (String, String, String, String)>(
+        "SELECT id, name, description, workspace_path FROM projects WHERE id = ?"
+    )
+    .bind(&project_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let workspace_path = project.map(|p| p.3).unwrap_or_default();
+    if workspace_path.is_empty() {
+        return Err("Project workspace path not set".to_string());
+    }
+
+    let config_dir = std::path::PathBuf::from(&workspace_path).join(".hermes");
+    std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+
+    let config_path = config_dir.join("workflow.json");
+    let workflow_data: Vec<serde_json::Value> = workflows.iter().map(|(id, pid, from, to, artifact, trans, sort, created)| {
+        serde_json::json!({
+            "id": id,
+            "projectId": pid,
+            "fromRoleId": from,
+            "toRoleId": to,
+            "artifactType": artifact,
+            "transitionType": trans,
+            "sortOrder": sort,
+            "createdAt": created,
+        })
+    }).collect();
+
+    let config = serde_json::json!({
+        "version": "1.0",
+        "projectId": project_id,
+        "workflows": workflow_data,
+        "updatedAt": chrono::Utc::now().to_rfc3339(),
+    });
+
+    let content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    std::fs::write(&config_path, content).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn load_workflow_from_file(app: AppHandle, project_id: String) -> Result<serde_json::Value, String> {
+    let pool = get_pool(&app)?;
+    let project: Option<(String, String, String, String)> = sqlx::query_as::<_, (String, String, String, String)>(
+        "SELECT id, name, description, workspace_path FROM projects WHERE id = ?"
+    )
+    .bind(&project_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let workspace_path = project.map(|p| p.3).unwrap_or_default();
+    if workspace_path.is_empty() {
+        return Err("Project workspace path not set".to_string());
+    }
+
+    let config_path = std::path::PathBuf::from(&workspace_path).join(".hermes").join("workflow.json");
+    if !config_path.exists() {
+        return Ok(serde_json::json!({ "workflows": [] }));
+    }
+
+    let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let value: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    Ok(value)
+}
+
+#[tauri::command]
+pub async fn list_project_artifacts(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectArtifact>, String> {
+    let pool = get_pool(&app)?;
+    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, i64, i64)>(
+        "SELECT id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, created_at, updated_at FROM project_artifacts WHERE project_id = ? ORDER BY created_at DESC"
+    )
+    .bind(&project_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|(id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, created_at, updated_at)| db::ProjectArtifact {
+        id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, created_at, updated_at,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn create_project_artifact(app: AppHandle, req: db::CreateProjectArtifactRequest) -> Result<db::ProjectArtifact, String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let task_id = req.task_id.unwrap_or_default();
+    let artifact_type = req.artifact_type.unwrap_or_default();
+    let title = req.title.unwrap_or_default();
+    let file_path = req.file_path.unwrap_or_default();
+    let content = req.content.unwrap_or_default();
+    let status = req.status.unwrap_or("draft".to_string());
+
+    sqlx::query("INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(&id)
+        .bind(&req.project_id)
+        .bind(&req.role_id)
+        .bind(&task_id)
+        .bind(&artifact_type)
+        .bind(&title)
+        .bind(&file_path)
+        .bind(&content)
+        .bind(&status)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(db::ProjectArtifact {
+        id, project_id: req.project_id, role_id: req.role_id, task_id, artifact_type, title, file_path, content, status, created_at: now, updated_at: now,
+    })
+}
+
+#[tauri::command]
+pub async fn update_project_artifact_status(app: AppHandle, id: String, status: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+    sqlx::query("UPDATE project_artifacts SET status = ?, updated_at = ? WHERE id = ?")
+        .bind(&status)
+        .bind(now)
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_project_messages(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectMessage>, String> {
+    let pool = get_pool(&app)?;
+    let rows = sqlx::query_as::<_, (String, String, String, String, String, i64)>(
+        "SELECT id, project_id, role_id, content, message_type, created_at FROM project_messages WHERE project_id = ? ORDER BY created_at ASC"
+    )
+    .bind(&project_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|(id, project_id, role_id, content, message_type, created_at)| db::ProjectMessage {
+        id, project_id, role_id, content, message_type, created_at,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn create_project_message(app: AppHandle, req: db::CreateProjectMessageRequest) -> Result<db::ProjectMessage, String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+    let message_type = req.message_type.unwrap_or_else(|| "text".to_string());
+
+    sqlx::query("INSERT INTO project_messages (id, project_id, role_id, content, message_type, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(&id)
+        .bind(&req.project_id)
+        .bind(&req.role_id)
+        .bind(&req.content)
+        .bind(&message_type)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(db::ProjectMessage {
+        id, project_id: req.project_id, role_id: req.role_id, content: req.content, message_type, created_at: now,
     })
 }
 

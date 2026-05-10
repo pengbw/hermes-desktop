@@ -5,9 +5,12 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useI18n } from "../contexts/I18nContext";
 import GestureEditor from "./GestureEditor";
 import InstallGuidePanel from "./InstallGuide";
+import WorkflowDesigner from "./WorkflowDesigner";
+import FilePreviewModal from "./FilePreviewModal";
+import VirtualOffice from "./VirtualOffice";
 import "./MainWindow.css";
 
-type Tab = "home" | "chat" | "settings" | "skills";
+type Tab = "home" | "chat" | "studio" | "settings" | "skills";
 
 interface Message {
   id: string;
@@ -555,7 +558,7 @@ export default function MainWindow() {
       {/* 工具栏：菜单 + 数字人按钮 */}
       <div className="toolbar">
         <nav className="toolbar-nav">
-          {(["home", "chat", "skills", "settings"] as Tab[]).map((tab) => (
+          {(["home", "chat", "studio", "skills", "settings"] as Tab[]).map((tab) => (
             <button
               key={tab}
               className={`tab-btn ${activeTab === tab ? "active" : ""}`}
@@ -563,6 +566,7 @@ export default function MainWindow() {
             >
               {tab === "home" && t("tabs.home")}
               {tab === "chat" && t("tabs.chat")}
+              {tab === "studio" && t("tabs.studio")}
               {tab === "skills" && t("tabs.skills")}
               {tab === "settings" && t("tabs.settings")}
             </button>
@@ -607,6 +611,7 @@ export default function MainWindow() {
           />
         )}
         {activeTab === "settings" && <SettingsPanel />}
+        {activeTab === "studio" && <StudioPanel />}
         {activeTab === "skills" && <SkillsPanel t={t} />}
       </div>
       </>
@@ -1668,6 +1673,7 @@ function SettingsPanel() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [modelList, setModelList] = useState<ModelItem[]>([]);
   const [modelListLoading, setModelListLoading] = useState(false);
+  const [modelListError, setModelListError] = useState<string | null>(null);
 
   const [gestures, setGestures] = useState<AvatarGesture[]>([]);
   const [showGestureModal, setShowGestureModal] = useState(false);
@@ -1694,12 +1700,14 @@ function SettingsPanel() {
   const fetchModelList = async (providerValue: string) => {
     setModelList([]);
     setModelListLoading(true);
+    setModelListError(null);
     try {
       const list = await invoke<ModelItem[]>("list_models", { providerValue });
       setModelList(list);
     } catch (err) {
       console.error("Failed to fetch model list:", err);
       setModelList([]);
+      setModelListError(String(err));
     } finally {
       setModelListLoading(false);
     }
@@ -1791,7 +1799,7 @@ function SettingsPanel() {
     model: ["model", "provider", "baseUrl", "maxTurns"],
     display: ["personality", "showReasoning", "ttsProvider"],
     terminal: ["terminalBackend", "terminalTimeout", "compressionEnabled", "memoryEnabled"],
-    system: ["personality", "showReasoning", "ttsProvider", "terminalBackend", "terminalTimeout", "compressionEnabled", "memoryEnabled"],
+    system: ["personality", "showReasoning", "ttsProvider", "terminalBackend", "terminalTimeout", "compressionEnabled", "memoryEnabled", "workspaceRoot"],
   };
 
   const sectionDirtyCount = (section: string) => {
@@ -1837,6 +1845,11 @@ function SettingsPanel() {
       };
 
       for (const field of fieldsToSave) {
+        if (field === "workspaceRoot") {
+          const cfg = config as any;
+          await invoke("set_config", { key: "workspace_root", value: cfg?.workspaceRoot || "" });
+          continue;
+        }
         const configKey = configKeyMap[field];
         const value = fieldValueMap[field];
         if (configKey && value !== undefined) {
@@ -1944,6 +1957,12 @@ function SettingsPanel() {
       setCompressionEnabled(result.compression_enabled);
       setMemoryEnabled(result.memory_enabled);
       setTtsProvider(result.tts_provider);
+      try {
+        const wsRoot = await invoke<string>("get_config", { key: "workspace_root" });
+        const cfg = { ...result } as any;
+        cfg.workspaceRoot = wsRoot || "";
+        setConfig(cfg as HermesConfigData);
+      } catch (_) {}
       setDirtyFields(new Set());
       if (result.provider) {
         fetchModelList(result.provider);
@@ -1978,6 +1997,7 @@ function SettingsPanel() {
             { key: "agent", icon: "👾", labelKey: "nav.agent" as const, dirty: sectionDirtyCount("model") },
             { key: "gesture", icon: "💃", labelKey: "nav.gesture" as const, dirty: 0 },
             { key: "cardManager", icon: "🃏", labelKey: "nav.cardManager" as const, dirty: 0 },
+            { key: "aiRoles", icon: "👥", labelKey: "nav.aiRoles" as const, dirty: 0 },
             { key: "system", icon: "⚙️", labelKey: "nav.system" as const, dirty: sectionDirtyCount("system") },
             { key: "about", icon: "ℹ️", labelKey: "nav.about" as const, dirty: 0 },
           ] as const).map((item) => (
@@ -2039,27 +2059,27 @@ function SettingsPanel() {
                       {dirtyFields.has("model") && <span className="dirty-badge">{t("common.modified")}</span>}
                     </label>
                     <div className="model-select-row">
-                      {modelList.length > 0 ? (
-                        <select value={model} onChange={(e) => { setModel(e.target.value); markDirty("model"); }}>
-                          <option value="">{t("common.selectModel")}</option>
-                          {model && !modelList.some(m => m.id === model) && (
-                            <option value={model}>{model} ({t("common.current")})</option>
-                          )}
-                          {modelList.map(m => (
-                            <option key={m.id} value={m.id}>{m.id}{m.ownedBy ? ` (${m.ownedBy})` : ''}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          value={model}
-                          onChange={(e) => { setModel(e.target.value); markDirty("model"); }}
-                          placeholder={t("agent.modelPlaceholder")}
-                        />
+                      <select
+                        value={model}
+                        onChange={(e) => { setModel(e.target.value); markDirty("model"); }}
+                        disabled={modelListLoading}
+                      >
+                        <option value="">{modelListLoading ? t("agent.loadingModels") : t("common.selectModel")}</option>
+                        {model && !modelList.some(m => m.id === model) && (
+                          <option value={model}>{model} ({t("common.current")})</option>
+                        )}
+                        {modelList.map(m => (
+                          <option key={m.id} value={m.id}>{m.id}{m.ownedBy ? ` (${m.ownedBy})` : ''}</option>
+                        ))}
+                      </select>
+                      {!modelListLoading && !provider && (
+                        <span className="model-select-hint">{t("agent.selectProviderFirst")}</span>
                       )}
-                      {modelListLoading && <span style={{ fontSize: '12px', color: '#999' }}>{t("agent.loadingModels")}</span>}
-                      {modelList.length === 0 && !modelListLoading && provider && (
-                        <button type="button" className="save-btn" style={{ padding: '2px 8px', fontSize: '12px' }} onClick={() => fetchModelList(provider)}>{t("agent.refreshModels")}</button>
+                      {modelListError && (
+                        <span className="model-select-error" title={modelListError}>⚠️</span>
+                      )}
+                      {!modelListLoading && modelList.length === 0 && provider && (
+                        <button type="button" className="model-refresh-btn" onClick={() => fetchModelList(provider)} title={modelListError || t("agent.refreshModels")}>🔄</button>
                       )}
                     </div>
                   </div>
@@ -2089,6 +2109,32 @@ function SettingsPanel() {
                       value={maxTurns}
                       onChange={(e) => { setMaxTurns(parseInt(e.target.value)); markDirty("maxTurns"); }}
                     />
+                  </div>
+                </div>
+                <div className="settings-section">
+                  <h3>{t("system.workspace.title")}</h3>
+                  <div className="settings-form">
+                    <div className="form-group">
+                      <label>{t("system.workspace.rootDir")}</label>
+                      <div className="workspace-dir-input">
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={(() => {
+                            const cfg = config as any;
+                            return cfg?.workspaceRoot || "";
+                          })()}
+                          onChange={(e) => {
+                            const cfg = { ...config } as any;
+                            cfg.workspaceRoot = e.target.value;
+                            setConfig(cfg as HermesConfigData);
+                            markDirty("workspaceRoot");
+                          }}
+                          placeholder={t("system.workspace.rootDirPlaceholder")}
+                        />
+                      </div>
+                      <p className="settings-hint">{t("system.workspace.rootDirHint")}</p>
+                    </div>
                   </div>
                 </div>
                 <div className="section-save-bar">
@@ -2465,6 +2511,11 @@ function SettingsPanel() {
             <CardManagerPanel t={t} />
           )}
 
+          {/* AI角色设计 */}
+          {activeSection === "aiRoles" && (
+            <AiRolesSettingsSection t={t} />
+          )}
+
           {/* 关于 */}
           {activeSection === "about" && (
             <div className="settings-section-card">
@@ -2653,6 +2704,1342 @@ function SettingsPanel() {
   );
 }
 
+interface AiRoleItem {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  responsibilities: string;
+  soulContent: string;
+  avatarUrl: string;
+  avatarPreset: string;
+  avatarColor: string;
+  sortOrder: number;
+  isBuiltin: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
+  const [roles, setRoles] = useState<AiRoleItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingRole, setEditingRole] = useState<AiRoleItem | null>(null);
+  const [showNewRole, setShowNewRole] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    icon: "",
+    description: "",
+    responsibilities: "",
+    soulContent: "",
+    avatarUrl: "",
+    avatarPreset: "",
+    avatarColor: "",
+  });
+
+  const AVATAR_PRESETS = [
+    { value: "office_worker", label: "📋 商务人士", color: "#6c5ce7" },
+    { value: "explorer", label: "🔍 探险者", color: "#00b894" },
+    { value: "scholar", label: "📊 学者", color: "#0984e3" },
+    { value: "creative", label: "📝 创意人", color: "#e17055" },
+    { value: "artist", label: "🎨 艺术家", color: "#fd79a8" },
+    { value: "architect", label: "🏗️ 建筑师", color: "#fdcb6e" },
+    { value: "coder", label: "💻 程序员", color: "#00cec9" },
+    { value: "engineer", label: "⚙️ 工程师", color: "#636e72" },
+    { value: "tester", label: "🧪 实验员", color: "#e74c3c" },
+    { value: "boss", label: "👤 决策者", color: "#2d3436" },
+  ];
+
+  const loadRoles = async () => {
+    try {
+      const list = await invoke<AiRoleItem[]>("list_ai_roles");
+      setRoles(list);
+    } catch (err) {
+      console.error("Failed to load AI roles:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRoles();
+  }, []);
+
+  const handleCreate = async () => {
+    if (!editForm.name.trim()) return;
+    try {
+      await invoke("create_ai_role", {
+        req: {
+          name: editForm.name.trim(),
+          icon: editForm.icon.trim() || undefined,
+          description: editForm.description.trim() || undefined,
+          responsibilities: editForm.responsibilities.trim() || undefined,
+          soulContent: editForm.soulContent.trim() || undefined,
+          avatarUrl: editForm.avatarUrl.trim() || undefined,
+          avatarPreset: editForm.avatarPreset || undefined,
+          avatarColor: editForm.avatarColor || undefined,
+        },
+      });
+      setEditForm({ name: "", icon: "", description: "", responsibilities: "", soulContent: "", avatarUrl: "", avatarPreset: "", avatarColor: "" });
+      setShowNewRole(false);
+      loadRoles();
+    } catch (err) {
+      console.error("Failed to create role:", err);
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingRole) return;
+    try {
+      await invoke("update_ai_role", {
+        req: {
+          id: editingRole.id,
+          name: editForm.name.trim() || undefined,
+          icon: editForm.icon.trim() || undefined,
+          description: editForm.description.trim() || undefined,
+          responsibilities: editForm.responsibilities.trim() || undefined,
+          soulContent: editForm.soulContent.trim() || undefined,
+          avatarUrl: editForm.avatarUrl.trim() || undefined,
+          avatarPreset: editForm.avatarPreset || undefined,
+          avatarColor: editForm.avatarColor || undefined,
+        },
+      });
+      setEditingRole(null);
+      setEditForm({ name: "", icon: "", description: "", responsibilities: "", soulContent: "", avatarUrl: "", avatarPreset: "", avatarColor: "" });
+      loadRoles();
+    } catch (err) {
+      console.error("Failed to update role:", err);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await invoke("delete_ai_role", { id });
+      loadRoles();
+    } catch (err) {
+      console.error("Failed to delete role:", err);
+    }
+  };
+
+  const startEdit = (role: AiRoleItem) => {
+    setEditingRole(role);
+    setEditForm({
+      name: role.name,
+      icon: role.icon,
+      description: role.description,
+      responsibilities: role.responsibilities,
+      soulContent: role.soulContent,
+      avatarUrl: role.avatarUrl || "",
+      avatarPreset: role.avatarPreset || "",
+      avatarColor: role.avatarColor || "",
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingRole(null);
+    setShowNewRole(false);
+    setEditForm({ name: "", icon: "", description: "", responsibilities: "", soulContent: "", avatarUrl: "", avatarPreset: "", avatarColor: "" });
+  };
+
+  if (loading) {
+    return (
+      <div className="settings-section-card">
+        <div className="skills-loading">
+          <span className="loading-spinner">⏳</span>
+          <p>{t("aiRoles.loading")}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-section-card">
+      <div className="settings-section">
+        <div className="settings-header">
+          <h3>{t("aiRoles.title")}</h3>
+          <button className="studio-btn-primary" onClick={() => setShowNewRole(true)}>
+            + {t("aiRoles.addRole")}
+          </button>
+        </div>
+        <p className="settings-desc">{t("aiRoles.desc")}</p>
+
+        <div className="ai-role-list">
+          {roles.map((role) => (
+            <div key={role.id} className="ai-role-card" style={role.avatarColor ? { borderLeftColor: role.avatarColor } : undefined}>
+              <div className="ai-role-card-header">
+                <span className="ai-role-icon" style={role.avatarColor ? { backgroundColor: role.avatarColor + '22', color: role.avatarColor } : undefined}>{role.icon}</span>
+                <span className="ai-role-name">{role.name}</span>
+                {role.isBuiltin && <span className="ai-role-builtin-badge">{t("aiRoles.builtin")}</span>}
+                {role.avatarPreset && (
+                  <span className="ai-role-avatar-badge" style={role.avatarColor ? { backgroundColor: role.avatarColor } : undefined}>
+                    {AVATAR_PRESETS.find(p => p.value === role.avatarPreset)?.label.split(' ')[0] || '👤'}
+                  </span>
+                )}
+              </div>
+              <p className="ai-role-desc">{role.description}</p>
+              <p className="ai-role-resp">{role.responsibilities}</p>
+              <div className="ai-role-actions">
+                <button className="ai-role-edit-btn" onClick={() => startEdit(role)}>
+                  ✏️
+                </button>
+                {!role.isBuiltin && (
+                  <button className="ai-role-delete-btn" onClick={() => handleDelete(role.id)}>
+                    🗑️
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {(showNewRole || editingRole) && (
+        <div className="studio-settings-overlay" onClick={cancelEdit}>
+          <div className="studio-settings-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="studio-settings-header">
+              <h3>{editingRole ? t("aiRoles.editRole") : t("aiRoles.addRole")}</h3>
+              <button className="studio-settings-close" onClick={cancelEdit}>✕</button>
+            </div>
+            <div className="studio-settings-content">
+              <div className="ai-role-form" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                <div className="ai-role-form-row">
+                  <label>{t("aiRoles.roleIcon")}</label>
+                  <input
+                    className="studio-input"
+                    value={editForm.icon}
+                    onChange={(e) => setEditForm({ ...editForm, icon: e.target.value })}
+                    placeholder="🤖"
+                  />
+                </div>
+                <div className="ai-role-form-row">
+                  <label>{t("aiRoles.roleName")}</label>
+                  <input
+                    className="studio-input"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    placeholder={t("aiRoles.roleNamePlaceholder")}
+                  />
+                </div>
+                <div className="ai-role-form-row">
+                  <label>{t("aiRoles.roleDesc")}</label>
+                  <input
+                    className="studio-input"
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                    placeholder={t("aiRoles.roleDescPlaceholder")}
+                  />
+                </div>
+                <div className="ai-role-form-row">
+                  <label>{t("aiRoles.roleResp")}</label>
+                  <textarea
+                    className="studio-textarea"
+                    value={editForm.responsibilities}
+                    onChange={(e) => setEditForm({ ...editForm, responsibilities: e.target.value })}
+                    placeholder={t("aiRoles.roleRespPlaceholder")}
+                    rows={3}
+                  />
+                </div>
+                <div className="ai-role-form-row">
+                  <label>{t("aiRoles.roleSoul")}</label>
+                  <textarea
+                    className="studio-textarea"
+                    value={editForm.soulContent}
+                    onChange={(e) => setEditForm({ ...editForm, soulContent: e.target.value })}
+                    placeholder={t("aiRoles.roleSoulPlaceholder")}
+                    rows={6}
+                  />
+                </div>
+                <div className="ai-role-form-divider" />
+                <div className="ai-role-form-section-title">{t("aiRoles.avatarSection")}</div>
+                <div className="ai-role-form-row">
+                  <label>{t("aiRoles.avatarPreset")}</label>
+                  <div className="ai-role-avatar-presets">
+                    {AVATAR_PRESETS.map((preset) => (
+                      <button
+                        key={preset.value}
+                        className={`ai-role-avatar-preset-btn ${editForm.avatarPreset === preset.value ? "active" : ""}`}
+                        onClick={() => setEditForm({ ...editForm, avatarPreset: preset.value, avatarColor: preset.color })}
+                        style={{ borderColor: editForm.avatarPreset === preset.value ? preset.color : undefined }}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="ai-role-form-row">
+                  <label>{t("aiRoles.avatarColor")}</label>
+                  <div className="ai-role-color-picker">
+                    <input
+                      type="color"
+                      value={editForm.avatarColor || "#6c5ce7"}
+                      onChange={(e) => setEditForm({ ...editForm, avatarColor: e.target.value })}
+                      className="ai-role-color-input"
+                    />
+                    <span className="ai-role-color-value">{editForm.avatarColor || "#6c5ce7"}</span>
+                  </div>
+                </div>
+                <div className="ai-role-form-row">
+                  <label>{t("aiRoles.avatarUrl")}</label>
+                  <input
+                    className="studio-input"
+                    value={editForm.avatarUrl}
+                    onChange={(e) => setEditForm({ ...editForm, avatarUrl: e.target.value })}
+                    placeholder={t("aiRoles.avatarUrlPlaceholder")}
+                  />
+                </div>
+                <div className="ai-role-form-actions">
+                  <button className="studio-btn-primary" onClick={editingRole ? handleUpdate : handleCreate}>
+                    {editingRole ? t("aiRoles.save") : t("aiRoles.create")}
+                  </button>
+                  <button className="studio-btn-secondary" onClick={cancelEdit}>
+                    {t("studio.cancel")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ProjectItem {
+  id: string;
+  name: string;
+  description: string;
+  workspacePath: string;
+  status: string;
+  tag: string;
+  icon: string;
+  isFavorite: number;
+  coverImage: string;
+  projectRule: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+function StudioPanel() {
+  const { t } = useI18n();
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDesc, setNewProjectDesc] = useState("");
+  const [newProjectIcon, setNewProjectIcon] = useState("💼");
+  const [newProjectRule, setNewProjectRule] = useState("");
+  const [showEditProject, setShowEditProject] = useState(false);
+  const [editProjectId, setEditProjectId] = useState("");
+  const [editProjectName, setEditProjectName] = useState("");
+  const [editProjectDesc, setEditProjectDesc] = useState("");
+  const [editProjectIcon, setEditProjectIcon] = useState("💼");
+  const [editProjectRule, setEditProjectRule] = useState("");
+  const [contextMenuProject, setContextMenuProject] = useState<ProjectItem | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState<"all" | "ungrouped">("all");
+  const [viewMode, setViewMode] = useState<"card" | "list">("list");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 12;
+  const [projectMembers, setProjectMembers] = useState<any[]>([]);
+  const [projectArtifacts, setProjectArtifacts] = useState<any[]>([]);
+  const [allRoles, setAllRoles] = useState<any[]>([]);
+  const [projectMembersMap, setProjectMembersMap] = useState<Record<string, any[]>>({});
+  const [activeProjectTab, setActiveProjectTab] = useState<"overview" | "members" | "artifacts" | "workflows">("overview");
+  const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
+  const [settingsTab, setSettingsTab] = useState<"members" | "artifacts" | "workflows">("members");
+  const [settingsMaximized, setSettingsMaximized] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
+  const [chatInput, setChatInput] = useState("");
+  const [projectMessages, setProjectMessages] = useState<Array<{ id: string; projectId: string; roleId: string; content: string; messageType: string; createdAt: string }>>([]);
+
+  const loadProjects = async () => {
+    try {
+      const list = await invoke<ProjectItem[]>("list_projects");
+      setProjects(list);
+      const membersMap: Record<string, any[]> = {};
+      await Promise.all(
+        list.map(async (project) => {
+          try {
+            const members = await invoke<any[]>("list_project_members", { projectId: project.id });
+            membersMap[project.id] = members;
+          } catch {
+            membersMap[project.id] = [];
+          }
+        })
+      );
+      setProjectMembersMap(membersMap);
+    } catch (err) {
+      console.error("Failed to load projects:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAllRoles = async () => {
+    try {
+      const list = await invoke<any[]>("list_ai_roles");
+      setAllRoles(list);
+    } catch (err) {
+      console.error("Failed to load roles:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadProjects();
+    loadAllRoles();
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenuPos) return;
+    const handleClick = () => {
+      setContextMenuPos(null);
+      setContextMenuProject(null);
+    };
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [contextMenuPos]);
+
+  const handleContextMenu = (e: React.MouseEvent, project: ProjectItem) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setContextMenuPos({ x: rect.right, y: rect.bottom });
+    setContextMenuProject(project);
+  };
+
+  const handleEditProject = (project: ProjectItem) => {
+    setEditProjectId(project.id);
+    setEditProjectName(project.name);
+    setEditProjectDesc(project.description || "");
+    setEditProjectIcon(project.icon || "💼");
+    setEditProjectRule(project.projectRule || "");
+    setShowEditProject(true);
+    setContextMenuPos(null);
+    setContextMenuProject(null);
+  };
+
+  const handleSaveEditProject = async () => {
+    if (!editProjectName.trim()) return;
+    try {
+      await invoke("update_project", {
+        req: {
+          id: editProjectId,
+          name: editProjectName.trim(),
+          description: editProjectDesc.trim() || undefined,
+          icon: editProjectIcon,
+          projectRule: editProjectRule.trim() || undefined,
+        },
+      });
+      setShowEditProject(false);
+      loadProjects();
+    } catch (err) {
+      console.error("Failed to update project:", err);
+    }
+  };
+
+  const handleArchiveProjectConfirm = (project: ProjectItem) => {
+    if (window.confirm(t("studio.archiveConfirm"))) {
+      handleArchiveProject(project);
+    }
+    setContextMenuPos(null);
+    setContextMenuProject(null);
+  };
+
+  const handleDeleteProjectConfirm = (project: ProjectItem) => {
+    if (window.confirm(t("studio.deleteConfirm"))) {
+      handleDeleteProject(project.id);
+    }
+    setContextMenuPos(null);
+    setContextMenuProject(null);
+  };
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) return;
+    try {
+      await invoke("create_project", {
+        req: {
+          name: newProjectName.trim(),
+          description: newProjectDesc.trim() || undefined,
+          icon: newProjectIcon,
+          projectRule: newProjectRule.trim() || undefined,
+        },
+      });
+      setNewProjectName("");
+      setNewProjectDesc("");
+      setNewProjectIcon("💼");
+      setNewProjectRule("");
+      setShowNewProject(false);
+      loadProjects();
+    } catch (err) {
+      console.error("Failed to create project:", err);
+      alert(t("studio.createFailed") + ": " + err);
+    }
+  };
+
+  const handleToggleFavorite = async (e: React.MouseEvent, project: ProjectItem) => {
+    e.stopPropagation();
+    try {
+      await invoke("update_project", {
+        req: { id: project.id, isFavorite: !project.isFavorite },
+      });
+      loadProjects();
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+    }
+  };
+
+  const projectIcons = ["💼", "🏗️", "🚀", "📊", "🎨", "🔧", "📱", "🌐", "⚙️", "📦", "🔒", "☁️"];
+
+  const filteredProjects = projects.filter((p) => {
+    if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (activeFilter === "ungrouped" && p.tag !== "none") return false;
+    return true;
+  });
+
+  const favoriteProjects = filteredProjects.filter((p) => p.isFavorite);
+
+  const totalPages = Math.ceil(filteredProjects.length / PAGE_SIZE);
+  const paginatedProjects = filteredProjects.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
+  const handleDeleteProject = async (id: string) => {
+    try {
+      await invoke("delete_project", { id });
+      if (selectedProject?.id === id) {
+        setSelectedProject(null);
+      }
+      loadProjects();
+    } catch (err) {
+      console.error("Failed to delete project:", err);
+    }
+  };
+
+  const handleArchiveProject = async (project: ProjectItem) => {
+    try {
+      await invoke("update_project", { req: { id: project.id, status: "archived" } });
+      loadProjects();
+    } catch (err) {
+      console.error("Failed to archive project:", err);
+    }
+  };
+
+  const handleUpdateProjectTag = async (projectId: string, tag: string) => {
+    try {
+      await invoke("update_project", { req: { id: projectId, tag } });
+      loadProjects();
+    } catch (err) {
+      console.error("Failed to update project tag:", err);
+    }
+  };
+
+  const handleSelectProject = async (project: ProjectItem) => {
+    setSelectedProject(project);
+    try {
+      const [members, artifacts, messages] = await Promise.all([
+        invoke<any[]>("list_project_members", { projectId: project.id }),
+        invoke<any[]>("list_project_artifacts", { projectId: project.id }),
+        invoke<any[]>("list_project_messages", { projectId: project.id }),
+      ]);
+      setProjectMembers(members);
+      setProjectArtifacts(artifacts);
+      setProjectMessages(messages);
+    } catch (err) {
+      console.error("Failed to load project data:", err);
+    }
+  };
+
+  const handleOpenSettings = async (projectId: string) => {
+    setSettingsProjectId(projectId);
+    setSettingsTab("members");
+    try {
+      const [members, artifacts] = await Promise.all([
+        invoke<any[]>("list_project_members", { projectId }),
+        invoke<any[]>("list_project_artifacts", { projectId }),
+      ]);
+      setProjectMembers(members);
+      setProjectArtifacts(artifacts);
+    } catch (err) {
+      console.error("Failed to load project data:", err);
+    }
+  };
+
+  const handleAddMember = async (roleId: string) => {
+    const pid = settingsProjectId || selectedProject?.id;
+    if (!pid) return;
+    try {
+      await invoke("add_project_member", {
+        req: { projectId: pid, roleId },
+      });
+      const members = await invoke<any[]>("list_project_members", { projectId: pid });
+      setProjectMembers(members);
+      const artifacts = await invoke<any[]>("list_project_artifacts", { projectId: pid });
+      setProjectArtifacts(artifacts);
+    } catch (err) {
+      console.error("Failed to add member:", err);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    const pid = settingsProjectId || selectedProject?.id;
+    if (!pid) return;
+    try {
+      await invoke("remove_project_member", { id: memberId });
+      const members = await invoke<any[]>("list_project_members", { projectId: pid });
+      setProjectMembers(members);
+      const artifacts = await invoke<any[]>("list_project_artifacts", { projectId: pid });
+      setProjectArtifacts(artifacts);
+    } catch (err) {
+      console.error("Failed to remove member:", err);
+    }
+  };
+
+  const getRoleName = (roleId: string) => {
+    const role = allRoles.find((r) => r.id === roleId);
+    return role ? `${role.icon} ${role.name}` : roleId;
+  };
+
+  const getRoleIcon = (roleId: string) => {
+    const role = allRoles.find((r) => r.id === roleId);
+    return role ? role.icon : "👤";
+  };
+
+  const getRoleIconFromPreset = (preset: string) => {
+    const map: Record<string, string> = {
+      office_worker: "📋", explorer: "🔍", scholar: "📊", creative: "📝",
+      artist: "🎨", architect: "🏗️", coder: "💻", engineer: "⚙️",
+      tester: "🧪", boss: "👤",
+    };
+    return map[preset] || "🤖";
+  };
+
+  const loadProjectMessages = async (projectId: string) => {
+    try {
+      const msgs = await invoke<Array<{ id: string; projectId: string; roleId: string; content: string; messageType: string; createdAt: string }>>(
+        "list_project_messages", { projectId }
+      );
+      setProjectMessages(msgs);
+    } catch (err) {
+      console.error("Failed to load messages:", err);
+    }
+  };
+
+  const handleSendMessage = async (content: string) => {
+    if (!selectedProject) return;
+    try {
+      await invoke("create_project_message", {
+        projectId: selectedProject.id,
+        roleId: "builtin_user",
+        content,
+        messageType: "text",
+      });
+      await loadProjectMessages(selectedProject.id);
+    } catch (err) {
+      console.error("Failed to send message:", err);
+    }
+  };
+
+  const getTagLabel = (tag: string) => {
+    if (tag === "key_project") return t("studio.tag.keyProject");
+    if (tag === "normal") return t("studio.tag.normal");
+    return "";
+  };
+
+  const getTagClass = (tag: string) => {
+    if (tag === "key_project") return "tag-key";
+    if (tag === "normal") return "tag-normal";
+    return "";
+  };
+
+  if (loading) {
+    return (
+      <div className="panel studio-panel">
+        <div className="skills-loading">
+          <span className="loading-spinner">⏳</span>
+          <p>{t("studio.loading")}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedProject) {
+    return (
+      <div className="panel studio-panel studio-panel-project">
+        <div className="studio-project-detail">
+          <div className="studio-project-header">
+            <button className="studio-back-btn" onClick={() => setSelectedProject(null)} title={t("studio.backToList")}>
+              ←
+            </button>
+            <div className="studio-header-members">
+              {projectMembers.slice(0, 5).map((member) => {
+                const role = allRoles.find((r: any) => r.id === member.roleId);
+                return (
+                  <div
+                    key={member.id}
+                    className="studio-header-member-avatar"
+                    style={{ background: role?.avatarColor || "var(--color-primary, #6c5ce7)" }}
+                    title={role ? `${role.icon} ${role.name}` : member.roleId}
+                  >
+                    {role?.icon || "🤖"}
+                  </div>
+                );
+              })}
+              {projectMembers.length > 5 && (
+                <div className="studio-header-member-avatar more">
+                  +{projectMembers.length - 5}
+                </div>
+              )}
+            </div>
+            {selectedProject.tag && selectedProject.tag !== "none" && (
+              <span className={`studio-project-tag ${getTagClass(selectedProject.tag)}`}>
+                {getTagLabel(selectedProject.tag)}
+              </span>
+            )}
+            <span className={`studio-project-status status-${selectedProject.status}`}>
+              {selectedProject.status}
+            </span>
+          </div>
+
+          <div className="studio-detail-body">
+            <div className="studio-detail-left">
+              <div className="studio-detail-section">
+                <div className="studio-detail-section-header">
+                  <h3>📦 {t("studio.projectTab.artifacts")}</h3>
+                </div>
+                <div className="studio-artifacts">
+                  {projectArtifacts.map((artifact) => (
+                    <div
+                      key={artifact.id}
+                      className="studio-artifact-card"
+                      onClick={() => {
+                        if (artifact.filePath) {
+                          setPreviewFile({ path: artifact.filePath, name: artifact.title || artifact.artifactType });
+                        }
+                      }}
+                      style={artifact.filePath ? { cursor: "pointer" } : undefined}
+                    >
+                      <div className="studio-artifact-header">
+                        <span className="studio-artifact-role">{getRoleName(artifact.roleId)}</span>
+                        <span className={`studio-artifact-status status-${artifact.status}`}>
+                          {artifact.status}
+                        </span>
+                      </div>
+                      <h4>{artifact.title || artifact.artifactType}</h4>
+                      {artifact.filePath && <p className="studio-artifact-file">📄 {artifact.filePath}</p>}
+                      {artifact.content && <p className="studio-artifact-content">{artifact.content.slice(0, 200)}</p>}
+                    </div>
+                  ))}
+                  {projectArtifacts.length === 0 && (
+                    <p className="studio-empty">{t("studio.noArtifacts")}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="studio-detail-center">
+              <div className="studio-detail-section">
+                <div className="studio-detail-section-header">
+                  <h3>🏢 {t("studio.virtualOffice")}</h3>
+                </div>
+                <div className="studio-office-scene">
+                  <VirtualOffice
+                    members={projectMembers.map((member) => {
+                      const role = allRoles.find((r) => r.id === member.roleId);
+                      const isUser = member.roleId === "builtin_user";
+                      return {
+                        id: member.id,
+                        name: getRoleName(member.roleId),
+                        icon: role?.icon || "🤖",
+                        color: role?.avatarColor || "#6c5ce7",
+                        isUser,
+                        isWorking: false,
+                        preset: role?.avatarPreset,
+                      };
+                    })}
+                    onSpeak={(_memberId, text) => {
+                      handleSendMessage(text);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="studio-detail-section studio-chat-section">
+                <div className="studio-detail-section-header">
+                  <h3>💬 {t("studio.chatHistory")}</h3>
+                </div>
+                <div className="studio-chat-messages">
+                  {projectMessages.map((msg) => {
+                    const role = allRoles.find((r) => r.id === msg.roleId);
+                    const isUser = msg.roleId === "builtin_user";
+                    const avatarColor = role?.avatarColor || "#6c5ce7";
+                    return (
+                      <div key={msg.id} className={`studio-chat-msg ${isUser ? "studio-chat-msg-user" : ""}`}>
+                        <div
+                          className="studio-chat-avatar"
+                          style={{ background: avatarColor }}
+                        >
+                          {isUser ? "👤" : (role?.icon || "🤖")}
+                        </div>
+                        <div className="studio-chat-bubble">
+                          <span className="studio-chat-name" style={{ color: avatarColor }}>
+                            {isUser ? "用户" : (role?.name || "未知")}
+                          </span>
+                          <p className="studio-chat-text">{msg.content}</p>
+                          <span className="studio-chat-time">{msg.createdAt}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {projectMessages.length === 0 && (
+                    <p className="studio-empty">暂无沟通记录</p>
+                  )}
+                </div>
+                <div className="studio-chat-input-area">
+                  <input
+                    className="studio-chat-input"
+                    placeholder="输入消息..."
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && chatInput.trim()) {
+                        handleSendMessage(chatInput.trim());
+                        setChatInput("");
+                      }
+                    }}
+                  />
+                  <button
+                    className="studio-chat-send-btn"
+                    onClick={() => {
+                      if (chatInput.trim()) {
+                        handleSendMessage(chatInput.trim());
+                        setChatInput("");
+                      }
+                    }}
+                  >
+                    发送
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel studio-panel">
+
+      {showNewProject && (
+        <div className="studio-modal-overlay" onClick={() => setShowNewProject(false)}>
+          <div className="studio-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="studio-modal-header">
+              <h3>{t("studio.createProject")}</h3>
+              <button className="studio-modal-close" onClick={() => setShowNewProject(false)}>✕</button>
+            </div>
+            <div className="studio-modal-body">
+              <div className="studio-form-left">
+                <div className="studio-form-group">
+                  <label className="studio-form-label">
+                    {t("studio.projectName")} <span className="studio-required">*</span>
+                  </label>
+                  <input
+                    className="studio-form-input"
+                    placeholder={t("studio.projectNamePlaceholder")}
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                  />
+                  <span className="studio-form-hint">{t("studio.projectNameHint")}</span>
+                </div>
+
+                <div className="studio-form-group">
+                  <label className="studio-form-label">{t("studio.projectRule")}</label>
+                  <textarea
+                    className="studio-form-textarea"
+                    placeholder={t("studio.projectRulePlaceholder")}
+                    value={newProjectRule}
+                    onChange={(e) => setNewProjectRule(e.target.value)}
+                    rows={4}
+                  />
+                  <span className="studio-form-hint">{t("studio.projectRuleHint")}</span>
+                </div>
+
+                <div className="studio-form-group">
+                  <label className="studio-form-label">{t("studio.projectDesc")}</label>
+                  <textarea
+                    className="studio-form-textarea"
+                    placeholder={t("studio.projectDescPlaceholder")}
+                    value={newProjectDesc}
+                    onChange={(e) => setNewProjectDesc(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+
+                <div className="studio-form-group">
+                  <label className="studio-form-label">{t("studio.projectIcon")}</label>
+                  <div className="studio-icon-list">
+                    {projectIcons.map((icon) => (
+                      <button
+                        key={icon}
+                        className={`studio-icon-option ${newProjectIcon === icon ? "selected" : ""}`}
+                        onClick={() => setNewProjectIcon(icon)}
+                      >
+                        {icon}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="studio-modal-footer">
+              <button className="studio-btn-secondary" onClick={() => setShowNewProject(false)}>
+                {t("studio.cancel")}
+              </button>
+              <button className="studio-btn-primary" onClick={handleCreateProject}>
+                {t("studio.create")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditProject && (
+        <div className="studio-modal-overlay" onClick={() => setShowEditProject(false)}>
+          <div className="studio-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="studio-modal-header">
+              <h3>{t("studio.editProject")}</h3>
+              <button className="studio-modal-close" onClick={() => setShowEditProject(false)}>✕</button>
+            </div>
+            <div className="studio-modal-body">
+              <div className="studio-form-left">
+                <div className="studio-form-group">
+                  <label className="studio-form-label">
+                    {t("studio.projectName")} <span className="studio-required">*</span>
+                  </label>
+                  <input
+                    className="studio-form-input"
+                    placeholder={t("studio.projectNamePlaceholder")}
+                    value={editProjectName}
+                    onChange={(e) => setEditProjectName(e.target.value)}
+                  />
+                  <span className="studio-form-hint">{t("studio.projectNameHint")}</span>
+                </div>
+
+                <div className="studio-form-group">
+                  <label className="studio-form-label">{t("studio.projectRule")}</label>
+                  <textarea
+                    className="studio-form-textarea"
+                    placeholder={t("studio.projectRulePlaceholder")}
+                    value={editProjectRule}
+                    onChange={(e) => setEditProjectRule(e.target.value)}
+                    rows={4}
+                  />
+                  <span className="studio-form-hint">{t("studio.projectRuleHint")}</span>
+                </div>
+
+                <div className="studio-form-group">
+                  <label className="studio-form-label">{t("studio.projectDesc")}</label>
+                  <textarea
+                    className="studio-form-textarea"
+                    placeholder={t("studio.projectDescPlaceholder")}
+                    value={editProjectDesc}
+                    onChange={(e) => setEditProjectDesc(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+
+                <div className="studio-form-group">
+                  <label className="studio-form-label">{t("studio.projectIcon")}</label>
+                  <div className="studio-icon-list">
+                    {projectIcons.map((icon) => (
+                      <button
+                        key={icon}
+                        className={`studio-icon-option ${editProjectIcon === icon ? "selected" : ""}`}
+                        onClick={() => setEditProjectIcon(icon)}
+                      >
+                        {icon}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="studio-modal-footer">
+              <button className="studio-btn-secondary" onClick={() => setShowEditProject(false)}>
+                {t("studio.cancel")}
+              </button>
+              <button className="studio-btn-primary" onClick={handleSaveEditProject}>
+                {t("studio.save")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {contextMenuPos && contextMenuProject && (
+        <div
+          className="studio-context-menu"
+          style={{ position: "fixed", left: contextMenuPos.x, top: contextMenuPos.y }}
+        >
+          <button
+            className="studio-context-menu-item"
+            onClick={() => handleEditProject(contextMenuProject)}
+          >
+            ✏️ {t("studio.edit")}
+          </button>
+          <button
+            className="studio-context-menu-item"
+            onClick={() => {
+              handleOpenSettings(contextMenuProject.id);
+              setContextMenuPos(null);
+              setContextMenuProject(null);
+            }}
+          >
+            ⚙️ {t("studio.settings")}
+          </button>
+          <button
+            className="studio-context-menu-item"
+            onClick={() => handleArchiveProjectConfirm(contextMenuProject)}
+          >
+            📦 {t("studio.archive")}
+          </button>
+          <div className="studio-context-menu-divider" />
+          <button
+            className="studio-context-menu-item danger"
+            onClick={() => handleDeleteProjectConfirm(contextMenuProject)}
+          >
+            🗑️ {t("studio.delete")}
+          </button>
+        </div>
+      )}
+
+      {/* 常用项目 */}
+      {favoriteProjects.length > 0 && (
+        <div className="studio-favorite-section">
+          <h3 className="studio-section-title">⭐ {t("studio.favoriteProjects")}</h3>
+          <div className="studio-project-card-grid">
+            {favoriteProjects.map((project) => (
+              <div
+                key={project.id}
+                className="studio-project-card"
+                onClick={() => handleSelectProject(project)}
+              >
+                <div className="studio-project-card-top">
+                  <div className="studio-project-card-icon">{project.icon || "💼"}</div>
+                  <div className="studio-project-card-body">
+                    <h4 className="studio-project-card-name">{project.name}</h4>
+                    <p className="studio-project-card-desc">{project.description || t("studio.noDesc")}</p>
+                  </div>
+                  <button
+                    className={`studio-project-card-star ${project.isFavorite ? "active" : ""}`}
+                    onClick={(e) => handleToggleFavorite(e, project)}
+                  >
+                    {project.isFavorite ? "⭐" : "☆"}
+                  </button>
+                </div>
+                <div className="studio-project-card-tools">
+                  <span className="studio-tool-dots" onClick={(e) => handleContextMenu(e, project)}>⋯</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 全部项目 */}
+      <div className="studio-all-projects-section">
+        <div className="studio-all-projects-header">
+          <div className="studio-tabs">
+            <button
+              className={`studio-tab ${activeFilter === "all" ? "active" : ""}`}
+              onClick={() => { setActiveFilter("all"); setCurrentPage(1); }}
+            >
+              {t("studio.allProjects")}
+            </button>
+            <button
+              className={`studio-tab ${activeFilter === "ungrouped" ? "active" : ""}`}
+              onClick={() => { setActiveFilter("ungrouped"); setCurrentPage(1); }}
+            >
+              {t("studio.ungrouped")}
+            </button>
+          </div>
+          <div className="studio-header-actions">
+            <div className="studio-view-toggle">
+              <button
+                className={`studio-view-btn ${viewMode === "list" ? "active" : ""}`}
+                onClick={() => setViewMode("list")}
+                title="列表"
+              >
+                ☰
+              </button>
+              <button
+                className={`studio-view-btn ${viewMode === "card" ? "active" : ""}`}
+                onClick={() => setViewMode("card")}
+                title="卡片"
+              >
+                ⊞
+              </button>
+            </div>
+            <button className="studio-btn-primary" onClick={() => setShowNewProject(true)}>
+              + {t("studio.newProject")}
+            </button>
+            <div className="studio-search-box">
+              <input
+                type="text"
+                className="studio-search-input"
+                placeholder={t("studio.searchProjects")}
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {viewMode === "card" ? (
+          <div className="studio-project-card-grid">
+            {paginatedProjects.map((project) => (
+              <div
+                key={project.id}
+                className="studio-project-card"
+                onClick={() => handleSelectProject(project)}
+              >
+                <div className="studio-project-card-top">
+                  <div className="studio-project-card-icon">{project.icon || "💼"}</div>
+                  <div className="studio-project-card-body">
+                    <h4 className="studio-project-card-name">{project.name}</h4>
+                    <p className="studio-project-card-desc">{project.description || t("studio.noDesc")}</p>
+                  </div>
+                  <button
+                    className={`studio-project-card-star ${project.isFavorite ? "active" : ""}`}
+                    onClick={(e) => handleToggleFavorite(e, project)}
+                  >
+                    {project.isFavorite ? "⭐" : "☆"}
+                  </button>
+                </div>
+                <div className="studio-project-card-tools">
+                  <span className="studio-tool-dots" onClick={(e) => handleContextMenu(e, project)}>⋯</span>
+                </div>
+              </div>
+            ))}
+            {paginatedProjects.length === 0 && (
+              <div className="studio-project-card-empty">
+                <p>{t("studio.emptyState")}</p>
+                <button className="studio-btn-primary" onClick={() => setShowNewProject(true)}>
+                  {t("studio.newProject")}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="studio-project-list">
+            <div className="studio-project-list-header">
+              <span className="studio-list-col-name">{t("studio.projectName")}</span>
+              <span className="studio-list-col-desc">{t("studio.projectDesc")}</span>
+              <span className="studio-list-col-members">{t("studio.memberCount")}</span>
+              <span className="studio-list-col-action"></span>
+            </div>
+            {paginatedProjects.map((project) => {
+              const members = projectMembersMap[project.id] || [];
+              return (
+                <div
+                  key={project.id}
+                  className="studio-project-list-row"
+                  onClick={() => handleSelectProject(project)}
+                >
+                  <div className="studio-list-col-name">
+                    <div className="studio-list-project-icon">{project.icon || "💼"}</div>
+                    <span className="studio-list-project-name">{project.name}</span>
+                  </div>
+                  <div className="studio-list-col-desc">
+                    <span className="studio-list-project-desc">{project.description || t("studio.noDesc")}</span>
+                  </div>
+                  <div className="studio-list-col-members">
+                    <div className="studio-member-avatars">
+                      {members.slice(0, 3).map((member) => {
+                        const role = allRoles.find((r: any) => r.id === member.roleId);
+                        return (
+                          <div
+                            key={member.id}
+                            className="studio-member-avatar"
+                            style={{ background: role?.avatarColor || "var(--color-primary, #6c5ce7)" }}
+                            title={role ? `${role.icon} ${role.name}` : member.roleId}
+                          >
+                            {role?.icon || "🤖"}
+                          </div>
+                        );
+                      })}
+                      {members.length > 3 && (
+                        <div className="studio-member-avatar more">
+                          +{members.length - 3}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="studio-list-col-action">
+                    <button
+                      className={`studio-list-star ${project.isFavorite ? "active" : ""}`}
+                      onClick={(e) => handleToggleFavorite(e, project)}
+                    >
+                      {project.isFavorite ? "⭐" : "☆"}
+                    </button>
+                    <button className="studio-list-actions" onClick={(e) => handleContextMenu(e, project)}>⋯</button>
+                  </div>
+                </div>
+              );
+            })}
+            {paginatedProjects.length === 0 && (
+              <div className="studio-project-list-empty">
+                <p>{t("studio.emptyState")}</p>
+                <button className="studio-btn-primary" onClick={() => setShowNewProject(true)}>
+                  {t("studio.newProject")}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="studio-pagination">
+            <button
+              className="studio-page-btn"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(currentPage - 1)}
+            >
+              ◀
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <button
+                key={page}
+                className={`studio-page-btn ${page === currentPage ? "active" : ""}`}
+                onClick={() => setCurrentPage(page)}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              className="studio-page-btn"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(currentPage + 1)}
+            >
+              ▶
+            </button>
+          </div>
+        )}
+      </div>
+
+      {settingsProjectId && (
+        <div className="studio-settings-overlay" onClick={() => { setSettingsProjectId(null); setSettingsMaximized(false); }}>
+          <div className={`studio-settings-modal${settingsMaximized ? " maximized" : ""}`} onClick={(e) => e.stopPropagation()}>
+            <div className="studio-settings-header">
+              <h3>{t("studio.settings")}</h3>
+              <div className="studio-settings-header-actions">
+                <button className="studio-settings-maximize" onClick={() => setSettingsMaximized(!settingsMaximized)} title={settingsMaximized ? t("studio.restore") : t("studio.maximize")}>
+                  {settingsMaximized ? "⊡" : "▢"}
+                </button>
+                <button className="studio-settings-close" onClick={() => { setSettingsProjectId(null); setSettingsMaximized(false); }}>✕</button>
+              </div>
+            </div>
+            <div className="studio-settings-tabs">
+              {(["members", "artifacts", "workflows"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  className={`studio-settings-tab ${settingsTab === tab ? "active" : ""}`}
+                  onClick={() => setSettingsTab(tab)}
+                >
+                  {t(`studio.projectTab.${tab}`)}
+                </button>
+              ))}
+            </div>
+            <div className="studio-settings-content">
+              {settingsTab === "members" && (
+                <div className="studio-members">
+                  <div className="studio-add-member">
+                    <select
+                      className="studio-select"
+                      defaultValue=""
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          handleAddMember(e.target.value);
+                          e.target.value = "";
+                        }
+                      }}
+                    >
+                      <option value="" disabled>{t("studio.addMember")}</option>
+                      {allRoles
+                        .filter((r) => !projectMembers.some((m) => m.roleId === r.id))
+                        .map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.icon} {role.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div className="studio-member-list">
+                    {projectMembers.map((member) => {
+                      const isUser = member.roleId === "builtin_user";
+                      return (
+                        <div key={member.id} className={`studio-member-card ${isUser ? "studio-member-user" : ""}`}>
+                          <span className="studio-member-role">{getRoleName(member.roleId)}</span>
+                          {isUser && <span className="studio-member-you-badge">YOU</span>}
+                          <button
+                            className="studio-remove-btn"
+                            onClick={() => handleRemoveMember(member.id)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {projectMembers.length === 0 && (
+                      <p className="studio-empty">{t("studio.noMembers")}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+              {settingsTab === "artifacts" && (
+                <div className="studio-artifacts">
+                  {projectArtifacts.map((artifact) => (
+                    <div key={artifact.id} className="studio-artifact-card">
+                      <div className="studio-artifact-header">
+                        <span className="studio-artifact-role">{getRoleName(artifact.roleId)}</span>
+                        <span className={`studio-artifact-status status-${artifact.status}`}>
+                          {artifact.status}
+                        </span>
+                      </div>
+                      <h4>{artifact.title || artifact.artifactType}</h4>
+                    </div>
+                  ))}
+                  {projectArtifacts.length === 0 && (
+                    <p className="studio-empty">{t("studio.noArtifacts")}</p>
+                  )}
+                </div>
+              )}
+              {settingsTab === "workflows" && (
+                <div className="studio-workflows-flow">
+                  <WorkflowDesigner
+                    projectId={settingsProjectId}
+                    roles={allRoles}
+                    t={t}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewFile && (
+        <FilePreviewModal
+          filePath={previewFile.path}
+          fileName={previewFile.name}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── 技能中心 ──
 interface SkillItem {
   name: string;
@@ -2818,7 +4205,6 @@ function SkillsPanel({ t }: { t: (key: string, params?: Record<string, string | 
       <div className="skills-header">
         <div className="skills-header-left">
           <h2>{t("skills.title")}</h2>
-          <span className="skills-subtitle">{t("skills.subtitle")}</span>
         </div>
         <div className="skills-header-actions">
           <button className="refresh-btn" onClick={loadSkills} disabled={loading}>

@@ -593,21 +593,6 @@ fn kill_hermes_process() {
     }
 }
 
-#[cfg(unix)]
-fn get_install_shell_args<'a>(method: &str, install_cmd: &'a str) -> (&'static str, Vec<&'a str>) {
-    let _ = method;
-    ("bash", vec!["-lc", install_cmd])
-}
-
-#[cfg(windows)]
-fn get_install_shell_args<'a>(method: &str, install_cmd: &'a str) -> (&'static str, Vec<&'a str>) {
-    if method == "curl" {
-        ("powershell", vec!["-ExecutionPolicy", "Bypass", "-NoProfile", "-Command", install_cmd])
-    } else {
-        ("cmd", vec!["/C", install_cmd])
-    }
-}
-
 fn check_hermes_process() -> bool {
     #[cfg(target_os = "macos")]
     {
@@ -1373,336 +1358,6 @@ async fn check_hermes_installed() -> Result<serde_json::Value, String> {
     }
 }
 
-fn check_git_installed() -> bool {
-    if let Some(git_path) = find_git_exe() {
-        return check_cmd_installed(&git_path, &["--version"]);
-    }
-    check_cmd_installed("git", &["--version"])
-}
-
-fn find_git_exe() -> Option<String> {
-    if check_cmd_installed("git", &["--version"]) {
-        return Some("git".to_string());
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let common_paths = [
-            "C:\\Program Files\\Git\\bin\\git.exe",
-            "C:\\Program Files (x86)\\Git\\bin\\git.exe",
-            &format!("{}\\Programs\\Git\\bin\\git.exe", std::env::var("LOCALAPPDATA").unwrap_or_default()),
-        ];
-        for p in &common_paths {
-            if std::path::Path::new(p).exists() {
-                return Some(p.to_string());
-            }
-        }
-    }
-    None
-}
-
-fn refresh_git_path() {
-    #[cfg(target_os = "windows")]
-    {
-        let git_bin = "C:\\Program Files\\Git\\bin";
-        let git_cmd = "C:\\Program Files\\Git\\cmd";
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let mut new_path = current_path.clone();
-        for dir in &[git_bin, git_cmd] {
-            let sep = if cfg!(windows) { ";" } else { ":" };
-            if !new_path.to_lowercase().contains(&dir.to_lowercase()) {
-                if !new_path.is_empty() {
-                    new_path.push_str(sep);
-                }
-                new_path.push_str(dir);
-            }
-        }
-        if new_path != current_path {
-            unsafe { std::env::set_var("PATH", &new_path); }
-        }
-    }
-}
-
-fn check_cmd_installed(cmd: &str, args: &[&str]) -> bool {
-    command(cmd)
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
-#[cfg(target_os = "macos")]
-fn check_brew_installed() -> bool {
-    check_cmd_installed("/opt/homebrew/bin/brew", &["--version"])
-}
-
-#[cfg(target_os = "macos")]
-fn auto_install_brew(app: &AppHandle) -> Result<(), String> {
-    let _ = app.emit(
-        "install-progress",
-        InstallProgress { line: "Installing Homebrew...".to_string(), done: false, success: false },
-    );
-    let output = command("bash")
-        .arg("-c")
-        .arg("NONINTERACTIVE=1 /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to start Homebrew install script: {}", e))?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    for line in stdout.lines().chain(stderr.lines()) {
-        let trimmed = line.trim();
-        if !trimmed.is_empty() {
-            let _ = app.emit("install-progress", InstallProgress {
-                line: trimmed.to_string(), done: false, success: false,
-            });
-        }
-    }
-    if check_brew_installed() {
-        let _ = app.emit("install-progress", InstallProgress {
-            line: "Homebrew installation complete".to_string(), done: false, success: false,
-        });
-        Ok(())
-    } else {
-        Err(format!("Homebrew still unavailable after install. Exit code: {}", output.status))
-    }
-}
-
-fn auto_install_git(app: &AppHandle) -> Result<(), String> {
-    log::info!("[git-install] Checking if git is already installed...");
-    if check_git_installed() {
-        log::info!("[git-install] Git already installed, skipping");
-        return Ok(());
-    }
-    log::info!("[git-install] Git not found, starting installation");
-
-    let _ = app.emit(
-        "install-progress",
-        InstallProgress { line: "Git not found, installing automatically...".to_string(), done: false, success: false },
-    );
-
-    #[cfg(target_os = "macos")]
-    {
-        if !check_brew_installed() {
-            auto_install_brew(app)?;
-        }
-        let _ = app.emit(
-            "install-progress",
-            InstallProgress { line: "Installing Git via Homebrew...".to_string(), done: false, success: false },
-        );
-        let output = command("/opt/homebrew/bin/brew")
-            .args(["install", "git"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .map_err(|e| format!("brew install git failed: {}", e))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Git installation failed: {}", stderr));
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        log::info!("[git-install] Checking winget availability...");
-        let winget_check = command("winget")
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        log::info!("[git-install] winget available: {}", winget_check);
-
-        if winget_check {
-            let _ = app.emit("install-progress", InstallProgress {
-                line: "Installing Git via winget (30s timeout)...".to_string(), done: false, success: false,
-            });
-            let (tx, rx) = std::sync::mpsc::channel();
-            std::thread::spawn(move || {
-                let output = command("winget")
-                    .args(["install", "--id", "Git.Git", "-e", "--source", "winget",
-                           "--accept-package-agreements", "--silent", "--scope", "machine"])
-                    .output();
-                let _ = tx.send(output);
-            });
-            let winget_ok = match rx.recv_timeout(std::time::Duration::from_secs(30)) {
-                Ok(Ok(o)) => {
-                    log::info!("[git-install] winget finished, exit: {}", o.status);
-                    refresh_git_path();
-                    check_git_installed()
-                }
-                Ok(Err(e)) => {
-                    log::warn!("[git-install] winget spawn failed: {}", e);
-                    false
-                }
-                Err(_) => {
-                    log::warn!("[git-install] winget timed out after 30s");
-                    false
-                }
-            };
-
-            if winget_ok {
-                let _ = app.emit("install-progress", InstallProgress {
-                    line: "Git installation complete".to_string(), done: false, success: false,
-                });
-                return Ok(());
-            }
-            log::warn!("[git-install] winget did not install git successfully, trying manual download...");
-            let _ = app.emit("install-progress", InstallProgress {
-                line: "winget install did not complete, trying manual download...".to_string(), done: false, success: false,
-            });
-        }
-
-        if !check_git_installed() {
-            let _ = app.emit("install-progress", InstallProgress {
-                line: "Downloading Git from mirror...".to_string(), done: false, success: false,
-            });
-            let installer_path = format!("{}\\git-installer.exe", std::env::temp_dir().to_str().unwrap_or("."));
-            let _ = std::fs::remove_file(&installer_path);
-
-            let download_urls = [
-                "https://registry.npmmirror.com/-/binary/git-for-windows/v2.47.1.windows.1/Git-2.47.1-64-bit.exe",
-                "https://registry.npmmirror.com/-/binary/git-for-windows/v2.46.2.windows.1/Git-2.46.2-64-bit.exe",
-                "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe",
-            ];
-
-            let mut download_ok = false;
-            for url in &download_urls {
-                log::info!("[git-install] Trying download: {}", url);
-                let _ = std::fs::remove_file(&installer_path);
-
-                let curl_output = command("curl")
-                    .args(["-L", "-f", "--connect-timeout", "15", "--max-time", "300",
-                           "-o", &installer_path, url])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::piped())
-                    .output();
-
-                let curl_ok = match &curl_output {
-                    Ok(o) => {
-                        if !o.status.success() {
-                            let err = String::from_utf8_lossy(&o.stderr);
-                            log::warn!("[git-install] curl failed: {}", err.trim());
-                        }
-                        o.status.success()
-                    }
-                    Err(e) => {
-                        log::warn!("[git-install] curl error: {}", e);
-                        false
-                    }
-                };
-
-                if curl_ok && std::path::Path::new(&installer_path).exists() {
-                    let meta = std::fs::metadata(&installer_path).unwrap_or(std::fs::metadata(".").unwrap());
-                    if meta.len() > 1024 * 1024 {
-                        download_ok = true;
-                        log::info!("[git-install] Download successful via curl, size: {} bytes", meta.len());
-                        break;
-                    }
-                    log::warn!("[git-install] Downloaded file too small: {} bytes", meta.len());
-                }
-
-                log::info!("[git-install] curl failed, trying powershell fallback...");
-                let _ = std::fs::remove_file(&installer_path);
-                let ps_output = command("powershell")
-                    .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-                           &format!("& {{ [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; $wc=New-Object System.Net.WebClient; try {{ $wc.DownloadFile('{}','{}'); exit 0 }} catch {{ exit 1 }} }}",
-                                   url.replace('\'', "''"), installer_path.replace('\'', "''"))])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::piped())
-                    .output();
-
-                let ps_ok = match &ps_output {
-                    Ok(o) => {
-                        if !o.status.success() {
-                            let err = String::from_utf8_lossy(&o.stderr);
-                            log::warn!("[git-install] powershell download failed: {}", err.trim());
-                        }
-                        o.status.success()
-                    }
-                    Err(e) => {
-                        log::warn!("[git-install] powershell error: {}", e);
-                        false
-                    }
-                };
-
-                if ps_ok && std::path::Path::new(&installer_path).exists() {
-                    let meta = std::fs::metadata(&installer_path).unwrap_or(std::fs::metadata(".").unwrap());
-                    if meta.len() > 1024 * 1024 {
-                        download_ok = true;
-                        log::info!("[git-install] Download successful via powershell, size: {} bytes", meta.len());
-                        break;
-                    }
-                    log::warn!("[git-install] Downloaded file too small: {} bytes", meta.len());
-                }
-            }
-
-            if !download_ok {
-                return Err("Failed to download Git installer, please check network".to_string());
-            }
-
-            let _ = app.emit("install-progress", InstallProgress {
-                line: "Installing Git silently...".to_string(), done: false, success: false,
-            });
-            let install_output = command(&installer_path)
-                .args(["/VERYSILENT", "/NORESTART", "/NOCANCEL", "/SP-",
-                       "/SUPPRESSMSGBOXES", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .output();
-            let _ = std::fs::remove_file(&installer_path);
-
-            match &install_output {
-                Ok(o) => log::info!("Git installer exited with status: {}", o.status),
-                Err(e) => log::warn!("Git installer spawn error: {}", e),
-            }
-
-            refresh_git_path();
-
-            for retry in 0..10 {
-                std::thread::sleep(std::time::Duration::from_secs(3));
-                if check_git_installed() {
-                    log::info!("Git detected after {} retries", retry + 1);
-                    break;
-                }
-                log::info!("Waiting for Git installation to complete... retry {}", retry + 1);
-            }
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let output = command("sudo")
-            .args(["apt", "install", "-y", "git"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .map_err(|e| format!("apt install git failed: {}", e))?;
-        if !output.status.success() {
-            // try yum
-            let yum_output = command("sudo")
-                .args(["yum", "install", "-y", "git"])
-                .output()
-                .map_err(|e| format!("yum install git failed: {}", e))?;
-            if !yum_output.status.success() {
-                return Err("Git installation failed: neither apt nor yum available".to_string());
-            }
-        }
-    }
-
-    if check_git_installed() {
-        let _ = app.emit("install-progress", InstallProgress {
-            line: "Git installation complete".to_string(), done: false, success: false,
-        });
-        Ok(())
-    } else {
-        Err("Git installation failed, please check system environment".to_string())
-    }
-}
-
 fn ensure_gateway_config(app: &AppHandle) {
     let home = home_dir();
     let hermes_home = format!("{}/.hermes", home);
@@ -1765,20 +1420,52 @@ async fn install_hermes_agent(app: AppHandle, method: String) -> Result<bool, St
 
     #[cfg(not(target_os = "windows"))]
     {
-        return unix_native_install(app).await;
+        return unix_native_install(&app).await;
     }
 }
 
 #[cfg(target_os = "windows")]
-fn which_windows(cmd: &str) -> Option<String> {
-    if let Ok(output) = command("where").arg(cmd).output() {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                let line = line.trim();
-                if line.ends_with(".exe") && !line.contains("WindowsApps") && std::path::Path::new(line).exists() {
-                    return Some(line.to_string());
-                }
+fn is_windowsapps_stub(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    if !lower.contains("windowsapps") {
+        return false;
+    }
+    if lower.contains("pythonsoftwarefoundation") {
+        return false;
+    }
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() == 0 {
+            return true;
+        }
+    }
+    let check = command(path)
+        .args(["-c", "import sys; print(sys.version)"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+    match check {
+        Ok(output) => !output.status.success(),
+        Err(_) => true,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn validate_python_version(path: &str) -> Option<String> {
+    let output = command(path)
+        .args(["-c", "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}')"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let parts: Vec<&str> = ver.split('.').collect();
+    if parts.len() >= 2 {
+        if let (Ok(major), Ok(minor)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+            if major > 3 || (major == 3 && minor >= 11) {
+                return Some(path.to_string());
             }
         }
     }
@@ -1789,27 +1476,54 @@ fn which_windows(cmd: &str) -> Option<String> {
 fn find_windows_python() -> Option<String> {
     let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
     let program_files = std::env::var("ProgramFiles").unwrap_or_default();
-
-    let explicit_paths = [
+    let paths = [
+        format!("{}\\Programs\\Python\\Python314\\python.exe", local_appdata),
         format!("{}\\Programs\\Python\\Python313\\python.exe", local_appdata),
         format!("{}\\Programs\\Python\\Python312\\python.exe", local_appdata),
         format!("{}\\Programs\\Python\\Python311\\python.exe", local_appdata),
+        format!("{}\\Python314\\python.exe", program_files),
         format!("{}\\Python313\\python.exe", program_files),
         format!("{}\\Python312\\python.exe", program_files),
         format!("{}\\Python311\\python.exe", program_files),
-        "C:\\Python313\\python.exe".to_string(),
-        "C:\\Python312\\python.exe".to_string(),
-        "C:\\Python311\\python.exe".to_string(),
+        format!("C:\\Python314\\python.exe"),
+        format!("C:\\Python313\\python.exe"),
+        format!("C:\\Python312\\python.exe"),
+        format!("C:\\Python311\\python.exe"),
     ];
 
-    for path in &explicit_paths {
+    for path in &paths {
         if std::path::Path::new(path).exists() {
-            let version = command(path).arg("--version").output().ok()
-                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-                .unwrap_or_default();
-            if version.contains("Python 3") {
-                log::info!("[install] Found Python at: {} -> {}", path, version.trim());
-                return Some(path.clone());
+            if !is_windowsapps_stub(path) {
+                if let Some(validated) = validate_python_version(path) {
+                    return Some(validated);
+                }
+            }
+        }
+    }
+    if let Ok(output) = command("py").args(["-0p"]).output() {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('-') {
+                    continue;
+                }
+                let path = if line.contains(' ') {
+                    line.split_whitespace().last().unwrap_or("")
+                } else {
+                    line
+                };
+                if path.is_empty() || !path.to_lowercase().ends_with("python.exe") {
+                    continue;
+                }
+                if is_windowsapps_stub(path) {
+                    continue;
+                }
+                if std::path::Path::new(path).exists() {
+                    if let Some(validated) = validate_python_version(path) {
+                        return Some(validated);
+                    }
+                }
             }
         }
     }
@@ -1817,13 +1531,20 @@ fn find_windows_python() -> Option<String> {
     for cmd in &["python3.13", "python3.12", "python3.11", "python3", "python"] {
         if let Ok(output) = command(cmd).arg("--version").output() {
             if output.status.success() {
-                let version = String::from_utf8_lossy(&output.stdout);
-                if version.contains("Python 3") && version.contains("3.1") {
-                    let full = which_windows(cmd);
-                    let exe_path = full.as_deref().unwrap_or(cmd);
-                    if !exe_path.contains("WindowsApps") {
-                        log::info!("[install] Found Python via PATH: {} -> {}", exe_path, version.trim());
-                        return Some(exe_path.to_string());
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let line = line.trim();
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if is_windowsapps_stub(line) {
+                        log::warn!("[install] Skipping WindowsApps stub: {}", line);
+                        continue;
+                    }
+                    if std::path::Path::new(line).exists() {
+                        if let Some(validated) = validate_python_version(line) {
+                            return Some(validated);
+                        }
                     }
                 }
             }
@@ -2012,9 +1733,16 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
     for candidate in &source_candidates {
         log::info!("[install] Looking for bundled source at: {}", candidate.display());
         if candidate.exists() && candidate.is_dir() {
-            bundled_found = true;
-            found_path = candidate.clone();
-            break;
+            let has_real_source = candidate.join("pyproject.toml").exists()
+                || candidate.join("setup.py").exists()
+                || candidate.join("setup.cfg").exists();
+            if has_real_source {
+                bundled_found = true;
+                found_path = candidate.clone();
+                break;
+            } else {
+                log::warn!("[install] Found directory but no valid source files, skipping: {}", candidate.display());
+            }
         }
     }
 
@@ -2024,7 +1752,7 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
             .map_err(|e| format!("Failed to copy source: {}", e))?;
         log::info!("[install] Source copy complete");
     } else {
-        return Err("Bundled hermes-agent source not found. Please reinstall the application.".to_string());
+        return Err("Bundled hermes-agent source not found. Please build the application with 'node scripts/download-hermes-source.cjs' first, or reinstall.".to_string());
     }
 
     let _ = app.emit("install-progress", InstallProgress {
@@ -2084,8 +1812,9 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
         line: "Dependencies installed, verifying...".to_string(), done: false, success: false,
     });
 
-    let version_check = command(&python_exe)
-        .args(["-m", "hermes", "version"])
+    let venv_hermes_bin = format!("{}/bin/hermes", venv_dir);
+    let version_check = command(&venv_hermes_bin)
+        .arg("version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -2093,15 +1822,7 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
         .unwrap_or(false);
 
     if !version_check {
-        let _pip_direct = command(&python_exe)
-            .args(["-m", "pip", "install", "hermes-agent",
-                   "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
-                   "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
+        return Err("Hermes Agent installation verification failed. The bundled source may be incomplete or corrupted. Please reinstall the application.".to_string());
     }
 
     let local_bin = format!("{}/.local/bin", home);
@@ -2186,9 +1907,16 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
     for candidate in &source_candidates {
         log::info!("[install] Looking for bundled source at: {}", candidate.display());
         if candidate.exists() && candidate.is_dir() {
-            bundled_found = true;
-            found_path = candidate.clone();
-            break;
+            let has_real_source = candidate.join("pyproject.toml").exists()
+                || candidate.join("setup.py").exists()
+                || candidate.join("setup.cfg").exists();
+            if has_real_source {
+                bundled_found = true;
+                found_path = candidate.clone();
+                break;
+            } else {
+                log::warn!("[install] Found directory but no valid source files, skipping: {}", candidate.display());
+            }
         }
     }
 
@@ -2198,7 +1926,7 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
             .map_err(|e| format!("Failed to copy source: {}", e))?;
         log::info!("[install] Source copy complete");
     } else {
-        return Err("Bundled hermes-agent source not found. Please reinstall the application.".to_string());
+        return Err("Bundled hermes-agent source not found. Please build the application with 'node scripts/download-hermes-source.cjs' first, or reinstall.".to_string());
     }
 
     let _ = app.emit("install-progress", InstallProgress {
@@ -2225,7 +1953,20 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
         .map_err(|e| format!("Failed to create venv: {}", e))?;
 
     if !venv.status.success() {
-        return Err("Failed to create virtual environment, please ensure Python 3.11+ is installed".to_string());
+        let stderr = String::from_utf8_lossy(&venv.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&venv.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            "Unknown error".to_string()
+        };
+        log::error!("[install] venv creation failed: {}", detail);
+        return Err(format!(
+            "Failed to create virtual environment with Python '{}': {}. Please ensure Python 3.11+ is installed from python.org (not Microsoft Store stub)",
+            python, detail
+        ));
     }
 
     let _ = app.emit("install-progress", InstallProgress {
@@ -2259,8 +2000,9 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
         line: "Dependencies installed, verifying...".to_string(), done: false, success: false,
     });
 
-    let version_check = command(&python_exe)
-        .args(["-m", "hermes", "version"])
+    let venv_hermes_bin = format!("{}\\Scripts\\hermes.exe", venv_dir);
+    let version_check = command(&venv_hermes_bin)
+        .arg("version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -2268,21 +2010,7 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
         .unwrap_or(false);
 
     if !version_check {
-        let _ = app.emit("install-progress", InstallProgress {
-            line: "hermes command not found, trying to install hermes-agent package directly...".to_string(), done: false, success: false,
-        });
-        let pip_install = command(&python_exe)
-            .args(["-m", "pip", "install", "hermes-agent",
-                   "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
-                   "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        if !pip_install {
-            return Err("Hermes Agent installation failed, please check network".to_string());
-        }
+        return Err("Hermes Agent installation verification failed. The bundled source may be incomplete or corrupted. Please reinstall the application.".to_string());
     }
 
     let actual_installed = hermes_command()
@@ -3023,6 +2751,28 @@ pub fn run() {
             commands::sync_provider_keys,
             commands::list_models,
             commands::save_temp_file,
+            commands::list_ai_roles,
+            commands::create_ai_role,
+            commands::update_ai_role,
+            commands::delete_ai_role,
+            commands::list_projects,
+            commands::create_project,
+            commands::update_project,
+            commands::delete_project,
+            commands::list_project_members,
+            commands::add_project_member,
+            commands::remove_project_member,
+            commands::list_project_workflows,
+            commands::add_project_workflow,
+            commands::remove_project_workflow,
+            commands::list_project_artifacts,
+            commands::create_project_artifact,
+            commands::update_project_artifact_status,
+            commands::list_project_messages,
+            commands::create_project_message,
+            commands::read_text_file,
+            commands::sync_workflow_to_file,
+            commands::load_workflow_from_file,
         ])
         .run(tauri::generate_context!())
         .expect("Hermes Desktop failed to start");
