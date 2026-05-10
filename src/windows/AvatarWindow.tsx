@@ -442,6 +442,8 @@ export default function AvatarWindow() {
         provider: null,
         image: imagePath || null,
         eventId: eventId,
+        forceKbRetrieve: false,
+        conversationId: null,
       });
     } catch (err) {
       console.error("[Avatar] Chat error:", err);

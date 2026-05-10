@@ -10,7 +10,7 @@ import FilePreviewModal from "./FilePreviewModal";
 import VirtualOffice from "./VirtualOffice";
 import "./MainWindow.css";
 
-type Tab = "home" | "chat" | "studio" | "settings" | "skills";
+type Tab = "home" | "chat" | "studio" | "knowledge" | "settings" | "skills";
 
 interface Message {
   id: string;
@@ -26,6 +26,7 @@ interface Conversation {
   title: string;
   hermesSessionId?: string;
   status: string;
+  kbIds?: string;
   lastActiveAt: number;
   createdAt: number;
   updatedAt: number;
@@ -226,7 +227,7 @@ export default function MainWindow() {
     }
   };
 
-  const sendMessageFromHome = async (cardPrompt: string, userText: string, homeFiles?: AttachedFile[]) => {
+  const sendMessageFromHome = async (cardPrompt: string, userText: string, homeFiles?: AttachedFile[], kbIds?: string[]) => {
     if (isStreaming) return;
     const fullText = cardPrompt ? `${cardPrompt}\n\n${userText}` : userText;
     const hasFiles = homeFiles && homeFiles.length > 0;
@@ -262,6 +263,16 @@ export default function MainWindow() {
         setConversations((prev) => [conv, ...prev]);
         currentConversationIdRef.current = convId;
         setCurrentConversationId(convId);
+
+        if (kbIds && kbIds.length > 0) {
+          const kbIdsJson = JSON.stringify(kbIds);
+          try {
+            await invoke("update_conversation_kb_ids", { id: convId, kbIds: kbIdsJson });
+            setConversations(prev => prev.map(c => c.id === convId ? { ...c, kbIds: kbIdsJson } : c));
+          } catch (err) {
+            console.error("Failed to save kb_ids:", err);
+          }
+        }
 
         const userMsg: Message = {
           id: Date.now().toString(),
@@ -367,6 +378,8 @@ export default function MainWindow() {
             provider: null,
             image: firstImage?.path || null,
             eventId: eventId,
+            forceKbRetrieve: kbIds && kbIds.length > 0,
+            conversationId: convId,
           });
         } catch (err) {
           console.error("Chat API error:", err);
@@ -379,7 +392,7 @@ export default function MainWindow() {
     }, 50);
   };
 
-  const sendMessage = async (attachedFiles?: string, model?: string, provider?: string, image?: string) => {
+  const sendMessage = async (attachedFiles?: string, model?: string, provider?: string, image?: string, forceKbRetrieve?: boolean, kbIds?: string[]) => {
     if ((!input.trim() && !attachedFiles) || isStreaming) return;
 
     let conversationId = currentConversationId;
@@ -399,6 +412,17 @@ export default function MainWindow() {
       } catch (err) {
         console.error("Failed to create conversation:", err);
         return;
+      }
+    }
+
+    // Save kb_ids to conversation before sending
+    if (kbIds && kbIds.length > 0) {
+      const kbIdsJson = JSON.stringify(kbIds);
+      try {
+        await invoke("update_conversation_kb_ids", { id: conversationId, kbIds: kbIdsJson });
+        setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, kbIds: kbIdsJson } : c));
+      } catch (err) {
+        console.error("Failed to save kb_ids:", err);
       }
     }
 
@@ -536,6 +560,8 @@ export default function MainWindow() {
         provider: provider || null,
         image: image || null,
         eventId: eventId,
+        forceKbRetrieve: forceKbRetrieve || false,
+        conversationId: conversationId || null,
       });
     } catch (err) {
       console.error("Chat error:", err);
@@ -558,7 +584,7 @@ export default function MainWindow() {
       {/* 工具栏：菜单 + 数字人按钮 */}
       <div className="toolbar">
         <nav className="toolbar-nav">
-          {(["home", "chat", "studio", "skills", "settings"] as Tab[]).map((tab) => (
+          {(["home", "chat", "studio", "knowledge", "skills", "settings"] as Tab[]).map((tab) => (
             <button
               key={tab}
               className={`tab-btn ${activeTab === tab ? "active" : ""}`}
@@ -567,6 +593,7 @@ export default function MainWindow() {
               {tab === "home" && t("tabs.home")}
               {tab === "chat" && t("tabs.chat")}
               {tab === "studio" && t("tabs.studio")}
+              {tab === "knowledge" && t("tabs.knowledge")}
               {tab === "skills" && t("tabs.skills")}
               {tab === "settings" && t("tabs.settings")}
             </button>
@@ -593,6 +620,7 @@ export default function MainWindow() {
         {activeTab === "chat" && (
           <ChatPanel
             conversations={conversations}
+            setConversations={setConversations}
             currentConversationId={currentConversationId}
             onSelectConversation={handleSelectConversation}
             onNewConversation={createNewConversation}
@@ -612,6 +640,7 @@ export default function MainWindow() {
         )}
         {activeTab === "settings" && <SettingsPanel />}
         {activeTab === "studio" && <StudioPanel />}
+        {activeTab === "knowledge" && <KnowledgePanel t={t} />}
         {activeTab === "skills" && <SkillsPanel t={t} />}
       </div>
       </>
@@ -666,7 +695,7 @@ function HomePanel({
   isStreaming,
 }: {
   t: (key: string, params?: Record<string, string | number>) => string;
-  sendMessage: (cardPrompt: string, userText: string, homeFiles?: AttachedFile[]) => Promise<void>;
+  sendMessage: (cardPrompt: string, userText: string, homeFiles?: AttachedFile[], kbIds?: string[]) => Promise<void>;
   isStreaming: boolean;
 }) {
   const [cardIndex, setCardIndex] = useState(0);
@@ -675,9 +704,37 @@ function HomePanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [showKbSelector, setShowKbSelector] = useState(false);
+  const [kbGlobalAutoRetrieve, setKbGlobalAutoRetrieve] = useState(false);
+  const [kbList, setKbList] = useState<{ id: string; name: string; icon: string; status: string }[]>([]);
+  const [pendingKbIds, setPendingKbIds] = useState<string[]>([]);
+  const kbSelectorRef = useRef<HTMLDivElement>(null);
   const customCards = loadCustomCards();
   const allCards = [...BUILTIN_CARDS, ...customCards];
   const cardsPerRow = 4;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cfg = await invoke<Record<string, any>>("get_knowledge_config");
+        setKbGlobalAutoRetrieve(!!cfg.globalAutoRetrieve);
+      } catch {}
+      try {
+        const kbs = await invoke<{ id: string; name: string; icon: string; status: string }[]>("list_knowledge_bases");
+        setKbList(kbs);
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (kbSelectorRef.current && !kbSelectorRef.current.contains(e.target as Node)) {
+        setShowKbSelector(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const processFiles = async (fileList: FileList): Promise<AttachedFile[]> => {
     const result: AttachedFile[] = [];
@@ -728,7 +785,8 @@ function HomePanel({
 
   const handleSend = () => {
     if ((!homeInput.trim() && attachedFiles.length === 0) || isStreaming) return;
-    sendMessage("", homeInput.trim(), attachedFiles.length > 0 ? attachedFiles : undefined);
+    const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
+    sendMessage("", homeInput.trim(), attachedFiles.length > 0 ? attachedFiles : undefined, shouldKbRetrieve ? pendingKbIds : undefined);
     setHomeInput("");
     setAttachedFiles([]);
   };
@@ -852,6 +910,47 @@ function HomePanel({
                 </svg>
               </button>
               <button
+                className="toolbar-btn kb-retrieve-btn"
+                onClick={() => setShowKbSelector(!showKbSelector)}
+                title={t("chat.kbRetrieve")}
+                disabled={isStreaming || kbGlobalAutoRetrieve}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                  <line x1="9" y1="7" x2="16" y2="7" />
+                  <line x1="9" y1="11" x2="14" y2="11" />
+                </svg>
+                {pendingKbIds.length > 0 ? <span className="kb-selector-count">{pendingKbIds.length}</span> : null}
+              </button>
+              {showKbSelector && !kbGlobalAutoRetrieve && (
+                <div className="kb-selector-dropdown" ref={kbSelectorRef} onMouseDown={(e) => e.stopPropagation()}>
+                  <div className="kb-selector-header">{t("chat.kbSelect")}</div>
+                  {kbList.filter(kb => kb.status === "ready").length === 0 ? (
+                    <div className="kb-selector-empty">{t("kb.empty")}</div>
+                  ) : (
+                    kbList.filter(kb => kb.status === "ready").map(kb => {
+                      const isSelected = pendingKbIds.includes(kb.id);
+                      return (
+                        <div
+                          key={kb.id}
+                          className={`kb-selector-item ${isSelected ? "selected" : ""}`}
+                          onClick={() => {
+                            setPendingKbIds(prev =>
+                              isSelected ? prev.filter(id => id !== kb.id) : [...prev, kb.id]
+                            );
+                          }}
+                        >
+                          <span className="kb-selector-check">{isSelected ? "✓" : ""}</span>
+                          <span className="kb-selector-icon">{kb.icon || "📚"}</span>
+                          <span className="kb-selector-name">{kb.name}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+              <button
                 className="toolbar-btn mic-btn"
                 title="语音输入（即将推出）"
                 disabled
@@ -886,6 +985,7 @@ function HomePanel({
 // ── 对话 ──
 interface ChatPanelProps {
   conversations: Conversation[];
+  setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
   currentConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
@@ -894,7 +994,7 @@ interface ChatPanelProps {
   messages: Message[];
   input: string;
   setInput: (v: string) => void;
-  sendMessage: (attachedFiles?: string, model?: string, provider?: string, image?: string) => void;
+  sendMessage: (attachedFiles?: string, model?: string, provider?: string, image?: string, forceKbRetrieve?: boolean, kbIds?: string[]) => void;
   isStreaming: boolean;
   isThinking: boolean;
   thinkingContent: string;
@@ -905,6 +1005,7 @@ interface ChatPanelProps {
 
 function ChatPanel({
   conversations,
+  setConversations,
   currentConversationId,
   onSelectConversation,
   onNewConversation,
@@ -932,6 +1033,11 @@ function ChatPanel({
   const [currentModel, setCurrentModel] = useState("");
   const [providers, setProviders] = useState<{ id: string; name: string; value: string; baseUrl: string; apiKey: string }[]>([]);
   const [currentProvider, setCurrentProvider] = useState("");
+  const [showKbSelector, setShowKbSelector] = useState(false);
+  const [kbGlobalAutoRetrieve, setKbGlobalAutoRetrieve] = useState(false);
+  const [kbList, setKbList] = useState<{ id: string; name: string; icon: string; status: string }[]>([]);
+  const [pendingKbIds, setPendingKbIds] = useState<string[]>([]);
+  const kbSelectorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -960,12 +1066,31 @@ function ChatPanel({
     };
     loadProviders();
     loadCurrentModel();
+    (async () => {
+      try {
+        const cfg = await invoke<Record<string, any>>("get_knowledge_config");
+        setKbGlobalAutoRetrieve(!!cfg.globalAutoRetrieve);
+      } catch {}
+      try {
+        const kbs = await invoke<{ id: string; name: string; icon: string; status: string }[]>("list_knowledge_bases");
+        setKbList(kbs);
+      } catch {}
+    })();
   }, []);
+
+  useEffect(() => {
+    const conv = conversations.find(c => c.id === currentConversationId);
+    const ids: string[] = conv?.kbIds ? JSON.parse(conv.kbIds) : [];
+    setPendingKbIds(ids);
+  }, [currentConversationId, conversations]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
         setShowModelDropdown(false);
+      }
+      if (kbSelectorRef.current && !kbSelectorRef.current.contains(e.target as Node)) {
+        setShowKbSelector(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -1056,7 +1181,8 @@ function ChatPanel({
     const imagePath = firstImage?.path;
 
     const filesJson = attachedFiles.length > 0 ? JSON.stringify(attachedFiles) : undefined;
-    sendMessage(filesJson, currentModel || undefined, currentProvider || undefined, imagePath);
+    const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
+    sendMessage(filesJson, currentModel || undefined, currentProvider || undefined, imagePath, shouldKbRetrieve, shouldKbRetrieve ? pendingKbIds : undefined);
     setAttachedFiles([]);
   };
 
@@ -1376,6 +1502,47 @@ function ChatPanel({
                     <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                   </svg>
                 </button>
+                <button
+                  className="toolbar-btn kb-retrieve-btn"
+                  onClick={() => setShowKbSelector(!showKbSelector)}
+                  title={t("chat.kbRetrieve")}
+                  disabled={isStreaming || kbGlobalAutoRetrieve}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                    <line x1="9" y1="7" x2="16" y2="7" />
+                    <line x1="9" y1="11" x2="14" y2="11" />
+                  </svg>
+                  {pendingKbIds.length > 0 ? <span className="kb-selector-count">{pendingKbIds.length}</span> : null}
+                </button>
+                {showKbSelector && !kbGlobalAutoRetrieve && (
+                  <div className="kb-selector-dropdown" ref={kbSelectorRef} onMouseDown={(e) => e.stopPropagation()}>
+                    <div className="kb-selector-header">{t("chat.kbSelect")}</div>
+                    {kbList.filter(kb => kb.status === "ready").length === 0 ? (
+                      <div className="kb-selector-empty">{t("kb.empty")}</div>
+                    ) : (
+                      kbList.filter(kb => kb.status === "ready").map(kb => {
+                        const isSelected = pendingKbIds.includes(kb.id);
+                        return (
+                          <div
+                            key={kb.id}
+                            className={`kb-selector-item ${isSelected ? "selected" : ""}`}
+                            onClick={() => {
+                              setPendingKbIds(prev =>
+                                isSelected ? prev.filter(id => id !== kb.id) : [...prev, kb.id]
+                              );
+                            }}
+                          >
+                            <span className="kb-selector-check">{isSelected ? "✓" : ""}</span>
+                            <span className="kb-selector-icon">{kb.icon || "📚"}</span>
+                            <span className="kb-selector-name">{kb.name}</span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
               <div className="toolbar-right">
                 <div className="model-selector" ref={modelDropdownRef}>
@@ -1667,10 +1834,17 @@ function SettingsPanel() {
   }
 
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [providerSearch, setProviderSearch] = useState("");
+  const [providerPage, setProviderPage] = useState(1);
+  const providerPageSize = 15;
   const [showProviderModal, setShowProviderModal] = useState(false);
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [providerForm, setProviderForm] = useState({ name: "", value: "", baseUrl: "", apiKeyEnv: "", apiKey: "" });
   const [showApiKey, setShowApiKey] = useState(false);
+  const [showApiKeyEnvHelp, setShowApiKeyEnvHelp] = useState(false);
+  const [apiKeyVerifyResult, setApiKeyVerifyResult] = useState<"idle" | "verifying" | "ok" | "fail">("idle");
+  const [apiKeyVerifyError, setApiKeyVerifyError] = useState("");
+  const [apiKeyVerifyCount, setApiKeyVerifyCount] = useState(0);
   const [modelList, setModelList] = useState<ModelItem[]>([]);
   const [modelListLoading, setModelListLoading] = useState(false);
   const [modelListError, setModelListError] = useState<string | null>(null);
@@ -1999,6 +2173,7 @@ function SettingsPanel() {
             { key: "cardManager", icon: "🃏", labelKey: "nav.cardManager" as const, dirty: 0 },
             { key: "aiRoles", icon: "👥", labelKey: "nav.aiRoles" as const, dirty: 0 },
             { key: "system", icon: "⚙️", labelKey: "nav.system" as const, dirty: sectionDirtyCount("system") },
+            { key: "knowledge", icon: "📚", labelKey: "nav.knowledge" as const, dirty: 0 },
             { key: "about", icon: "ℹ️", labelKey: "nav.about" as const, dirty: 0 },
           ] as const).map((item) => (
             <button
@@ -2097,18 +2272,21 @@ function SettingsPanel() {
                     />
                   </div>
                   <div className="form-group">
-                    <label>
-                      {t("agent.maxTurns")}: {maxTurns}
-                      {dirtyFields.has("maxTurns") && <span className="dirty-badge">{t("common.modified")}</span>}
-                    </label>
-                    <input
-                      type="range"
-                      min="10"
-                      max="200"
-                      step="10"
-                      value={maxTurns}
-                      onChange={(e) => { setMaxTurns(parseInt(e.target.value)); markDirty("maxTurns"); }}
-                    />
+                    <label>{t("agent.maxTurns")}</label>
+                    <div className="kb-chunks-control">
+                      <input
+                        type="range"
+                        min="10"
+                        max="200"
+                        step="10"
+                        value={maxTurns}
+                        onChange={(e) => { setMaxTurns(parseInt(e.target.value)); markDirty("maxTurns"); }}
+                        className="kb-chunks-slider"
+                        style={{ "--slider-pct": `${((maxTurns - 10) / 190) * 100}%` } as React.CSSProperties}
+                      />
+                      <span className="kb-chunks-value">{maxTurns}</span>
+                    </div>
+                    {dirtyFields.has("maxTurns") && <span className="dirty-badge">{t("common.modified")}</span>}
                   </div>
                 </div>
                 <div className="settings-section">
@@ -2154,11 +2332,25 @@ function SettingsPanel() {
           {activeSection === "provider" && (
             <div className="settings-section-card">
               <div className="settings-section">
-                <div className="provider-section-header">
-                  <h3>{t("provider.title")}</h3>
-                  <button className="provider-add-header-btn" onClick={openNewProvider}>
-                    <span className="provider-add-icon">+</span>
-                    {t("provider.add")}
+                <div className="provider-toolbar">
+                  <div className="provider-search-wrap">
+                    <svg className="provider-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8"/>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input
+                      type="text"
+                      className="provider-search-input"
+                      placeholder={t("provider.searchPlaceholder")}
+                      value={providerSearch}
+                      onChange={(e) => { setProviderSearch(e.target.value); setProviderPage(1); }}
+                    />
+                    {providerSearch && (
+                      <button className="provider-search-clear" onClick={() => { setProviderSearch(""); setProviderPage(1); }}>✕</button>
+                    )}
+                  </div>
+                  <button className="provider-add-btn" onClick={openNewProvider}>
+                    + {t("provider.add")}
                   </button>
                 </div>
                 {providers.length === 0 && (
@@ -2167,49 +2359,105 @@ function SettingsPanel() {
                     <p>{t("provider.empty")}</p>
                   </div>
                 )}
-                <div className="provider-card-list">
-                  {providers.map((p, index) => (
-                    <div key={p.id} className="provider-card" style={{ animationDelay: `${index * 0.05}s` }}>
-                      <div className="provider-card-left">
-                        <div className="provider-card-icon">
-                          {p.name === "OpenAI" ? "🤖" : p.name === "Anthropic" ? "🧠" : p.name === "Google" ? "🔍" : p.name === "xAI" ? "🚀" : p.name === "Mistral" ? "🌀" : p.name === "DeepSeek" ? "🔮" : "🔌"}
+                {providers.length > 0 && (() => {
+                  const filtered = providers.filter(p =>
+                    p.name.toLowerCase().includes(providerSearch.toLowerCase()) ||
+                    p.value.toLowerCase().includes(providerSearch.toLowerCase())
+                  );
+                  const totalPages = Math.max(1, Math.ceil(filtered.length / providerPageSize));
+                  const safePage = Math.min(providerPage, totalPages);
+                  const paged = filtered.slice((safePage - 1) * providerPageSize, safePage * providerPageSize);
+                  return (
+                    <>
+                      {filtered.length === 0 && (
+                        <div className="provider-empty">
+                          <span className="provider-empty-icon">🔍</span>
+                          <p>{t("provider.noSearchResult")}</p>
                         </div>
-                        <div className="provider-card-info">
-                          <div className="provider-card-name-row">
-                            <span className="provider-card-name">{p.name}</span>
-                            {p.isBuiltin && <span className="provider-source-tag provider-source-builtin">{t("provider.builtin")}</span>}
-                            {!p.isBuiltin && <span className="provider-source-tag provider-source-custom">{t("provider.custom")}</span>}
-                            <span className={`provider-key-tag ${p.apiKey ? 'provider-key-configured' : 'provider-key-missing'}`}>
-                              {p.apiKey ? '🔑 ' + t("provider.keyConfigured") : '⚠️ ' + t("provider.keyMissing")}
-                            </span>
+                      )}
+                      <div className="provider-grid">
+                        {paged.map((p, index) => (
+                          <div key={p.id} className="provider-grid-card" style={{ animationDelay: `${index * 0.05}s` }}>
+                            <div className="provider-grid-card-header">
+                              <span className={`provider-grid-corner-tag ${p.isBuiltin ? 'provider-grid-tag-builtin' : 'provider-grid-tag-custom'}`}>
+                                {p.isBuiltin ? t("provider.builtin") : t("provider.custom")}
+                              </span>
+                              <div className="provider-grid-card-icon">
+                                {p.name === "OpenAI" ? "🤖" : p.name === "Anthropic" ? "🧠" : p.name === "Google" ? "🔍" : p.name === "xAI" ? "🚀" : p.name === "Mistral" ? "🌀" : p.name === "DeepSeek" ? "🔮" : "🔌"}
+                              </div>
+                              <div className="provider-grid-card-title">
+                                {p.name}
+                                <span className={`provider-grid-key-icon ${p.apiKey ? 'provider-grid-key-ok' : 'provider-grid-key-missing'}`}>
+                                  {p.apiKey ? '🔑' : '⚠️'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="provider-grid-card-body">
+                              <div className="provider-grid-meta-row">
+                                <span className="provider-grid-meta-label">ID</span>
+                                <span className="provider-grid-meta-value">{p.value}</span>
+                              </div>
+                              {p.baseUrl && (
+                                <div className="provider-grid-meta-row">
+                                  <span className="provider-grid-meta-label">URL</span>
+                                  <span className="provider-grid-meta-value provider-grid-meta-url" title={p.baseUrl}>{p.baseUrl}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="provider-grid-card-footer">
+                              <button className="provider-grid-btn provider-grid-btn-edit" onClick={() => openEditProvider(p)} title={t("provider.edit")}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                                {t("provider.edit")}
+                              </button>
+                              {!p.isBuiltin && (
+                                <button className="provider-grid-btn provider-grid-btn-delete" onClick={() => handleDeleteProvider(p.id)} title={t("provider.delete")}>
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                  </svg>
+                                  {t("provider.delete")}
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          <div className="provider-card-meta">
-                            <span className="provider-meta-item provider-meta-value">{p.value}</span>
-                            {p.baseUrl && <span className="provider-meta-item provider-meta-url">{p.baseUrl}</span>}
-                          </div>
-                        </div>
+                        ))}
                       </div>
-                      <div className="provider-card-actions">
-                        <button className="provider-action-btn provider-action-edit" onClick={() => openEditProvider(p)} title={t("provider.edit")}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                          </svg>
-                          {t("provider.edit")}
-                        </button>
-                        {!p.isBuiltin && (
-                          <button className="provider-action-btn provider-action-delete" onClick={() => handleDeleteProvider(p.id)} title={t("provider.delete")}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3 6 5 6 21 6"/>
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                            </svg>
-                            {t("provider.delete")}
+                      {totalPages > 1 && (
+                        <div className="provider-pagination">
+                          <button
+                            className="provider-page-btn"
+                            disabled={safePage <= 1}
+                            onClick={() => setProviderPage(safePage - 1)}
+                          >
+                            ‹
                           </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                            <button
+                              key={page}
+                              className={`provider-page-btn ${page === safePage ? 'active' : ''}`}
+                              onClick={() => setProviderPage(page)}
+                            >
+                              {page}
+                            </button>
+                          ))}
+                          <button
+                            className="provider-page-btn"
+                            disabled={safePage >= totalPages}
+                            onClick={() => setProviderPage(safePage + 1)}
+                          >
+                            ›
+                          </button>
+                          <span className="provider-page-info">
+                            {filtered.length} {t("provider.total")}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -2534,6 +2782,11 @@ function SettingsPanel() {
               </div>
             </div>
           )}
+
+          {/* 知识库设置 */}
+          {activeSection === "knowledge" && (
+            <KnowledgeSettingsSection t={t} />
+          )}
         </div>
       </div>
 
@@ -2620,7 +2873,32 @@ function SettingsPanel() {
                       />
                     </div>
                     <div className="form-group">
-                      <label>{t("provider.apiKeyEnvLabel")}</label>
+                      <label className="provider-label-with-help">
+                        {t("provider.apiKeyEnvLabel")}
+                        <span className="kb-help-icon" onClick={() => setShowApiKeyEnvHelp(!showApiKeyEnvHelp)}>?</span>
+                        {showApiKeyEnvHelp && (
+                          <div className="kb-help-popup" style={{ left: 0, top: 'calc(100% + 4px)' }}>
+                            <div className="kb-help-popup-title">API Key 环境变量名说明</div>
+                            <div className="kb-help-popup-section">
+                              <div className="kb-help-popup-subtitle">什么是环境变量名？</div>
+                              <div className="kb-help-popup-item">API Key 环境变量名是存储在系统环境变量中的变量名，Hermes 会从环境变量中读取对应的 API Key</div>
+                              <div className="kb-help-popup-item">如果直接填写了 API Key，环境变量名可留空</div>
+                            </div>
+                            <div className="kb-help-popup-section">
+                              <div className="kb-help-popup-subtitle">常用厂商环境变量名</div>
+                              <div className="kb-help-popup-item"><b>OpenAI</b> — OPENAI_API_KEY</div>
+                              <div className="kb-help-popup-item"><b>Anthropic</b> — ANTHROPIC_API_KEY</div>
+                              <div className="kb-help-popup-item"><b>Google Gemini</b> — GOOGLE_API_KEY</div>
+                              <div className="kb-help-popup-item"><b>xAI</b> — XAI_API_KEY</div>
+                              <div className="kb-help-popup-item"><b>Mistral</b> — MISTRAL_API_KEY</div>
+                              <div className="kb-help-popup-item"><b>DeepSeek</b> — DEEPSEEK_API_KEY</div>
+                              <div className="kb-help-popup-item"><b>硅基流动</b> — SILICONFLOW_API_KEY</div>
+                              <div className="kb-help-popup-item"><b>智谱 AI</b> — ZHIPU_API_KEY</div>
+                            </div>
+                            <div className="kb-help-popup-note">💡 建议使用环境变量管理 API Key，避免密钥泄露</div>
+                          </div>
+                        )}
+                      </label>
                       <input
                         type="text"
                         value={providerForm.apiKeyEnv}
@@ -2630,16 +2908,61 @@ function SettingsPanel() {
                     </div>
                     <div className="form-group">
                       <label>{t("provider.apiKeyLabel")}</label>
-                      <div className="api-key-input-row">
+                      <div className="api-key-input-wrap">
                         <input
                           type={showApiKey ? "text" : "password"}
                           value={providerForm.apiKey}
-                          onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
+                          onChange={(e) => { setProviderForm({ ...providerForm, apiKey: e.target.value }); setApiKeyVerifyResult("idle"); }}
                           placeholder={t("provider.apiKeyPlaceholder")}
                         />
-                        <button type="button" className="api-key-toggle-btn" onClick={() => setShowApiKey(!showApiKey)}>
+                        <button type="button" className="api-key-inner-toggle" onClick={() => setShowApiKey(!showApiKey)}>
                           {showApiKey ? "🙈" : "👁"}
                         </button>
+                      </div>
+                      <div className="api-key-verify-row">
+                        <button
+                          type="button"
+                          className={`api-key-verify-text-btn ${apiKeyVerifyResult === "ok" ? "verify-ok" : apiKeyVerifyResult === "fail" ? "verify-fail" : ""}`}
+                          onClick={async () => {
+                            if (!providerForm.baseUrl || !providerForm.apiKey) return;
+                            setApiKeyVerifyResult("verifying");
+                            setApiKeyVerifyError("");
+                            try {
+                              const result = await invoke<string>("verify_provider_api_key", {
+                                baseUrl: providerForm.baseUrl,
+                                apiKey: providerForm.apiKey,
+                              });
+                              if (result.startsWith("ok")) {
+                                const count = parseInt(result.split(":")[1] || "0", 10);
+                                setApiKeyVerifyCount(count);
+                                setApiKeyVerifyResult("ok");
+                              } else {
+                                setApiKeyVerifyResult("ok");
+                                setApiKeyVerifyCount(0);
+                              }
+                              setTimeout(() => { setApiKeyVerifyResult("idle"); setApiKeyVerifyCount(0); }, 8000);
+                            } catch (e) {
+                              setApiKeyVerifyResult("fail");
+                              setApiKeyVerifyError(String(e));
+                              setTimeout(() => { setApiKeyVerifyResult("idle"); setApiKeyVerifyError(""); }, 8000);
+                            }
+                          }}
+                          disabled={apiKeyVerifyResult === "verifying" || !providerForm.baseUrl || !providerForm.apiKey}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                          </svg>
+                          {apiKeyVerifyResult === "verifying" ? t("provider.verifying") : apiKeyVerifyResult === "ok" ? t("provider.verifyOk") : apiKeyVerifyResult === "fail" ? t("provider.verifyFail") : t("provider.verifyBtn")}
+                        </button>
+                        {apiKeyVerifyResult === "ok" && apiKeyVerifyCount > 0 && (
+                          <span className="api-key-verify-info">✓ {t("provider.verifyOkCount", { count: apiKeyVerifyCount })}</span>
+                        )}
+                        {apiKeyVerifyResult === "ok" && apiKeyVerifyCount === 0 && (
+                          <span className="api-key-verify-info">✓ {t("provider.verifyOk")}</span>
+                        )}
+                        {apiKeyVerifyResult === "fail" && (
+                          <span className="api-key-verify-error">✗ {apiKeyVerifyError}</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2647,7 +2970,7 @@ function SettingsPanel() {
 
                 <div className="provider-edit-actions">
                   <button className="provider-edit-cancel" onClick={() => { setEditingProvider(null); }}>
-                    {t("provider.backToList")}
+                    {t("provider.cancel")}
                   </button>
                   <button className="provider-edit-save" onClick={handleSaveProvider}>
                     {t("provider.save")}
@@ -2665,8 +2988,8 @@ function SettingsPanel() {
                       <div className="provider-modal-item-info">
                         <div className="provider-modal-item-name">
                           {p.name}
-                          {p.isBuiltin && <span className="provider-source-tag provider-source-builtin">{t("provider.builtin")}</span>}
-                          <span className={`provider-key-tag ${p.apiKey ? 'provider-key-configured' : 'provider-key-missing'}`}>
+                          {p.isBuiltin && <span className="provider-grid-tag provider-grid-tag-builtin">{t("provider.builtin")}</span>}
+                          <span className={`provider-grid-tag ${p.apiKey ? 'provider-grid-tag-key-ok' : 'provider-grid-tag-key-missing'}`}>
                             {p.apiKey ? '🔑' : '⚠️'}
                           </span>
                         </div>
@@ -2675,14 +2998,14 @@ function SettingsPanel() {
                       </div>
                     </div>
                     <div className="provider-modal-item-actions">
-                      <button className="provider-action-btn provider-action-edit" onClick={() => openEditProvider(p)}>
+                      <button className="provider-grid-btn provider-grid-btn-edit" onClick={() => openEditProvider(p)}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                         </svg>
                       </button>
                       {!p.isBuiltin && (
-                        <button className="provider-action-btn provider-action-delete" onClick={() => handleDeleteProvider(p.id)}>
+                        <button className="provider-grid-btn provider-grid-btn-delete" onClick={() => handleDeleteProvider(p.id)}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="3 6 5 6 21 6"/>
                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -2995,6 +3318,990 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface KnowledgeBase {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  directories: string;
+  embeddingModel: string;
+  retrievalMode: string;
+  maxContextChunks: number;
+  autoRetrieve: boolean;
+  status: string;
+  fileCount: number;
+  chunkCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface KnowledgeFile {
+  id: string;
+  knowledgeBaseId: string;
+  filePath: string;
+  fileName: string;
+  fileExt: string;
+  fileSize: number;
+  chunkCount: number;
+  indexStatus: string;
+  modifiedAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
+  const [kbConfig, setKbConfig] = useState({
+    defaultEmbeddingModel: "local",
+    defaultRetrievalMode: "off",
+    defaultMaxContextChunks: 8,
+    globalAutoRetrieve: false,
+    cloudProvider: "",
+    cloudEmbeddingModel: "",
+    ollamaEndpoint: "http://localhost:11434",
+    ollamaModel: "nomic-embed-text",
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [providers, setProviders] = useState<{ id: string; name: string; value: string; baseUrl: string; apiKey: string }[]>([]);
+  const [localModelStatus, setLocalModelStatus] = useState<"unknown" | "ready" | "missing" | "downloading">("unknown");
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [cloudTestResult, setCloudTestResult] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+  const [cloudTestError, setCloudTestError] = useState<string>("");
+  const [ollamaTestResult, setOllamaTestResult] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+  const [ollamaTestError, setOllamaTestError] = useState<string>("");
+  const [cloudModels, setCloudModels] = useState<{ id: string; ownedBy?: string }[]>([]);
+  const [cloudModelsLoading, setCloudModelsLoading] = useState(false);
+  const [cloudHasEmbeddingModels, setCloudHasEmbeddingModels] = useState(true);
+  const [showEmbeddingHelp, setShowEmbeddingHelp] = useState(false);
+  const [showRetrievalHelp, setShowRetrievalHelp] = useState(false);
+  const [showAdvancedHelp, setShowAdvancedHelp] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cfg = await invoke<any>("get_knowledge_config");
+        setKbConfig({
+          defaultEmbeddingModel: cfg.defaultEmbeddingModel || "local",
+          defaultRetrievalMode: cfg.defaultRetrievalMode || "off",
+          defaultMaxContextChunks: cfg.defaultMaxContextChunks || 8,
+          globalAutoRetrieve: cfg.globalAutoRetrieve || false,
+          cloudProvider: cfg.cloudProvider || "",
+          cloudEmbeddingModel: cfg.cloudEmbeddingModel || "",
+          ollamaEndpoint: cfg.ollamaEndpoint || "http://localhost:11434",
+          ollamaModel: cfg.ollamaModel || "nomic-embed-text",
+        });
+      } catch (e) {
+        console.error("Failed to load knowledge config:", e);
+      }
+    })();
+    (async () => {
+      try {
+        const list = await invoke<{ id: string; name: string; value: string; baseUrl: string; apiKey: string }[]>("list_providers");
+        setProviders(list || []);
+      } catch (e) {
+        console.error("Failed to load providers:", e);
+      }
+    })();
+    (async () => {
+      try {
+        const result = await invoke<string>("check_local_embedding_model");
+        setLocalModelStatus(result === "ready" ? "ready" : "missing");
+      } catch {
+        setLocalModelStatus("unknown");
+      }
+    })();
+  }, []);
+
+  const checkLocalModel = async () => {
+    try {
+      const result = await invoke<string>("check_local_embedding_model");
+      setLocalModelStatus(result === "ready" ? "ready" : "missing");
+    } catch {
+      setLocalModelStatus("unknown");
+    }
+  };
+
+  useEffect(() => {
+    if (kbConfig.cloudProvider) {
+      setCloudModelsLoading(true);
+      setCloudModels([]);
+      (async () => {
+        try {
+          const list = await invoke<{ id: string; ownedBy?: string }[]>("list_models", { providerValue: kbConfig.cloudProvider });
+          const embeddingModels = (list || []).filter(m =>
+            m.id.toLowerCase().includes("embed") || m.id.toLowerCase().includes("e5") || m.id.toLowerCase().includes("bge")
+          );
+          if (embeddingModels.length > 0) {
+            setCloudModels(embeddingModels);
+            setCloudHasEmbeddingModels(true);
+          } else {
+            setCloudModels(list || []);
+            setCloudHasEmbeddingModels((list || []).length > 0);
+          }
+        } catch {
+          setCloudModels([]);
+        } finally {
+          setCloudModelsLoading(false);
+        }
+      })();
+    } else {
+      setCloudModels([]);
+    }
+  }, [kbConfig.cloudProvider]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      await invoke("set_knowledge_config", { config: kbConfig });
+      setSaveMsg("success");
+      setTimeout(() => setSaveMsg(null), 2000);
+    } catch (e) {
+      console.error("Failed to save knowledge config:", e);
+      setSaveMsg("error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTestCloud = async () => {
+    setCloudTestResult("testing");
+    setCloudTestError("");
+    console.log("[test_cloud_embedding] provider:", kbConfig.cloudProvider, "model:", kbConfig.cloudEmbeddingModel);
+    try {
+      const result = await invoke<string>("test_cloud_embedding", {
+        provider: kbConfig.cloudProvider,
+        model: kbConfig.cloudEmbeddingModel,
+      });
+      console.log("[test_cloud_embedding] result:", result);
+      setCloudTestResult(result === "ok" ? "ok" : "fail");
+      if (result !== "ok") setCloudTestError("Unexpected response");
+      setTimeout(() => { setCloudTestResult("idle"); setCloudTestError(""); }, 5000);
+    } catch (e) {
+      console.error("[test_cloud_embedding] error:", e);
+      setCloudTestResult("fail");
+      setCloudTestError(String(e));
+      setTimeout(() => { setCloudTestResult("idle"); setCloudTestError(""); }, 8000);
+    }
+  };
+
+  const handleTestOllama = async () => {
+    setOllamaTestResult("testing");
+    setOllamaTestError("");
+    try {
+      const result = await invoke<string>("test_ollama_embedding", {
+        endpoint: kbConfig.ollamaEndpoint,
+        model: kbConfig.ollamaModel,
+      });
+      setOllamaTestResult(result === "ok" ? "ok" : "fail");
+      if (result !== "ok") setOllamaTestError("Unexpected response");
+      setTimeout(() => { setOllamaTestResult("idle"); setOllamaTestError(""); }, 5000);
+    } catch (e) {
+      setOllamaTestResult("fail");
+      setOllamaTestError(String(e));
+      setTimeout(() => { setOllamaTestResult("idle"); setOllamaTestError(""); }, 8000);
+    }
+  };
+
+  const handleInstallLocalModel = async () => {
+    setLocalModelStatus("downloading");
+    setDownloadProgress(0);
+    try {
+      const unlisten = await listen("local-embedding-model-progress", (event: any) => {
+        if (typeof event.payload === "number") {
+          setDownloadProgress(event.payload);
+        }
+      });
+      await invoke("install_local_embedding_model");
+      setDownloadProgress(100);
+      setLocalModelStatus("ready");
+      unlisten();
+    } catch (e) {
+      console.error("Failed to install local model:", e);
+      setLocalModelStatus("missing");
+    }
+  };
+
+  const retrievalModes = [
+    { value: "off", icon: "🚫", desc: t("kb.settings.modeOffDesc") },
+    { value: "auto", icon: "⚡", desc: t("kb.settings.modeAutoDesc") },
+  ];
+
+  const updateConfig = (patch: Partial<typeof kbConfig>) => setKbConfig({ ...kbConfig, ...patch });
+
+  return (
+    <div className="settings-section-card">
+      <div className="settings-header">
+        <h2>{t("kb.settings.title")}</h2>
+      </div>
+
+      {saveMsg && (
+        <div className={`save-toast ${saveMsg}`}>
+          {saveMsg === "success" ? "✅" : "❌"} {saveMsg === "success" ? t("common.saved") : t("common.saveFailed")}
+        </div>
+      )}
+
+      <div className="settings-section">
+        <h3 className="kb-section-title-with-help">
+          {t("kb.settings.embeddingModelSection")}
+          <span className="kb-help-icon" onClick={() => setShowEmbeddingHelp(!showEmbeddingHelp)}>?</span>
+          {showEmbeddingHelp && (
+            <div className="kb-help-popup">
+              <div className="kb-help-popup-title">嵌入模型支持说明</div>
+              <div className="kb-help-popup-section">
+                <div className="kb-help-popup-subtitle">☁️ 云端模型（推荐）</div>
+                <div className="kb-help-popup-item"><b>硅基流动 SiliconFlow</b> — BAAI/bge-large-zh-v1.5, BAAI/bge-m3, netease-youdao/bce-embedding-base_v1</div>
+                <div className="kb-help-popup-item"><b>OpenAI</b> — text-embedding-3-small, text-embedding-3-large, text-embedding-ada-002</div>
+                <div className="kb-help-popup-item"><b>智谱 AI</b> — embedding-3</div>
+                <div className="kb-help-popup-item"><b>阿里云 DashScope</b> — text-embedding-v3, text-embedding-v2</div>
+              </div>
+              <div className="kb-help-popup-section">
+                <div className="kb-help-popup-subtitle">🦙 Ollama（本地部署）</div>
+                <div className="kb-help-popup-item">nomic-embed-text, mxbai-embed-large, bge-m3, all-minilm</div>
+                <div className="kb-help-popup-cmd">ollama pull nomic-embed-text</div>
+              </div>
+              <div className="kb-help-popup-section">
+                <div className="kb-help-popup-subtitle">💻 本地模型</div>
+                <div className="kb-help-popup-item">all-MiniLM-L6-v2（内置，自动下载）</div>
+              </div>
+              <div className="kb-help-popup-note">⚠️ DeepSeek、Anthropic (Claude) 等供应商不支持嵌入模型 API</div>
+            </div>
+          )}
+        </h3>
+        <p className="kb-settings-section-desc">{t("kb.settings.embeddingModelDesc")}</p>
+        <div className="kb-model-tabs">
+          {[
+            { value: "local", icon: "💻", label: t("kb.embeddingModel.local") },
+            { value: "cloud", icon: "☁️", label: t("kb.embeddingModel.cloud") },
+            { value: "ollama", icon: "🦙", label: t("kb.embeddingModel.ollama") },
+          ].map((m) => (
+            <button
+              key={m.value}
+              className={`kb-model-tab ${kbConfig.defaultEmbeddingModel === m.value ? "active" : ""}`}
+              onClick={() => {
+                updateConfig({ defaultEmbeddingModel: m.value });
+                if (m.value === "local") checkLocalModel();
+              }}
+            >
+              <span className="kb-model-tab-icon">{m.icon}</span>
+              <span className="kb-model-tab-label">{m.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {kbConfig.defaultEmbeddingModel === "local" && (
+          <div className="kb-model-detail">
+            <div className="kb-model-detail-row">
+              <span className="kb-model-detail-label">all-MiniLM-L6-v2</span>
+              <span className={`kb-model-status kb-model-status-${localModelStatus === "downloading" ? "missing" : localModelStatus}`}>
+                {localModelStatus === "ready" && "✓ " + t("kb.settings.modelReady")}
+                {localModelStatus === "missing" && "⚠ " + t("kb.settings.modelMissing")}
+                {localModelStatus === "unknown" && t("kb.settings.modelUnknown")}
+                {localModelStatus === "downloading" && t("kb.settings.modelDownloading")}
+              </span>
+            </div>
+            <p className="kb-model-detail-hint">{t("kb.settings.localModelHint")}</p>
+            {localModelStatus === "missing" && (
+              <button className="kb-model-install-btn" onClick={handleInstallLocalModel}>
+                {t("kb.settings.installModel")}
+              </button>
+            )}
+            {localModelStatus === "downloading" && (
+              <div className="kb-download-progress-wrap">
+                <div className="kb-download-progress-bar">
+                  <div className="kb-download-progress-fill" style={{ width: `${Math.min(downloadProgress, 100)}%` }} />
+                </div>
+                <span className="kb-download-progress-text">{Math.round(downloadProgress)}%</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {kbConfig.defaultEmbeddingModel === "cloud" && (
+          <div className="kb-model-detail">
+            <div className="form-group">
+              <label>{t("kb.settings.cloudProvider")}</label>
+              <select
+                value={kbConfig.cloudProvider}
+                onChange={(e) => updateConfig({ cloudProvider: e.target.value, cloudEmbeddingModel: "" })}
+              >
+                <option value="">{t("common.selectProvider")}</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.value}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>{t("kb.settings.embeddingModelName")}</label>
+              <select
+                value={kbConfig.cloudEmbeddingModel}
+                onChange={(e) => updateConfig({ cloudEmbeddingModel: e.target.value })}
+                disabled={!kbConfig.cloudProvider || cloudModelsLoading}
+              >
+                <option value="">
+                  {cloudModelsLoading ? t("kb.settings.loadingModels") : t("common.selectModel")}
+                </option>
+                {kbConfig.cloudEmbeddingModel && !cloudModels.some(m => m.id === kbConfig.cloudEmbeddingModel) && (
+                  <option value={kbConfig.cloudEmbeddingModel}>{kbConfig.cloudEmbeddingModel}</option>
+                )}
+                {cloudModels.map((m) => (
+                  <option key={m.id} value={m.id}>{m.id}</option>
+                ))}
+              </select>
+              {!cloudModelsLoading && kbConfig.cloudProvider && !cloudHasEmbeddingModels && (
+                <span className="kb-no-embedding-warning">⚠ 该供应商未检测到嵌入模型，测试连接可能会失败</span>
+              )}
+            </div>
+            <div className="kb-model-detail-row">
+              <span className="kb-model-detail-hint">{t("kb.settings.cloudProviderHint")}</span>
+              <button
+                className="kb-model-test-btn"
+                onClick={handleTestCloud}
+                disabled={!kbConfig.cloudProvider || !kbConfig.cloudEmbeddingModel || cloudTestResult === "testing"}
+              >
+                {cloudTestResult === "testing" ? "..." : t("kb.settings.testConnection")}
+              </button>
+            </div>
+            {cloudTestResult === "ok" && <span className="kb-test-ok">✓ {t("kb.settings.testOk")}</span>}
+            {cloudTestResult === "fail" && <span className="kb-test-fail">✗ {t("kb.settings.testFail")}{cloudTestError ? `: ${cloudTestError}` : ""}</span>}
+          </div>
+        )}
+
+        {kbConfig.defaultEmbeddingModel === "ollama" && (
+          <div className="kb-model-detail">
+            <div className="form-group">
+              <label>{t("kb.settings.ollamaEndpoint")}</label>
+              <input
+                type="text"
+                value={kbConfig.ollamaEndpoint}
+                onChange={(e) => updateConfig({ ollamaEndpoint: e.target.value })}
+                placeholder="http://localhost:11434"
+              />
+            </div>
+            <div className="form-group">
+              <label>{t("kb.settings.ollamaModelName")}</label>
+              <input
+                type="text"
+                value={kbConfig.ollamaModel}
+                onChange={(e) => updateConfig({ ollamaModel: e.target.value })}
+                placeholder="nomic-embed-text"
+              />
+            </div>
+            <div className="kb-model-detail-row">
+              <span className="kb-model-detail-hint">{t("kb.settings.ollamaHint")}</span>
+              <button
+                className="kb-model-test-btn"
+                onClick={handleTestOllama}
+                disabled={!kbConfig.ollamaEndpoint || !kbConfig.ollamaModel || ollamaTestResult === "testing"}
+              >
+                {ollamaTestResult === "testing" ? "..." : t("kb.settings.testConnection")}
+              </button>
+            </div>
+            {ollamaTestResult === "ok" && <span className="kb-test-ok">✓ {t("kb.settings.testOk")}</span>}
+            {ollamaTestResult === "fail" && <span className="kb-test-fail">✗ {t("kb.settings.testFail")}{ollamaTestError ? `: ${ollamaTestError}` : ""}</span>}
+          </div>
+        )}
+      </div>
+
+      <div className="settings-section">
+        <h3 className="kb-section-title-with-help">
+          {t("kb.settings.retrievalModeSection")}
+          <span className="kb-help-icon" onClick={() => setShowRetrievalHelp(!showRetrievalHelp)}>?</span>
+          {showRetrievalHelp && (
+            <div className="kb-help-popup">
+              <div className="kb-help-popup-title">检索注入策略说明</div>
+              <div className="kb-help-popup-section">
+                <div className="kb-help-popup-subtitle">🚫 关闭</div>
+                <div className="kb-help-popup-item">不自动检索知识库，可在对话中手动选择知识库</div>
+              </div>
+              <div className="kb-help-popup-section">
+                <div className="kb-help-popup-subtitle">⚡ 自动注入</div>
+                <div className="kb-help-popup-item">每次对话自动检索所有就绪知识库的相关片段，注入到上下文中发送给模型</div>
+              </div>
+              <div className="kb-help-popup-note">💡 关闭自动注入后，可在对话输入框手动选择需要的知识库</div>
+            </div>
+          )}
+        </h3>
+        <p className="kb-settings-section-desc">{t("kb.settings.retrievalModeDesc")}</p>
+        <div className="kb-mode-cards">
+          {retrievalModes.map((m) => (
+            <div
+              key={m.value}
+              className={`kb-mode-card ${kbConfig.defaultRetrievalMode === m.value ? "active" : ""}`}
+              onClick={() => updateConfig({ defaultRetrievalMode: m.value })}
+            >
+              <div className="kb-mode-card-title">
+                <span className="kb-mode-card-icon">{m.icon}</span>
+                <span className="kb-mode-card-name">{t(`kb.retrievalMode.${m.value}`)}</span>
+              </div>
+              <div className="kb-mode-card-desc">{m.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h3 className="kb-section-title-with-help">
+          {t("kb.settings.advancedSection")}
+          <span className="kb-help-icon" onClick={() => setShowAdvancedHelp(!showAdvancedHelp)}>?</span>
+          {showAdvancedHelp && (
+            <div className="kb-help-popup">
+              <div className="kb-help-popup-title">高级设置说明</div>
+              <div className="kb-help-popup-section">
+                <div className="kb-help-popup-subtitle">📊 最大上下文块数</div>
+                <div className="kb-help-popup-item">每次检索返回的最大知识片段数量。数值越大，注入的上下文越丰富，但消耗的 Token 也越多</div>
+                <div className="kb-help-popup-item">推荐值：4~12，知识库内容较短时可适当增大</div>
+              </div>
+              <div className="kb-help-popup-section">
+                <div className="kb-help-popup-subtitle">🔄 全局自动检索</div>
+                <div className="kb-help-popup-item">开启后，所有知识库在对话时都会自动检索注入。关闭则需在每个知识库中单独配置</div>
+              </div>
+            </div>
+          )}
+        </h3>
+        <div className="settings-form">
+          <div className="form-group">
+            <label>{t("kb.settings.defaultMaxContextChunks")}</label>
+            <div className="kb-chunks-control">
+              <input
+                type="range"
+                min={1}
+                max={32}
+                value={kbConfig.defaultMaxContextChunks}
+                onChange={(e) => updateConfig({ defaultMaxContextChunks: parseInt(e.target.value) || 8 })}
+                className="kb-chunks-slider"
+                style={{ "--slider-pct": `${((kbConfig.defaultMaxContextChunks - 1) / 31) * 100}%` } as React.CSSProperties}
+              />
+              <span className="kb-chunks-value">{kbConfig.defaultMaxContextChunks}</span>
+            </div>
+            <span className="kb-chunks-hint">{t("kb.settings.chunksHint")}</span>
+          </div>
+          <div className="form-group">
+            <label className="kb-toggle-label">
+              <span className="kb-toggle-text">
+                <span className="kb-toggle-title">{t("kb.settings.globalAutoRetrieve")}</span>
+                <span className="kb-toggle-desc">{t("kb.settings.autoRetrieveDesc")}</span>
+              </span>
+              <button
+                type="button"
+                className={`kb-toggle-switch ${kbConfig.globalAutoRetrieve ? "on" : ""}`}
+                onClick={() => updateConfig({ globalAutoRetrieve: !kbConfig.globalAutoRetrieve })}
+              >
+                <span className="kb-toggle-knob" />
+              </button>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="kb-settings-footer">
+        <button
+          className="kb-settings-save-btn"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? <span className="kb-spinner" /> : t("kb.settings.saveBtn")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function KnowledgePanel({ t }: { t: (key: string) => string }) {
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [selectedKb, setSelectedKb] = useState<KnowledgeBase | null>(null);
+  const selectedKbRef = useRef<KnowledgeBase | null>(null);
+  const [editingKbId, setEditingKbId] = useState<string | null>(null);
+  const [kbFiles, setKbFiles] = useState<KnowledgeFile[]>([]);
+  const [kbGlobalConfig, setKbGlobalConfig] = useState<Record<string, any>>({});
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any>(null);
+  const [indexingKbId, setIndexingKbId] = useState<string | null>(null);
+  const [indexProgress, setIndexProgress] = useState<{ status: string; current: number; total: number; file: string } | null>(null);
+  const [form, setForm] = useState({
+    name: "",
+    description: "",
+    icon: "📚",
+    directories: [] as string[],
+  });
+  const [newDir, setNewDir] = useState("");
+
+  const updateSelectedKb = (kb: KnowledgeBase | null) => {
+    selectedKbRef.current = kb;
+    setSelectedKb(kb);
+  };
+
+  const loadKnowledgeBases = async () => {
+    try {
+      const list = await invoke<KnowledgeBase[]>("list_knowledge_bases");
+      setKnowledgeBases(list);
+      if (selectedKbRef.current) {
+        const updated = list.find(kb => kb.id === selectedKbRef.current!.id);
+        if (updated) updateSelectedKb(updated);
+      }
+    } catch (e) {
+      console.error("Failed to load knowledge bases:", e);
+    }
+    try {
+      const config = await invoke<Record<string, any>>("get_knowledge_config");
+      setKbGlobalConfig(config);
+    } catch (e) {
+      console.error("Failed to load kb config:", e);
+    }
+  };
+
+  const loadKbFiles = async (kbId: string) => {
+    try {
+      const files = await invoke<KnowledgeFile[]>("list_knowledge_files", { knowledgeBaseId: kbId });
+      setKbFiles(files);
+    } catch (e) {
+      console.error("Failed to load knowledge files:", e);
+    }
+  };
+
+  useEffect(() => {
+    loadKnowledgeBases();
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen<any>("kb-index-progress", (event) => {
+      const p = event.payload;
+      setIndexProgress({ status: p.status, current: p.current, total: p.total, file: p.file || "" });
+      if (p.status === "done") {
+        setIndexingKbId(null);
+        loadKnowledgeBases();
+        if (selectedKbRef.current?.id) loadKbFiles(selectedKbRef.current.id);
+        setTimeout(() => setIndexProgress(null), 2000);
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  useEffect(() => {
+    if (selectedKb) {
+      loadKbFiles(selectedKb.id);
+    }
+  }, [selectedKb]);
+
+  const handleCreate = async () => {
+    try {
+      const result = await invoke<KnowledgeBase>("create_knowledge_base", {
+        req: {
+          name: form.name,
+          description: form.description || undefined,
+          icon: form.icon || undefined,
+          directories: JSON.stringify(form.directories),
+        },
+      });
+      setShowCreateModal(false);
+      resetForm();
+      loadKnowledgeBases();
+      if (result?.id && form.directories.length > 0) {
+        setIndexingKbId(result.id);
+        setIndexProgress({ status: "scanning", current: 0, total: 0, file: "" });
+        invoke("index_knowledge_base", { id: result.id }).catch((e) => {
+          console.error("Auto-index failed:", e);
+          setIndexingKbId(null);
+          setIndexProgress(null);
+        });
+      }
+    } catch (e) {
+      console.error("Failed to create knowledge base:", e);
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingKbId) return;
+    try {
+      const payload = {
+        id: editingKbId,
+        name: form.name,
+        description: form.description,
+        icon: form.icon,
+        directories: JSON.stringify(form.directories),
+      };
+      await invoke("update_knowledge_base", { req: payload });
+      setShowEditModal(false);
+      setEditingKbId(null);
+      loadKnowledgeBases();
+      if (selectedKb?.id === editingKbId) {
+        updateSelectedKb({ ...selectedKb, name: form.name, description: form.description, icon: form.icon, directories: JSON.stringify(form.directories) });
+      }
+    } catch (e) {
+      alert("更新知识库失败: " + e);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm(t("kb.deleteConfirm"))) return;
+    try {
+      await invoke("delete_knowledge_base", { id });
+      if (selectedKb?.id === id) updateSelectedKb(null);
+      loadKnowledgeBases();
+    } catch (e) {
+      console.error("Failed to delete knowledge base:", e);
+    }
+  };
+
+  const handleIndex = async (id: string) => {
+    setIndexingKbId(id);
+    setIndexProgress({ status: "scanning", current: 0, total: 0, file: "" });
+    invoke("index_knowledge_base", { id }).catch((e) => {
+      console.error("Failed to index knowledge base:", e);
+      setIndexingKbId(null);
+      setIndexProgress(null);
+    });
+  };
+
+  const handleSearch = async () => {
+    if (!selectedKb || !searchQuery.trim()) return;
+    try {
+      const result = await invoke("search_knowledge_base", { id: selectedKb.id, query: searchQuery, limit: 20 });
+      setSearchResults(result);
+    } catch (e) {
+      console.error("Failed to search knowledge base:", e);
+    }
+  };
+
+  const resetForm = () => {
+    setForm({
+      name: "",
+      description: "",
+      icon: "📚",
+      directories: [],
+    });
+    setNewDir("");
+  };
+
+  const openEditModal = (kb: KnowledgeBase) => {
+    setEditingKbId(kb.id);
+    setForm({
+      name: kb.name,
+      description: kb.description,
+      icon: kb.icon,
+      directories: JSON.parse(kb.directories || "[]"),
+    });
+    setShowEditModal(true);
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const statusLabel = (status: string) => {
+    if (status === "indexing") return t("kb.indexing");
+    if (status === "ready") return t("kb.ready");
+    return status;
+  };
+
+  const getFileIcon = (ext: string) => {
+    const iconMap: Record<string, string> = {
+      md: "📝", txt: "📄", pdf: "📕", docx: "📘", doc: "📘",
+      json: "🔧", csv: "📊", xls: "📊", xlsx: "📊",
+      py: "🐍", rs: "🦀", ts: "🔷", tsx: "🔷", js: "🟨", jsx: "🟨",
+      go: "🔵", java: "☕", c: "⚙️", cpp: "⚙️", h: "⚙️",
+      html: "🌐", css: "🎨", yaml: "📋", yml: "📋", toml: "📋", xml: "📋",
+    };
+    return iconMap[ext.toLowerCase()] || "📄";
+  };
+
+  return (
+    <div className="knowledge-panel">
+      {!selectedKb ? (
+        <div className="kb-list-view">
+          <div className="kb-list-header">
+            <div>
+              <h2>{t("kb.title")}</h2>
+              <p className="kb-subtitle">{t("kb.subtitle")}</p>
+            </div>
+            <button className="kb-create-btn" onClick={() => { resetForm(); setShowCreateModal(true); }}>
+              + {t("kb.create")}
+            </button>
+          </div>
+          {knowledgeBases.length === 0 ? (
+            <div className="kb-empty">
+              <div className="kb-empty-icon">📚</div>
+              <p>{t("kb.empty")}</p>
+              <button className="kb-create-btn" onClick={() => { resetForm(); setShowCreateModal(true); }}>
+                + {t("kb.create")}
+              </button>
+            </div>
+          ) : (
+            <div className="kb-grid">
+              {knowledgeBases.map((kb, index) => (
+                <div key={kb.id} className="kb-grid-card" style={{ animationDelay: `${index * 0.05}s` }} onClick={() => updateSelectedKb(kb)}>
+                  {indexingKbId === kb.id && indexProgress && (
+                    <div className="kb-grid-card-progress">
+                      <div className="kb-grid-card-progress-fill" style={{ width: indexProgress.total > 0 ? `${(indexProgress.current / indexProgress.total) * 100}%` : "0%" }} />
+                    </div>
+                  )}
+                  <div className="kb-grid-card-header">
+                    <span className={`kb-grid-corner-tag kb-grid-status-${kb.status}`}>
+                      {indexingKbId === kb.id ? "⏳ 索引中" : statusLabel(kb.status)}
+                    </span>
+                    <div className="kb-grid-card-icon">{kb.icon}</div>
+                    <div className="kb-grid-card-title">{kb.name}</div>
+                  </div>
+                  <div className="kb-grid-card-body">
+                    <div className="kb-grid-meta-row">
+                      <span className="kb-grid-meta-label">{t("kb.fileCount")}</span>
+                      <span className="kb-grid-meta-value">{kb.fileCount}</span>
+                    </div>
+                    <div className="kb-grid-meta-row">
+                      <span className="kb-grid-meta-label">{t("kb.chunkCount")}</span>
+                      <span className="kb-grid-meta-value">{kb.chunkCount}</span>
+                    </div>
+                    <div className="kb-grid-meta-row">
+                      <span className="kb-grid-meta-label">{t("kb.embeddingModel")}</span>
+                      <span className="kb-grid-meta-value">{kbGlobalConfig.defaultEmbeddingModel === "cloud" ? "☁️ Cloud" : kbGlobalConfig.defaultEmbeddingModel === "ollama" ? "🦙 Ollama" : "💻 Local"}</span>
+                    </div>
+                  </div>
+                  <div className="kb-grid-card-footer">
+                    <button className="kb-grid-btn" onClick={(e) => { e.stopPropagation(); handleIndex(kb.id); }} disabled={!!indexingKbId} title={t("kb.index")}>
+                      🔄 {t("kb.reindex")}
+                    </button>
+                    <button className="kb-grid-btn" onClick={(e) => { e.stopPropagation(); openEditModal(kb); }} title={t("kb.edit")}>
+                      ✏️ {t("kb.edit")}
+                    </button>
+                    <button className="kb-grid-btn kb-grid-btn-danger" onClick={(e) => { e.stopPropagation(); handleDelete(kb.id); }} title={t("kb.delete")}>
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="kb-detail-view">
+          <div className="kb-detail-header">
+            <button className="kb-back-btn" onClick={() => { updateSelectedKb(null); setSearchResults(null); setSearchQuery(""); }}>
+              ← {t("kb.backToList")}
+            </button>
+            <div className="kb-detail-title">
+              <span className="kb-detail-icon">{selectedKb.icon}</span>
+              <h2>{selectedKb.name}</h2>
+              <span className={`kb-detail-status kb-detail-status-${selectedKb.status}`}>{statusLabel(selectedKb.status)}</span>
+            </div>
+            <div className="kb-detail-actions">
+              <button className="kb-detail-action-btn" onClick={() => handleIndex(selectedKb.id)} disabled={!!indexingKbId}>
+                {indexingKbId === selectedKb.id ? t("kb.indexing") : t("kb.reindex")}
+              </button>
+              <button className="kb-detail-action-btn" onClick={() => openEditModal(selectedKb)}>
+                {t("kb.edit")}
+              </button>
+            </div>
+          </div>
+
+          <div className="kb-detail-stats">
+            <div className="kb-stat-card">
+              <span className="kb-stat-value">{selectedKb.fileCount}</span>
+              <span className="kb-stat-label">{t("kb.fileCount")}</span>
+            </div>
+            <div className="kb-stat-card">
+              <span className="kb-stat-value">{selectedKb.chunkCount}</span>
+              <span className="kb-stat-label">{t("kb.chunkCount")}</span>
+            </div>
+            <div className="kb-stat-card">
+              <span className="kb-stat-value">{kbGlobalConfig.defaultEmbeddingModel === "cloud" ? "☁️ Cloud" : kbGlobalConfig.defaultEmbeddingModel === "ollama" ? "🦙 Ollama" : "💻 Local"}</span>
+              <span className="kb-stat-label">{t("kb.embeddingModel")}</span>
+            </div>
+            <div className="kb-stat-card">
+              <span className="kb-stat-value">{t(`kb.retrievalMode.${kbGlobalConfig.defaultRetrievalMode || "off"}`)}</span>
+              <span className="kb-stat-label">{t("kb.retrievalMode")}</span>
+            </div>
+          </div>
+
+          {indexingKbId === selectedKb.id && indexProgress && (
+            <div className="kb-index-progress">
+              <div className="kb-index-progress-header">
+                <span className="kb-index-progress-status">
+                  {indexProgress.status === "scanning" ? "📂 扫描文件中..." : indexProgress.status === "indexing" ? `📄 ${indexProgress.file}` : indexProgress.status === "embedding" ? `🧮 嵌入向量: ${indexProgress.file}` : "✅ 索引完成"}
+                </span>
+                {indexProgress.total > 0 && (
+                  <span className="kb-index-progress-count">{indexProgress.current} / {indexProgress.total}</span>
+                )}
+              </div>
+              {indexProgress.total > 0 && (
+                <div className="kb-index-progress-bar">
+                  <div className="kb-index-progress-fill" style={{ width: `${(indexProgress.current / indexProgress.total) * 100}%` }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {(() => {
+            const dirs: string[] = JSON.parse(selectedKb.directories || "[]");
+            return dirs.length > 0 ? (
+              <div className="kb-detail-dirs">
+                <h3>📁 {t("kb.directories")}</h3>
+                <div className="kb-dir-tags">
+                  {dirs.map((dir, i) => (
+                    <span key={i} className="kb-dir-tag" title={dir}>{dir}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null;
+          })()}
+
+          <div className="kb-search-bar">
+            <input
+              type="text"
+              className="kb-search-input"
+              placeholder={t("kb.search")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            />
+            <button className="kb-search-btn" onClick={handleSearch}>🔍</button>
+          </div>
+
+          {searchResults && (
+            <div className="kb-search-results">
+              <h3>{t("kb.searchResult")}</h3>
+              {searchResults.source === "local_fts" && Array.isArray(searchResults.results) ? (
+                searchResults.results.length > 0 ? (
+                  <div className="kb-file-list">
+                    {searchResults.results.map((file: KnowledgeFile) => (
+                      <div key={file.id} className="kb-file-item">
+                        <span className="kb-file-icon">{getFileIcon(file.fileExt)}</span>
+                        <span className="kb-file-name">{file.fileName}</span>
+                        <span className="kb-file-path">{file.filePath}</span>
+                        <span className="kb-file-size">{formatSize(file.fileSize)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="kb-no-results">{t("kb.noFiles")}</p>
+                )
+              ) : searchResults.source === "hermes_workspace" ? (
+                <pre className="kb-raw-results">{searchResults.results}</pre>
+              ) : null}
+            </div>
+          )}
+
+          <div className="kb-files-section">
+            <h3>{t("kb.files")}</h3>
+            {kbFiles.length === 0 ? (
+              <p className="kb-no-files">{t("kb.noFiles")}</p>
+            ) : (
+              <div className="kb-file-list">
+                <div className="kb-file-header">
+                  <span>{t("kb.fileName")}</span>
+                  <span>{t("kb.filePath")}</span>
+                  <span>{t("kb.fileSize")}</span>
+                  <span>{t("kb.fileStatus")}</span>
+                </div>
+                {kbFiles.map((file) => (
+                  <div key={file.id} className="kb-file-item">
+                    <span className="kb-file-icon">{getFileIcon(file.fileExt)}</span>
+                    <span className="kb-file-name">{file.fileName}</span>
+                    <span className="kb-file-path">{file.filePath}</span>
+                    <span className="kb-file-size">{formatSize(file.fileSize)}</span>
+                    <span className={`kb-file-status kb-file-${file.indexStatus}`}>{file.indexStatus}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(showCreateModal || showEditModal) && (
+        <div className="kb-modal-overlay" onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}>
+          <div className="kb-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{showCreateModal ? t("kb.create") : t("kb.edit")}</h2>
+            <div className="kb-form">
+              <div className="kb-form-group">
+                <label>{t("kb.icon")}</label>
+                <input
+                  type="text"
+                  value={form.icon}
+                  onChange={(e) => setForm({ ...form, icon: e.target.value })}
+                  className="kb-icon-input"
+                />
+              </div>
+              <div className="kb-form-group">
+                <label>{t("kb.name")}</label>
+                <input
+                  type="text"
+                  placeholder={t("kb.namePlaceholder")}
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </div>
+              <div className="kb-form-group">
+                <label>{t("kb.description")}</label>
+                <textarea
+                  placeholder={t("kb.descriptionPlaceholder")}
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  rows={2}
+                />
+              </div>
+              <div className="kb-form-group">
+                <label>{t("kb.directories")}</label>
+                <p className="kb-hint">{t("kb.directoriesHint")}</p>
+                <div className="kb-dir-list">
+                  {form.directories.map((dir, i) => (
+                    <div key={i} className="kb-dir-item">
+                      <span className="kb-dir-path">📁 {dir}</span>
+                      <button className="kb-dir-remove" onClick={() => {
+                        setForm({ ...form, directories: form.directories.filter((_, j) => j !== i) });
+                      }}>✕</button>
+                    </div>
+                  ))}
+                  <div className="kb-dir-add">
+                    <input
+                      type="text"
+                      placeholder="C:\Users\docs 或 ~/notes"
+                      value={newDir}
+                      onChange={(e) => setNewDir(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && newDir.trim()) {
+                          setForm({ ...form, directories: [...form.directories, newDir.trim()] });
+                          setNewDir("");
+                        }
+                      }}
+                    />
+                    <button onClick={async () => {
+                      try {
+                        const { open } = await import("@tauri-apps/plugin-dialog");
+                        const selected = await open({ directory: true, title: t("kb.selectDirectory"), multiple: false });
+                        if (selected) {
+                          const path = typeof selected === "string" ? selected : (selected as any).path || String(selected);
+                          setForm({ ...form, directories: [...form.directories, path] });
+                        }
+                      } catch {
+                        if (newDir.trim()) {
+                          setForm({ ...form, directories: [...form.directories, newDir.trim()] });
+                          setNewDir("");
+                        }
+                      }
+                    }}>📂</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="kb-modal-actions">
+              <button className="kb-btn kb-btn-cancel" onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}>
+                {t("kb.cancel")}
+              </button>
+              <button className="kb-btn kb-btn-save" onClick={() => { if (showCreateModal) handleCreate(); else handleUpdate(); }} disabled={!form.name.trim()}>
+                {t("kb.save")}
+              </button>
             </div>
           </div>
         </div>

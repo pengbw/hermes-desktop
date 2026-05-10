@@ -67,6 +67,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         "ALTER TABLE conversations ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
         "ALTER TABLE conversations ADD COLUMN last_active_at INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE conversations ADD COLUMN source TEXT NOT NULL DEFAULT 'main'",
+        "ALTER TABLE conversations ADD COLUMN kb_ids TEXT",
     ] {
         let _ = sqlx::query(alter).execute(pool).await; // Ignore existing column errors
     }
@@ -357,6 +358,97 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     let _ = sqlx::query("ALTER TABLE projects ADD COLUMN cover_image TEXT NOT NULL DEFAULT ''").execute(pool).await;
     let _ = sqlx::query("ALTER TABLE projects ADD COLUMN project_rule TEXT NOT NULL DEFAULT ''").execute(pool).await;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS knowledge_bases (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            icon TEXT NOT NULL DEFAULT '📚',
+            directories TEXT NOT NULL DEFAULT '[]',
+            embedding_model TEXT NOT NULL DEFAULT 'local',
+            retrieval_mode TEXT NOT NULL DEFAULT 'off',
+            max_context_chunks INTEGER NOT NULL DEFAULT 8,
+            auto_retrieve INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'ready',
+            file_count INTEGER NOT NULL DEFAULT 0,
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS knowledge_files (
+            id TEXT PRIMARY KEY,
+            knowledge_base_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_ext TEXT NOT NULL DEFAULT '',
+            file_size INTEGER NOT NULL DEFAULT 0,
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            index_status TEXT NOT NULL DEFAULT 'pending',
+            modified_at INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_knowledge_files_kb ON knowledge_files(knowledge_base_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS knowledge_chunks (
+            id TEXT PRIMARY KEY,
+            knowledge_base_id TEXT NOT NULL,
+            file_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL DEFAULT 0,
+            vector BLOB,
+            token_count INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+            FOREIGN KEY (file_id) REFERENCES knowledge_files(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_kb ON knowledge_chunks(knowledge_base_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_file ON knowledge_chunks(file_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    let _ = sqlx::query("ALTER TABLE knowledge_bases ADD COLUMN retrieval_mode TEXT NOT NULL DEFAULT 'off'").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE knowledge_bases ADD COLUMN auto_retrieve INTEGER NOT NULL DEFAULT 0").execute(pool).await;
+
     let builtin_roles = [
         ("pm", "项目经理", "📋", "项目管理、进度把控、资料流转中枢", "负责项目整体进度管理，审阅各角色产出物，把控流转节奏，协调角色间协作", "你是项目经理，负责项目整体管理和进度把控。你的核心职责是：\n1. 审阅各角色的产出物，确保质量\n2. 把控任务流转节奏，决定是否推进到下一阶段\n3. 协调角色间的协作和沟通\n4. 对重要决策节点进行把关\n\n工作方式：收到角色提交的产出物后，进行审阅并决定是否流转到下一角色。"),
         ("researcher", "需求调研员", "🔍", "搜集资料、调研报告", "负责项目前期的资料搜集和调研工作，产出调研报告", "你是需求调研员，负责项目前期的资料搜集和调研工作。你的核心职责是：\n1. 根据项目需求，搜集相关资料和行业信息\n2. 分析竞品和市场需求\n3. 产出结构化的调研报告\n\n产出格式：调研报告，包含背景分析、竞品对比、市场趋势、关键发现和建议。"),
@@ -478,6 +570,7 @@ pub struct Conversation {
     pub hermes_session_id: Option<String>,
     pub status: String,
     pub source: Option<String>,
+    pub kb_ids: Option<String>,
     pub last_active_at: i64,
     pub created_at: i64,
     pub updated_at: i64,
@@ -778,4 +871,66 @@ pub struct CreateProjectMessageRequest {
     pub role_id: String,
     pub content: String,
     pub message_type: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeBase {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub directories: String,
+    pub embedding_model: String,
+    pub retrieval_mode: String,
+    pub max_context_chunks: i64,
+    pub auto_retrieve: bool,
+    pub status: String,
+    pub file_count: i64,
+    pub chunk_count: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateKnowledgeBaseRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub directories: Option<String>,
+    pub embedding_model: Option<String>,
+    pub retrieval_mode: Option<String>,
+    pub max_context_chunks: Option<i64>,
+    pub auto_retrieve: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateKnowledgeBaseRequest {
+    pub id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub directories: Option<String>,
+    pub embedding_model: Option<String>,
+    pub retrieval_mode: Option<String>,
+    pub max_context_chunks: Option<i64>,
+    pub auto_retrieve: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeFile {
+    pub id: String,
+    pub knowledge_base_id: String,
+    pub file_path: String,
+    pub file_name: String,
+    pub file_ext: String,
+    pub file_size: i64,
+    pub chunk_count: i64,
+    pub index_status: String,
+    pub modified_at: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
 }

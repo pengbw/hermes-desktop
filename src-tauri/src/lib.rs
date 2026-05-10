@@ -2279,14 +2279,118 @@ async fn chat_with_hermes_api(
     provider: Option<String>,
     image: Option<String>,
     event_id: Option<String>,
+    force_kb_retrieve: Option<bool>,
+    conversation_id: Option<String>,
 ) -> Result<(), String> {
     let event_id = event_id.unwrap_or_else(|| format!("chat-stream-{}", uuid::Uuid::new_v4()));
-    log::info!("[chat_api] start event_id={}, message={}, session_id={:?}, model={:?}, provider={:?}, image={:?}", event_id, message, session_id, model, provider, image);
+    log::info!("[chat_api] start event_id={}, message={}, session_id={:?}, model={:?}, provider={:?}, image={:?}, force_kb_retrieve={:?}, conversation_id={:?}", event_id, message, session_id, model, provider, image, force_kb_retrieve, conversation_id);
 
     let api_base = "http://127.0.0.1:8642/v1";
     let api_key = "hermes-desktop-local-dev-key";
 
     let mut messages: Vec<serde_json::Value> = Vec::new();
+
+    let mut kb_context_parts: Vec<String> = Vec::new();
+    {
+        let state = app.state::<crate::AppState>();
+        let pool = state.db_pool.clone();
+
+        let kb_config: serde_json::Value = {
+            let config_val: Option<String> = sqlx::query_scalar("SELECT value FROM app_config WHERE key = 'knowledge_settings'")
+                .fetch_optional(&pool)
+                .await
+                .unwrap_or(None);
+            config_val.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or(serde_json::json!({}))
+        };
+        let global_max_chunks = kb_config["defaultMaxContextChunks"].as_i64().unwrap_or(8);
+
+        let auto_retrieve = kb_config["globalAutoRetrieve"].as_bool().unwrap_or(false);
+        let should_retrieve = force_kb_retrieve.unwrap_or(false) || auto_retrieve;
+        log::info!("[chat_api] auto_retrieve={}, force_kb_retrieve={}, should_retrieve={}, conversation_id={:?}", auto_retrieve, force_kb_retrieve.unwrap_or(false), should_retrieve, conversation_id);
+
+        if should_retrieve {
+            let target_kbs: Vec<(String, String)> = if auto_retrieve {
+                sqlx::query_as(
+                    "SELECT id, name FROM knowledge_bases WHERE status = 'ready'"
+                )
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default()
+            } else {
+                let conv_kb_ids: Option<String> = if let Some(ref conv_id) = conversation_id {
+                    sqlx::query_scalar("SELECT kb_ids FROM conversations WHERE id = ?")
+                        .bind(conv_id)
+                        .fetch_optional(&pool)
+                        .await
+                        .unwrap_or(None)
+                        .flatten()
+                } else {
+                    None
+                };
+
+                if let Some(ids_json) = conv_kb_ids {
+                    let ids: Vec<String> = serde_json::from_str(&ids_json).unwrap_or_default();
+                    if ids.is_empty() {
+                        vec![]
+                    } else {
+                        let mut result = Vec::new();
+                        for kb_id in ids {
+                            let kb: Option<(String, String)> = sqlx::query_as(
+                                "SELECT id, name FROM knowledge_bases WHERE id = ? AND status = 'ready'"
+                            )
+                            .bind(&kb_id)
+                            .fetch_optional(&pool)
+                            .await
+                            .unwrap_or(None);
+                            if let Some(row) = kb {
+                                result.push(row);
+                            }
+                        }
+                        result
+                    }
+                } else {
+                    vec![]
+                }
+            };
+
+            log::info!("[chat_api] target_kbs count={}, kbs={:?}", target_kbs.len(), target_kbs.iter().map(|(id, name)| name.clone()).collect::<Vec<_>>());
+
+            let mut retrieve_futures = Vec::new();
+            for (kb_id, kb_name) in &target_kbs {
+                let app_clone = app.clone();
+                let kb_id = kb_id.clone();
+                let kb_name = kb_name.clone();
+                let msg = message.clone();
+                let max = global_max_chunks;
+                retrieve_futures.push(async move {
+                    let result = crate::commands::retrieve_knowledge_internal(&app_clone, &kb_id, &msg, Some(max)).await;
+                    (kb_name, result)
+                });
+            }
+            let results = futures_util::future::join_all(retrieve_futures).await;
+            for (kb_name, retrieve_result) in results {
+                match &retrieve_result {
+                    Ok(chunks) => log::info!("[chat_api] kb '{}' returned {} chunks", kb_name, chunks.len()),
+                    Err(e) => log::warn!("[chat_api] kb '{}' retrieve failed: {}", kb_name, e),
+                }
+                if let Ok(chunks) = retrieve_result {
+                    if !chunks.is_empty() {
+                        let chunks_text = chunks.join("\n\n---\n\n");
+                        kb_context_parts.push(format!("[知识库: {}]\n{}", kb_name, chunks_text));
+                    }
+                }
+            }
+        }
+    }
+
+    if !kb_context_parts.is_empty() {
+        let kb_context = kb_context_parts.join("\n\n===\n\n");
+        messages.push(serde_json::json!({
+            "role": "system",
+            "content": format!("以下是从知识库中检索到的相关内容，请参考这些信息回答用户的问题。如果知识库内容与用户问题无关，请忽略。\n\n{}", kb_context)
+        }));
+        log::info!("[chat_api] injected {} knowledge base contexts", kb_context_parts.len());
+    }
 
     if let Some(img) = &image {
         messages.push(serde_json::json!({
@@ -2728,6 +2832,7 @@ pub fn run() {
             commands::list_conversations,
             commands::delete_conversation,
             commands::update_conversation_session_id,
+            commands::update_conversation_kb_ids,
             commands::activate_conversation,
             commands::rename_conversation,
             commands::get_avatar_gestures,
@@ -2773,6 +2878,21 @@ pub fn run() {
             commands::read_text_file,
             commands::sync_workflow_to_file,
             commands::load_workflow_from_file,
+            commands::list_knowledge_bases,
+            commands::create_knowledge_base,
+            commands::update_knowledge_base,
+            commands::delete_knowledge_base,
+            commands::list_knowledge_files,
+            commands::index_knowledge_base,
+            commands::search_knowledge_base,
+            commands::retrieve_knowledge,
+            commands::get_knowledge_config,
+            commands::set_knowledge_config,
+            commands::check_local_embedding_model,
+            commands::install_local_embedding_model,
+            commands::test_cloud_embedding,
+            commands::test_ollama_embedding,
+            commands::verify_provider_api_key,
         ])
         .run(tauri::generate_context!())
         .expect("Hermes Desktop failed to start");
