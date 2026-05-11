@@ -12,6 +12,15 @@ import "./MainWindow.css";
 
 type Tab = "home" | "chat" | "studio" | "knowledge" | "settings" | "skills";
 
+interface KnowledgeSource {
+  content: string;
+  file_name?: string;
+  file_path?: string;
+  score?: number;
+  kb_name?: string;
+  source_type: string;
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -19,6 +28,7 @@ interface Message {
   thinking?: string;
   files?: string;
   timestamp: number;
+  knowledgeSources?: KnowledgeSource[];
 }
 
 interface Conversation {
@@ -323,6 +333,11 @@ export default function MainWindow() {
 
         const eventId = `chat_stream_${convId}`;
         let fullContent = "";
+        let pendingSources: KnowledgeSource[] = [];
+
+        const unlistenSources = await listen<KnowledgeSource[]>(`${eventId}_knowledge_sources`, (event) => {
+          pendingSources = event.payload;
+        });
 
         const unlisten = await listen<{
           chunk: string;
@@ -339,6 +354,7 @@ export default function MainWindow() {
               role: "assistant",
               content: fullContent,
               timestamp: Date.now(),
+              knowledgeSources: pendingSources.length > 0 ? [...pendingSources] : undefined,
             };
             updateChatMessages(convId, (prev) => [...prev, assistantMsg]);
             updateChatState(convId, { isStreaming: false, isThinking: false, toolProgress: "" });
@@ -360,6 +376,7 @@ export default function MainWindow() {
             })();
 
             unlisten();
+            unlistenSources();
           } else if (event_type === "tool_progress") {
             updateChatState(convId, { toolProgress: tool_label || chunk, isThinking: true });
           } else if (event_type === "error") {
@@ -502,6 +519,11 @@ export default function MainWindow() {
 
     const eventId = `chat_stream_${conversationId}`;
     let fullContent = "";
+    let pendingSources: KnowledgeSource[] = [];
+
+    const unlistenSources = await listen<KnowledgeSource[]>(`${eventId}_knowledge_sources`, (event) => {
+      pendingSources = event.payload;
+    });
 
     const unlisten = await listen<{
       chunk: string;
@@ -518,6 +540,7 @@ export default function MainWindow() {
           role: "assistant",
           content: fullContent,
           timestamp: Date.now(),
+          knowledgeSources: pendingSources.length > 0 ? [...pendingSources] : undefined,
         };
         updateChatMessages(conversationId, (prev) => [...prev, assistantMsg]);
         updateChatState(conversationId, { isStreaming: false, isThinking: false, toolProgress: "" });
@@ -539,6 +562,7 @@ export default function MainWindow() {
         })();
 
         unlisten();
+        unlistenSources();
       } else if (event_type === "tool_progress") {
         updateChatState(conversationId, { toolProgress: tool_label || chunk, isThinking: true });
       } else if (event_type === "error") {
@@ -1407,6 +1431,27 @@ function ChatPanel({
                     </div>
                   )}
                   {msg.content && <div className="message-text">{msg.content}</div>}
+                  {msg.knowledgeSources && msg.knowledgeSources.length > 0 && (
+                    <div className="knowledge-sources">
+                      <div className="knowledge-sources-header">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                        </svg>
+                        <span>{t("chat.knowledgeSources")}</span>
+                      </div>
+                      {msg.knowledgeSources.map((src, idx) => (
+                        <div key={idx} className="knowledge-source-item">
+                          <div className="knowledge-source-meta">
+                            {src.kb_name && <span className="knowledge-source-kb">{src.kb_name}</span>}
+                            {src.file_name && <span className="knowledge-source-file">{src.file_name}</span>}
+                            {src.score != null && <span className="knowledge-source-score">{(src.score * 100).toFixed(0)}%</span>}
+                          </div>
+                          <div className="knowledge-source-preview">{src.content.slice(0, 120)}{src.content.length > 120 ? "..." : ""}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -3818,16 +3863,25 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
 function KnowledgePanel({ t }: { t: (key: string) => string }) {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [selectedKb, setSelectedKb] = useState<KnowledgeBase | null>(null);
+  const [kbSearchQuery, setKbSearchQuery] = useState("");
+  const [kbPage, setKbPage] = useState(1);
+  const kbPageSize = 15;
   const selectedKbRef = useRef<KnowledgeBase | null>(null);
   const [editingKbId, setEditingKbId] = useState<string | null>(null);
   const [kbFiles, setKbFiles] = useState<KnowledgeFile[]>([]);
+  const [kbFilePage, setKbFilePage] = useState(1);
+  const kbFilePageSize = 12;
   const [kbGlobalConfig, setKbGlobalConfig] = useState<Record<string, any>>({});
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any>(null);
   const [indexingKbId, setIndexingKbId] = useState<string | null>(null);
   const [indexProgress, setIndexProgress] = useState<{ status: string; current: number; total: number; file: string } | null>(null);
+  const [previewFile, setPreviewFile] = useState<{ id: string; name: string; ext: string; content: string; type: string; truncated: boolean } | null>(null);
+  const [previewChunks, setPreviewChunks] = useState<{ id: string; chunk_index: number; content: string }[]>([]);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -3839,6 +3893,24 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
   const updateSelectedKb = (kb: KnowledgeBase | null) => {
     selectedKbRef.current = kb;
     setSelectedKb(kb);
+  };
+
+  const handlePreviewFile = async (fileId: string, _fileName: string) => {
+    try {
+      const result = await invoke<{ file_name: string; file_ext: string; type: string; content: string | null; truncated: boolean }>("preview_knowledge_file", { fileId });
+      setPreviewFile({
+        id: fileId,
+        name: result.file_name,
+        ext: result.file_ext,
+        content: result.content || "",
+        type: result.type,
+        truncated: result.truncated,
+      });
+      const chunks = await invoke<{ id: string; chunk_index: number; content: string }[]>("get_file_chunks", { fileId });
+      setPreviewChunks(chunks);
+    } catch (e) {
+      console.error("Failed to preview file:", e);
+    }
   };
 
   const loadKnowledgeBases = async () => {
@@ -3885,6 +3957,27 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
       }
     });
     return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const pendingKbs = new Set<string>();
+    const unlisten = listen<any>("kb-file-changed", (event) => {
+      const { kb_id } = event.payload;
+      pendingKbs.add(kb_id);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        for (const id of pendingKbs) {
+          try {
+            await invoke("index_knowledge_base", { id });
+          } catch (e) {
+            console.warn("[kb] auto-reindex failed:", e);
+          }
+        }
+        pendingKbs.clear();
+      }, 3000);
+    });
+    return () => { unlisten.then(fn => fn()); if (debounceTimer) clearTimeout(debounceTimer); };
   }, []);
 
   useEffect(() => {
@@ -3943,13 +4036,21 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(t("kb.deleteConfirm"))) return;
+    setDeleteTargetId(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTargetId) return;
     try {
-      await invoke("delete_knowledge_base", { id });
-      if (selectedKb?.id === id) updateSelectedKb(null);
+      await invoke("delete_knowledge_base", { id: deleteTargetId });
+      if (selectedKb?.id === deleteTargetId) updateSelectedKb(null);
       loadKnowledgeBases();
     } catch (e) {
       console.error("Failed to delete knowledge base:", e);
+    } finally {
+      setShowDeleteConfirm(false);
+      setDeleteTargetId(null);
     }
   };
 
@@ -4022,73 +4123,99 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
       {!selectedKb ? (
         <div className="kb-list-view">
           <div className="kb-list-header">
-            <div>
-              <h2>{t("kb.title")}</h2>
-              <p className="kb-subtitle">{t("kb.subtitle")}</p>
+            <div className="kb-list-header-actions">
+              <div className="kb-search-box">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" placeholder={t("kb.search")} value={kbSearchQuery} onChange={(e) => { setKbSearchQuery(e.target.value); setKbPage(1); }} />
+              </div>
+              <button className="card-add-btn" onClick={() => { resetForm(); setShowCreateModal(true); }}>
+                + {t("kb.create")}
+              </button>
             </div>
-            <button className="kb-create-btn" onClick={() => { resetForm(); setShowCreateModal(true); }}>
-              + {t("kb.create")}
-            </button>
           </div>
           {knowledgeBases.length === 0 ? (
             <div className="kb-empty">
               <div className="kb-empty-icon">📚</div>
               <p>{t("kb.empty")}</p>
-              <button className="kb-create-btn" onClick={() => { resetForm(); setShowCreateModal(true); }}>
+              <button className="card-add-btn" onClick={() => { resetForm(); setShowCreateModal(true); }}>
                 + {t("kb.create")}
               </button>
             </div>
           ) : (
-            <div className="kb-grid">
-              {knowledgeBases.map((kb, index) => (
-                <div key={kb.id} className="kb-grid-card" style={{ animationDelay: `${index * 0.05}s` }} onClick={() => updateSelectedKb(kb)}>
-                  {indexingKbId === kb.id && indexProgress && (
-                    <div className="kb-grid-card-progress">
-                      <div className="kb-grid-card-progress-fill" style={{ width: indexProgress.total > 0 ? `${(indexProgress.current / indexProgress.total) * 100}%` : "0%" }} />
-                    </div>
-                  )}
-                  <div className="kb-grid-card-header">
-                    <span className={`kb-grid-corner-tag kb-grid-status-${kb.status}`}>
-                      {indexingKbId === kb.id ? "⏳ 索引中" : statusLabel(kb.status)}
-                    </span>
-                    <div className="kb-grid-card-icon">{kb.icon}</div>
-                    <div className="kb-grid-card-title">{kb.name}</div>
-                  </div>
-                  <div className="kb-grid-card-body">
-                    <div className="kb-grid-meta-row">
-                      <span className="kb-grid-meta-label">{t("kb.fileCount")}</span>
-                      <span className="kb-grid-meta-value">{kb.fileCount}</span>
-                    </div>
-                    <div className="kb-grid-meta-row">
-                      <span className="kb-grid-meta-label">{t("kb.chunkCount")}</span>
-                      <span className="kb-grid-meta-value">{kb.chunkCount}</span>
-                    </div>
-                    <div className="kb-grid-meta-row">
-                      <span className="kb-grid-meta-label">{t("kb.embeddingModel")}</span>
-                      <span className="kb-grid-meta-value">{kbGlobalConfig.defaultEmbeddingModel === "cloud" ? "☁️ Cloud" : kbGlobalConfig.defaultEmbeddingModel === "ollama" ? "🦙 Ollama" : "💻 Local"}</span>
-                    </div>
-                  </div>
-                  <div className="kb-grid-card-footer">
-                    <button className="kb-grid-btn" onClick={(e) => { e.stopPropagation(); handleIndex(kb.id); }} disabled={!!indexingKbId} title={t("kb.index")}>
-                      🔄 {t("kb.reindex")}
-                    </button>
-                    <button className="kb-grid-btn" onClick={(e) => { e.stopPropagation(); openEditModal(kb); }} title={t("kb.edit")}>
-                      ✏️ {t("kb.edit")}
-                    </button>
-                    <button className="kb-grid-btn kb-grid-btn-danger" onClick={(e) => { e.stopPropagation(); handleDelete(kb.id); }} title={t("kb.delete")}>
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <>
+              {(() => {
+                const filtered = knowledgeBases.filter(kb => !kbSearchQuery || kb.name.toLowerCase().includes(kbSearchQuery.toLowerCase()));
+                const totalPages = Math.max(1, Math.ceil(filtered.length / kbPageSize));
+                const safePage = Math.min(kbPage, totalPages);
+                const paged = filtered.slice((safePage - 1) * kbPageSize, safePage * kbPageSize);
+                return (
+                  <>
+                    {filtered.length === 0 ? (
+                      <div className="kb-empty">
+                        <p>{t("kb.noSearchResult")}</p>
+                      </div>
+                    ) : (
+                      <div className="kb-grid">
+                        {paged.map((kb, index) => (
+                          <div key={kb.id} className="kb-grid-card" style={{ animationDelay: `${index * 0.05}s` }} onClick={() => updateSelectedKb(kb)}>
+                            <div className="kb-grid-card-header">
+                              <span className={`kb-grid-corner-tag kb-grid-status-${kb.status}`}>
+                                {indexingKbId === kb.id ? "⏳" : statusLabel(kb.status)}
+                              </span>
+                              <div className="kb-grid-card-icon">{kb.icon}</div>
+                              <div className="kb-grid-card-title">{kb.name}</div>
+                            </div>
+                            <div className="kb-grid-card-body">
+                              <div className="kb-grid-meta-row">
+                                <span className="kb-grid-meta-label">{t("kb.fileCount")}</span>
+                                <span className="kb-grid-meta-value">{kb.fileCount}</span>
+                              </div>
+                              <div className="kb-grid-meta-row">
+                                <span className="kb-grid-meta-label">{t("kb.chunkCount")}</span>
+                                <span className="kb-grid-meta-value">{kb.chunkCount}</span>
+                              </div>
+                            </div>
+                            <div className="kb-grid-card-footer">
+                              <button className="kb-grid-btn" onClick={(e) => { e.stopPropagation(); handleIndex(kb.id); }} disabled={!!indexingKbId} title={t("kb.reindex")}>
+                                🔄 {t("kb.reindex")}
+                              </button>
+                              <button className="kb-grid-btn" onClick={(e) => { e.stopPropagation(); openEditModal(kb); }} title={t("kb.edit")}>
+                                ✏️ {t("kb.edit")}
+                              </button>
+                              <button className="kb-grid-btn kb-grid-btn-danger" onClick={(e) => { e.stopPropagation(); handleDelete(kb.id); }} title={t("kb.delete")}>
+                                🗑️ {t("kb.delete")}
+                              </button>
+                            </div>
+                            {indexingKbId === kb.id && indexProgress && (
+                              <div className="kb-grid-card-progress">
+                                <div className="kb-grid-card-progress-fill" style={{ width: indexProgress.total > 0 ? `${(indexProgress.current / indexProgress.total) * 100}%` : "0%" }} />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {totalPages > 1 && (
+                      <div className="kb-pagination">
+                        <button className="kb-page-btn" disabled={safePage <= 1} onClick={() => setKbPage(safePage - 1)}>‹</button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                          <button key={page} className={`kb-page-btn ${page === safePage ? 'active' : ''}`} onClick={() => setKbPage(page)}>{page}</button>
+                        ))}
+                        <button className="kb-page-btn" disabled={safePage >= totalPages} onClick={() => setKbPage(safePage + 1)}>›</button>
+                        <span className="kb-page-info">{filtered.length} {t("kb.total")}</span>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </>
           )}
         </div>
       ) : (
         <div className="kb-detail-view">
           <div className="kb-detail-header">
-            <button className="kb-back-btn" onClick={() => { updateSelectedKb(null); setSearchResults(null); setSearchQuery(""); }}>
-              ← {t("kb.backToList")}
+            <button className="kb-back-btn" onClick={() => { updateSelectedKb(null); setSearchResults(null); setSearchQuery(""); }} title={t("kb.backToList")}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
             <div className="kb-detail-title">
               <span className="kb-detail-icon">{selectedKb.icon}</span>
@@ -4096,11 +4223,24 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
               <span className={`kb-detail-status kb-detail-status-${selectedKb.status}`}>{statusLabel(selectedKb.status)}</span>
             </div>
             <div className="kb-detail-actions">
-              <button className="kb-detail-action-btn" onClick={() => handleIndex(selectedKb.id)} disabled={!!indexingKbId}>
+              <button className="card-add-btn" onClick={() => handleIndex(selectedKb.id)} disabled={!!indexingKbId}>
                 {indexingKbId === selectedKb.id ? t("kb.indexing") : t("kb.reindex")}
               </button>
-              <button className="kb-detail-action-btn" onClick={() => openEditModal(selectedKb)}>
-                {t("kb.edit")}
+              <button className="card-add-btn" onClick={async () => {
+                try {
+                  const { open } = await import("@tauri-apps/plugin-dialog");
+                  const selected = await open({ multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] });
+                  if (!selected) return;
+                  const filePath = typeof selected === "string" ? selected : selected;
+                  const { readFile } = await import("@tauri-apps/plugin-fs");
+                  const data = await readFile(filePath as string);
+                  const text = new TextDecoder().decode(data);
+                  const json = JSON.parse(text);
+                  await invoke("import_knowledge_base", { id: selectedKb.id, data: json });
+                  loadKnowledgeBases();
+                } catch (e) { console.error("Import failed:", e); }
+              }}>
+                {t("kb.import")}
               </button>
             </div>
           </div>
@@ -4131,12 +4271,13 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
                   {indexProgress.status === "scanning" ? "📂 扫描文件中..." : indexProgress.status === "indexing" ? `📄 ${indexProgress.file}` : indexProgress.status === "embedding" ? `🧮 嵌入向量: ${indexProgress.file}` : "✅ 索引完成"}
                 </span>
                 {indexProgress.total > 0 && (
-                  <span className="kb-index-progress-count">{indexProgress.current} / {indexProgress.total}</span>
+                  <span className="kb-index-progress-count">{Math.round((indexProgress.current / indexProgress.total) * 100)}% ({indexProgress.current}/{indexProgress.total})</span>
                 )}
               </div>
               {indexProgress.total > 0 && (
                 <div className="kb-index-progress-bar">
                   <div className="kb-index-progress-fill" style={{ width: `${(indexProgress.current / indexProgress.total) * 100}%` }} />
+                  <span className="kb-index-progress-percent">{Math.round((indexProgress.current / indexProgress.total) * 100)}%</span>
                 </div>
               )}
             </div>
@@ -4193,28 +4334,92 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
           )}
 
           <div className="kb-files-section">
-            <h3>{t("kb.files")}</h3>
             {kbFiles.length === 0 ? (
               <p className="kb-no-files">{t("kb.noFiles")}</p>
             ) : (
-              <div className="kb-file-list">
-                <div className="kb-file-header">
-                  <span>{t("kb.fileName")}</span>
-                  <span>{t("kb.filePath")}</span>
-                  <span>{t("kb.fileSize")}</span>
-                  <span>{t("kb.fileStatus")}</span>
-                </div>
-                {kbFiles.map((file) => (
-                  <div key={file.id} className="kb-file-item">
-                    <span className="kb-file-icon">{getFileIcon(file.fileExt)}</span>
-                    <span className="kb-file-name">{file.fileName}</span>
-                    <span className="kb-file-path">{file.filePath}</span>
-                    <span className="kb-file-size">{formatSize(file.fileSize)}</span>
-                    <span className={`kb-file-status kb-file-${file.indexStatus}`}>{file.indexStatus}</span>
-                  </div>
-                ))}
-              </div>
+              (() => {
+                const totalPages = Math.max(1, Math.ceil(kbFiles.length / kbFilePageSize));
+                const safePage = Math.min(kbFilePage, totalPages);
+                const pagedFiles = kbFiles.slice((safePage - 1) * kbFilePageSize, safePage * kbFilePageSize);
+                return (
+                  <>
+                    <div className="kb-file-list">
+                      <div className="kb-file-header">
+                        <span className="kb-file-col-icon"></span>
+                        <span className="kb-file-col-name">{t("kb.fileName")}</span>
+                        <span className="kb-file-col-path">{t("kb.filePath")}</span>
+                        <span className="kb-file-col-size">{t("kb.fileSize")}</span>
+                        <span className="kb-file-col-status">{t("kb.fileStatus")}</span>
+                      </div>
+                      {pagedFiles.map((file) => (
+                        <div key={file.id} className="kb-file-item kb-file-clickable" onClick={() => handlePreviewFile(file.id, file.fileName)}>
+                          <span className="kb-file-col-icon">{getFileIcon(file.fileExt)}</span>
+                          <span className="kb-file-col-name">{file.fileName}</span>
+                          <span className="kb-file-col-path">{file.filePath}</span>
+                          <span className="kb-file-col-size">{formatSize(file.fileSize)}</span>
+                          <span className={`kb-file-col-status kb-file-${file.indexStatus}`}>{file.indexStatus}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {totalPages > 1 && (
+                      <div className="kb-pagination">
+                        <button className="kb-page-btn" disabled={safePage <= 1} onClick={() => setKbFilePage(safePage - 1)}>‹</button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                          <button key={page} className={`kb-page-btn ${page === safePage ? 'active' : ''}`} onClick={() => setKbFilePage(page)}>{page}</button>
+                        ))}
+                        <button className="kb-page-btn" disabled={safePage >= totalPages} onClick={() => setKbFilePage(safePage + 1)}>›</button>
+                        <span className="kb-page-info">{kbFiles.length} {t("kb.total")}</span>
+                      </div>
+                    )}
+                  </>
+                );
+              })()
             )}
+          </div>
+
+          {previewFile && (
+            <div className="kb-modal-overlay" onClick={() => { setPreviewFile(null); setPreviewChunks([]); }}>
+              <div className="kb-preview-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="kb-preview-modal-header">
+                  <h3>{getFileIcon(previewFile.ext)} {previewFile.name}</h3>
+                  <button className="kb-preview-modal-close" onClick={() => { setPreviewFile(null); setPreviewChunks([]); }}>✕</button>
+                </div>
+                <div className="kb-preview-modal-body">
+                  {previewFile.type === "text" ? (
+                    <div className="kb-preview-modal-content">
+                      <pre>{previewFile.content}</pre>
+                      {previewFile.truncated && <div className="kb-preview-modal-truncated">{t("kb.fileTruncated")}</div>}
+                    </div>
+                  ) : (
+                    <div className="kb-preview-modal-binary">{t("kb.binaryFile")}</div>
+                  )}
+                  {previewChunks.length > 0 && (
+                    <div className="kb-preview-modal-chunks">
+                      <h4>{t("kb.chunks")} ({previewChunks.length})</h4>
+                      {previewChunks.map((chunk) => (
+                        <div key={chunk.id} className="kb-chunk-item">
+                          <span className="kb-chunk-index">#{chunk.chunk_index}</span>
+                          <pre className="kb-chunk-content">{chunk.content}</pre>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="kb-modal-overlay" onClick={() => { setShowDeleteConfirm(false); setDeleteTargetId(null); }}>
+          <div className="kb-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="kb-confirm-icon">⚠️</div>
+            <div className="kb-confirm-msg">{t("kb.deleteConfirm")}</div>
+            <div className="kb-confirm-actions">
+              <button className="kb-btn kb-btn-cancel" onClick={() => { setShowDeleteConfirm(false); setDeleteTargetId(null); }}>{t("kb.cancel")}</button>
+              <button className="kb-btn kb-btn-danger" onClick={confirmDelete}>{t("kb.delete")}</button>
+            </div>
           </div>
         </div>
       )}

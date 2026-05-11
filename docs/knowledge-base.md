@@ -427,14 +427,7 @@ chat_with_hermes_api 判断是否需要知识库检索
 
 ## 八、待实现功能
 
-| 优先级 | 功能 | 说明 |
-|--------|------|------|
-| P0 | 本地嵌入模型推理 | 集成 ONNX/safetensors 推理，实现 all-MiniLM-L6-v2 本地向量化 |
-| P1 | 检索结果可视化 | 在对话中显示注入的知识来源，标注引用的文件和片段 |
-| P1 | 文件变更监听 | 监控目录文件变化，自动增量索引 |
-| P1 | 索引进度显示 | 索引过程中显示进度条和当前处理文件 |
-| P2 | 文件预览 | 支持在知识库面板中预览文件内容 |
-| P2 | 知识库导入/导出 | 支持知识库配置和索引数据的导入导出 |
+当前无待实现功能，所有规划功能已完成。
 
 ---
 
@@ -454,7 +447,12 @@ chat_with_hermes_api 判断是否需要知识库检索
 | 知识库选中状态持久化 | conversations.kb_ids 存储，切换对话时恢复 | ✅ |
 | 索引性能优化 | SQLite 事务批量写入 + 并发嵌入请求 | ✅ |
 | 本地嵌入模型下载 | 下载 all-MiniLM-L6-v2 模型文件 | ✅ |
-| 本地嵌入模型推理 | ONNX/safetensors 推理 | ❌ 未实现 |
+| 本地嵌入模型推理 | Candle + BERT 推理，mean pooling + L2 归一化 | ✅ |
+| 检索结果可视化 | 对话中显示知识来源（文件名、相似度、内容预览） | ✅ |
+| 文件变更监听 | notify crate 监控目录变化，自动触发增量索引 | ✅ |
+| 索引进度显示 | 进度条 + 百分比 + 当前处理文件名 | ✅ |
+| 文件预览 | 知识库面板中预览文件内容和分块 | ✅ |
+| 知识库导入/导出 | 导出 JSON 配置+数据，导入创建新知识库 | ✅ |
 
 ---
 
@@ -463,10 +461,12 @@ chat_with_hermes_api 判断是否需要知识库检索
 | 文件 | 说明 |
 |------|------|
 | `src-tauri/src/db.rs` | 数据模型定义（KnowledgeBase, KnowledgeFile, KnowledgeChunk, 请求结构体） |
-| `src-tauri/src/commands.rs` | Tauri 命令实现（CRUD, 索引, 检索, 设置, 多策略检索引擎） |
+| `src-tauri/src/commands.rs` | Tauri 命令实现（CRUD, 索引, 检索, 设置, 多策略检索引擎, 导入/导出, 文件预览） |
+| `src-tauri/src/local_embedding.rs` | 本地嵌入模型推理（Candle + BERT, mean pooling, L2 归一化） |
+| `src-tauri/src/file_watcher.rs` | 文件变更监听（notify crate, 自动增量索引） |
 | `src-tauri/src/lib.rs` | 命令注册（invoke_handler）+ chat_with_hermes_api 知识库检索集成 |
-| `src/windows/MainWindow.tsx` | 前端组件（KnowledgePanel, KnowledgeSettingsSection, HomePanel, ChatPanel 知识库选择器） |
-| `src/windows/MainWindow.css` | 知识库相关样式（选择器下拉框、徽章、按钮等） |
+| `src/windows/MainWindow.tsx` | 前端组件（KnowledgePanel, KnowledgeSettingsSection, HomePanel, ChatPanel 知识库选择器, 文件预览） |
+| `src/windows/MainWindow.css` | 知识库相关样式（选择器下拉框、徽章、按钮、预览面板等） |
 | `src/i18n/zh-CN.json` | 中文翻译 |
 | `src/i18n/en.json` | 英文翻译 |
 | `src/i18n/zh-XG.json` | 繁体中文翻译 |

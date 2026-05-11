@@ -1,5 +1,7 @@
 mod commands;
 mod db;
+mod file_watcher;
+mod local_embedding;
 
 use serde::Serialize;
 use sqlx::SqlitePool;
@@ -398,6 +400,8 @@ except Exception as e:
 
 pub struct AppState {
     pub db_pool: SqlitePool,
+    pub local_embedding: local_embedding::LocalEmbeddingState,
+    pub file_watcher: file_watcher::FileWatcherState,
 }
 
 struct AgentProcess(Mutex<Option<std::process::Child>>);
@@ -1475,34 +1479,13 @@ fn validate_python_version(path: &str) -> Option<String> {
 #[cfg(target_os = "windows")]
 fn find_windows_python() -> Option<String> {
     let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
-    let program_files = std::env::var("ProgramFiles").unwrap_or_default();
-    let paths = [
-        format!("{}\\Programs\\Python\\Python314\\python.exe", local_appdata),
-        format!("{}\\Programs\\Python\\Python313\\python.exe", local_appdata),
-        format!("{}\\Programs\\Python\\Python312\\python.exe", local_appdata),
-        format!("{}\\Programs\\Python\\Python311\\python.exe", local_appdata),
-        format!("{}\\Python314\\python.exe", program_files),
-        format!("{}\\Python313\\python.exe", program_files),
-        format!("{}\\Python312\\python.exe", program_files),
-        format!("{}\\Python311\\python.exe", program_files),
-        format!("C:\\Python314\\python.exe"),
-        format!("C:\\Python313\\python.exe"),
-        format!("C:\\Python312\\python.exe"),
-        format!("C:\\Python311\\python.exe"),
-    ];
+    let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
 
-    for path in &paths {
-        if std::path::Path::new(path).exists() {
-            if !is_windowsapps_stub(path) {
-                if let Some(validated) = validate_python_version(path) {
-                    return Some(validated);
-                }
-            }
-        }
-    }
+    // 1. py -0p (most reliable, python.org launcher lists all installed versions)
     if let Ok(output) = command("py").args(["-0p"]).output() {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut candidates: Vec<(u32, u32, String)> = Vec::new();
             for line in stdout.lines() {
                 let line = line.trim();
                 if line.is_empty() || line.starts_with('-') {
@@ -1520,30 +1503,56 @@ fn find_windows_python() -> Option<String> {
                     continue;
                 }
                 if std::path::Path::new(path).exists() {
-                    if let Some(validated) = validate_python_version(path) {
-                        return Some(validated);
+                    if let Some((major, minor, validated)) = validate_and_get_version(path) {
+                        candidates.push((major, minor, validated));
                     }
                 }
+            }
+            candidates.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.cmp(&a.0)));
+            if let Some((_, _, path)) = candidates.into_iter().next() {
+                log::info!("[install] Found Python via py -0p: {}", path);
+                return Some(path);
             }
         }
     }
 
+    // 2. Dynamic scan %LOCALAPPDATA%\Programs\Python\Python3XX\
+    let python_dir = format!("{}\\Programs\\Python", local_appdata);
+    if let Some(py) = scan_python_dir(&python_dir) {
+        log::info!("[install] Found Python via Programs\\Python scan: {}", py);
+        return Some(py);
+    }
+
+    // 3. Dynamic scan uv python directory
+    let uv_python_dir = format!("{}\\AppData\\Local\\uv\\python", user_profile);
+    if let Some(py) = scan_python_dir(&uv_python_dir) {
+        log::info!("[install] Found Python via uv directory scan: {}", py);
+        return Some(py);
+    }
+
+    // 4. PATH search (fallback)
     for cmd in &["python3.13", "python3.12", "python3.11", "python3", "python"] {
         if let Ok(output) = command(cmd).arg("--version").output() {
             if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    let line = line.trim();
-                    if line.is_empty() {
-                        continue;
-                    }
-                    if is_windowsapps_stub(line) {
-                        log::warn!("[install] Skipping WindowsApps stub: {}", line);
-                        continue;
-                    }
-                    if std::path::Path::new(line).exists() {
-                        if let Some(validated) = validate_python_version(line) {
-                            return Some(validated);
+                let version = String::from_utf8_lossy(&output.stdout);
+                let stderr_version = String::from_utf8_lossy(&output.stderr);
+                let combined = format!("{}{}", version, stderr_version);
+                if combined.contains("Python 3.") {
+                    let major_minor: Vec<&str> = combined.split("Python ")
+                        .nth(1).unwrap_or("0.0")
+                        .split('.').collect();
+                    if major_minor.len() >= 2 {
+                        if let (Ok(major), Ok(minor)) = (major_minor[0].parse::<u32>(), major_minor[1].parse::<u32>()) {
+                            if major == 3 && minor >= 11 {
+                                let exe_path = windows_which(cmd);
+                                let path = exe_path.as_deref().unwrap_or(cmd);
+                                if !is_windowsapps_stub(path) {
+                                    if let Some(validated) = validate_python_version(path) {
+                                        log::info!("[install] Found Python via PATH: {}", validated);
+                                        return Some(validated);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1552,6 +1561,73 @@ fn find_windows_python() -> Option<String> {
     }
 
     log::warn!("[install] No Python 3.11+ found on system");
+    None
+}
+
+/// Scan a directory for Python installations (e.g. Programs\Python\Python3XX\)
+/// Returns the highest compatible version found
+fn scan_python_dir(base_dir: &str) -> Option<String> {
+    let entries = match std::fs::read_dir(base_dir) {
+        Ok(e) => e,
+        Err(_) => return None,
+    };
+    let mut candidates: Vec<(u32, u32, String)> = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let python_exe = entry.path().join("python.exe");
+        if !python_exe.exists() {
+            continue;
+        }
+        let path_str = python_exe.to_string_lossy().to_string();
+        if is_windowsapps_stub(&path_str) {
+            continue;
+        }
+        if let Some((major, minor, validated)) = validate_and_get_version(&path_str) {
+            candidates.push((major, minor, validated));
+        }
+    }
+    candidates.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.cmp(&a.0)));
+    candidates.into_iter().next().map(|(_, _, path)| path)
+}
+
+/// Validate Python version and return (major, minor, path)
+fn validate_and_get_version(path: &str) -> Option<(u32, u32, String)> {
+    let output = command(path)
+        .args(["-c", "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}')"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let parts: Vec<&str> = ver.split('.').collect();
+    if parts.len() >= 2 {
+        if let (Ok(major), Ok(minor)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+            if major > 3 || (major == 3 && minor >= 11) {
+                return Some((major, minor, path.to_string()));
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn windows_which(cmd: &str) -> Option<String> {
+    if let Ok(output) = command("where").arg(cmd).output() {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let line = line.trim();
+                if !line.is_empty() && std::path::Path::new(line).exists() {
+                    return Some(line.to_string());
+                }
+            }
+        }
+    }
     None
 }
 
@@ -1581,14 +1657,70 @@ fn try_install_python_via_uv(app: &AppHandle) -> Option<String> {
         found
     };
 
-    if let Some(uv) = &uv_exe {
-        let _ = app.emit("install-progress", InstallProgress {
-            line: "Installing Python 3.11 via uv...".to_string(), done: false, success: false,
-        });
-        let _ = command(uv).args(["python", "install", "3.11"]).output();
-        let _ = command(uv).args(["python", "install", "3.12"]).output();
-        if let Some(py) = find_windows_python() {
-            return Some(py);
+    let uv_exe = match uv_exe {
+        Some(e) => e,
+        None => {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Installing uv package manager...".to_string(), done: false, success: false,
+            });
+            let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
+            let uv_target = format!("{}\\.local\\bin\\uv.exe", user_profile);
+            if !std::path::Path::new(&uv_target).exists() {
+                let powershell_install = command("powershell")
+                    .args(["-ExecutionPolicy", "ByPass", "-NoProfile", "-Command",
+                        "irm https://astral.sh/uv/install.ps1 | iex"])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .output();
+                match powershell_install {
+                    Ok(output) => {
+                        if !output.status.success() {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            log::warn!("[install] uv install failed: {}", stderr.trim());
+                            return None;
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("[install] uv install error: {}", e);
+                        return None;
+                    }
+                }
+            }
+            if std::path::Path::new(&uv_target).exists() {
+                uv_target
+            } else {
+                let cargo_target = format!("{}\\.cargo\\bin\\uv.exe", user_profile);
+                if std::path::Path::new(&cargo_target).exists() {
+                    cargo_target
+                } else {
+                    log::warn!("[install] uv installed but executable not found");
+                    return None;
+                }
+            }
+        }
+    };
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: "Installing Python 3.11 via uv...".to_string(), done: false, success: false,
+    });
+    let _ = command(&uv_exe).args(["python", "install", "3.11"]).output();
+    let _ = command(&uv_exe).args(["python", "install", "3.12"]).output();
+
+    if let Some(py) = find_windows_python() {
+        return Some(py);
+    }
+
+    for ver in &["3.12", "3.11"] {
+        if let Ok(output) = command(&uv_exe).args(["python", "find", ver]).output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() && std::path::Path::new(&path).exists() {
+                    if let Some(validated) = validate_python_version(&path) {
+                        log::info!("[install] Found Python via uv python find: {}", validated);
+                        return Some(validated);
+                    }
+                }
+            }
         }
     }
     None
@@ -2368,17 +2500,26 @@ async fn chat_with_hermes_api(
                 });
             }
             let results = futures_util::future::join_all(retrieve_futures).await;
+            let mut all_sources: Vec<crate::commands::KnowledgeChunk> = Vec::new();
             for (kb_name, retrieve_result) in results {
                 match &retrieve_result {
                     Ok(chunks) => log::info!("[chat_api] kb '{}' returned {} chunks", kb_name, chunks.len()),
                     Err(e) => log::warn!("[chat_api] kb '{}' retrieve failed: {}", kb_name, e),
                 }
-                if let Ok(chunks) = retrieve_result {
+                if let Ok(mut chunks) = retrieve_result {
                     if !chunks.is_empty() {
-                        let chunks_text = chunks.join("\n\n---\n\n");
-                        kb_context_parts.push(format!("[知识库: {}]\n{}", kb_name, chunks_text));
+                        let chunks_text: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
+                        kb_context_parts.push(format!("[知识库: {}]\n{}", kb_name, chunks_text.join("\n\n---\n\n")));
+                        for chunk in &mut chunks {
+                            chunk.kb_name = Some(kb_name.clone());
+                        }
+                        all_sources.extend(chunks);
                     }
                 }
+            }
+            if !all_sources.is_empty() {
+                let sources_json = serde_json::to_value(&all_sources).unwrap_or(serde_json::json!([]));
+                let _ = app.emit(&format!("{}_knowledge_sources", event_id), sources_json);
             }
         }
     }
@@ -2738,7 +2879,7 @@ pub fn run() {
                         if let Err(e) = db::init_db(&pool).await {
                             log::error!("Failed to initialize database: {}", e);
                         }
-                        app_handle.manage(AppState { db_pool: pool });
+                        app_handle.manage(AppState { db_pool: pool, local_embedding: local_embedding::LocalEmbeddingState::new(), file_watcher: file_watcher::FileWatcherState::new() });
                     }
                     Err(e) => {
                         log::warn!("Database connection failed: {}, attempting recovery...", e);
@@ -2753,7 +2894,7 @@ pub fn run() {
                                 if let Err(e) = db::init_db(&pool).await {
                                     log::error!("Failed to initialize database: {}", e);
                                 }
-                                app_handle.manage(AppState { db_pool: pool });
+                                app_handle.manage(AppState { db_pool: pool, local_embedding: local_embedding::LocalEmbeddingState::new(), file_watcher: file_watcher::FileWatcherState::new() });
                             }
                             Err(e2) => {
                                 log::error!("Database recovery failed: {}", e2);
@@ -2883,6 +3024,10 @@ pub fn run() {
             commands::update_knowledge_base,
             commands::delete_knowledge_base,
             commands::list_knowledge_files,
+            commands::export_knowledge_base,
+            commands::import_knowledge_base,
+            commands::preview_knowledge_file,
+            commands::get_file_chunks,
             commands::index_knowledge_base,
             commands::search_knowledge_base,
             commands::retrieve_knowledge,

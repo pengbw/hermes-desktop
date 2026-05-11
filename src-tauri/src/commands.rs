@@ -1,8 +1,19 @@
 use crate::command;
 use crate::db;
 use base64::Engine;
+use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter, Manager};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KnowledgeChunk {
+    pub content: String,
+    pub file_name: Option<String>,
+    pub file_path: Option<String>,
+    pub score: Option<f32>,
+    pub kb_name: Option<String>,
+    pub source_type: String,
+}
 
 fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
     let state = app.state::<crate::AppState>();
@@ -1662,6 +1673,178 @@ pub async fn list_knowledge_files(app: AppHandle, knowledge_base_id: String) -> 
 }
 
 #[tauri::command]
+pub async fn export_knowledge_base(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
+    let pool = get_pool(&app)?;
+
+    let kb: db::KnowledgeBase = sqlx::query_as::<_, (String, String, String, String, String, String, String, i64, i64, String, i64, i64, i64, i64)>(
+        "SELECT id, name, description, icon, directories, embedding_model, retrieval_mode, max_context_chunks, auto_retrieve, status, file_count, chunk_count, created_at, updated_at FROM knowledge_bases WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_one(&pool)
+    .await
+    .map(|(id, name, description, icon, directories, embedding_model, retrieval_mode, max_context_chunks, auto_retrieve, status, file_count, chunk_count, created_at, updated_at)| db::KnowledgeBase {
+        id, name, description, icon, directories, embedding_model, retrieval_mode, max_context_chunks, auto_retrieve: auto_retrieve != 0, status, file_count, chunk_count, created_at, updated_at,
+    })
+    .map_err(|e| e.to_string())?;
+
+    let files: Vec<db::KnowledgeFile> = sqlx::query_as::<_, (String, String, String, String, String, i64, i64, String, i64, i64, i64)>(
+        "SELECT id, knowledge_base_id, file_path, file_name, file_ext, file_size, chunk_count, index_status, modified_at, created_at, updated_at FROM knowledge_files WHERE knowledge_base_id = ?"
+    )
+    .bind(&id)
+    .fetch_all(&pool)
+    .await
+    .map(|rows| rows.into_iter().map(|(id, knowledge_base_id, file_path, file_name, file_ext, file_size, chunk_count, index_status, modified_at, created_at, updated_at)| db::KnowledgeFile {
+        id, knowledge_base_id, file_path, file_name, file_ext, file_size, chunk_count, index_status, modified_at, created_at, updated_at,
+    }).collect())
+    .map_err(|e| e.to_string())?;
+
+    let chunks: Vec<(String, String, String, i64, Option<Vec<u8>>, i64)> = sqlx::query_as(
+        "SELECT id, knowledge_base_id, content, chunk_index, vector, token_count FROM knowledge_chunks WHERE knowledge_base_id = ?"
+    )
+    .bind(&id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let chunks_json: Vec<serde_json::Value> = chunks.into_iter().map(|(id, kb_id, content, chunk_index, vector, token_count)| {
+        serde_json::json!({
+            "id": id,
+            "knowledge_base_id": kb_id,
+            "content": content,
+            "chunk_index": chunk_index,
+            "has_vector": vector.is_some(),
+            "token_count": token_count,
+        })
+    }).collect();
+
+    Ok(serde_json::json!({
+        "version": "1.0",
+        "knowledge_base": {
+            "name": kb.name,
+            "description": kb.description,
+            "icon": kb.icon,
+            "directories": kb.directories,
+            "embedding_model": kb.embedding_model,
+            "retrieval_mode": kb.retrieval_mode,
+            "max_context_chunks": kb.max_context_chunks,
+            "auto_retrieve": kb.auto_retrieve,
+        },
+        "files": files.iter().map(|f| serde_json::json!({
+            "file_path": f.file_path,
+            "file_name": f.file_name,
+            "file_ext": f.file_ext,
+            "file_size": f.file_size,
+            "chunk_count": f.chunk_count,
+            "index_status": f.index_status,
+        })).collect::<Vec<_>>(),
+        "chunks": chunks_json,
+        "exported_at": chrono::Utc::now().to_rfc3339(),
+    }))
+}
+
+#[tauri::command]
+pub async fn import_knowledge_base(app: AppHandle, data: String) -> Result<serde_json::Value, String> {
+    let pool = get_pool(&app)?;
+    let import_data: serde_json::Value = serde_json::from_str(&data).map_err(|e| format!("解析导入数据失败: {}", e))?;
+
+    let kb_info = &import_data["knowledge_base"];
+    let name = kb_info["name"].as_str().unwrap_or("导入的知识库");
+    let description = kb_info["description"].as_str().unwrap_or("");
+    let icon = kb_info["icon"].as_str().unwrap_or("📚");
+    let directories = kb_info["directories"].as_str().unwrap_or("[]");
+
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+
+    sqlx::query("INSERT INTO knowledge_bases (id, name, description, icon, directories, embedding_model, retrieval_mode, max_context_chunks, auto_retrieve, status, file_count, chunk_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(&new_id)
+        .bind(name)
+        .bind(description)
+        .bind(icon)
+        .bind(directories)
+        .bind(kb_info["embedding_model"].as_str().unwrap_or("local"))
+        .bind(kb_info["retrieval_mode"].as_str().unwrap_or("auto"))
+        .bind(kb_info["max_context_chunks"].as_i64().unwrap_or(8))
+        .bind(if kb_info["auto_retrieve"].as_bool().unwrap_or(false) { 1i64 } else { 0i64 })
+        .bind("ready")
+        .bind(import_data["files"].as_array().map(|a| a.len() as i64).unwrap_or(0))
+        .bind(import_data["chunks"].as_array().map(|a| a.len() as i64).unwrap_or(0))
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("创建知识库失败: {}", e))?;
+
+    Ok(serde_json::json!({
+        "id": new_id,
+        "name": name,
+    }))
+}
+
+#[tauri::command]
+pub async fn preview_knowledge_file(app: AppHandle, file_id: String) -> Result<serde_json::Value, String> {
+    let pool = get_pool(&app)?;
+    let row: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT file_path, file_name, file_ext FROM knowledge_files WHERE id = ?"
+    )
+    .bind(&file_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (file_path, file_name, file_ext) = row.ok_or("文件不存在")?;
+
+    let path = std::path::Path::new(&file_path);
+    if !path.exists() {
+        return Err("文件不存在于磁盘".to_string());
+    }
+
+    let text_exts = ["md", "txt", "json", "csv", "py", "rs", "ts", "tsx", "js", "jsx", "go", "java", "c", "cpp", "h", "html", "css", "yaml", "yml", "toml", "xml", "properties", "sh", "bat", "sql", "rb", "php", "swift", "kt", "scala", "lua", "r", "dart", "vue", "svelte"];
+
+    if text_exts.contains(&file_ext.to_lowercase().as_str()) {
+        let content = std::fs::read_to_string(path).map_err(|e| format!("读取文件失败: {}", e))?;
+        let preview: String = content.chars().take(5000).collect();
+        Ok(serde_json::json!({
+            "file_name": file_name,
+            "file_path": file_path,
+            "file_ext": file_ext,
+            "type": "text",
+            "content": preview,
+            "truncated": content.len() > 5000
+        }))
+    } else {
+        Ok(serde_json::json!({
+            "file_name": file_name,
+            "file_path": file_path,
+            "file_ext": file_ext,
+            "type": "binary",
+            "content": null,
+            "truncated": false
+        }))
+    }
+}
+
+#[tauri::command]
+pub async fn get_file_chunks(app: AppHandle, file_id: String) -> Result<Vec<serde_json::Value>, String> {
+    let pool = get_pool(&app)?;
+    let rows: Vec<(String, i64, String)> = sqlx::query_as(
+        "SELECT id, chunk_index, content FROM knowledge_chunks WHERE file_id = ? ORDER BY chunk_index ASC"
+    )
+    .bind(&file_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|(id, chunk_index, content)| {
+        serde_json::json!({
+            "id": id,
+            "chunk_index": chunk_index,
+            "content": content
+        })
+    }).collect())
+}
+
+#[tauri::command]
 fn chunk_text(text: &str, max_chars: usize, overlap: usize) -> Vec<String> {
     if text.is_empty() {
         return Vec::new();
@@ -1923,6 +2106,8 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
         None
     };
 
+    let use_local_embedding = embedding_model == "local";
+
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     for (idx, (file_path, file_name, ext, file_size, modified_at)) in all_files.iter().enumerate() {
@@ -2037,6 +2222,27 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
                     }
                 }
 
+                if use_local_embedding {
+                    let local_state = app.state::<crate::AppState>();
+                    let batch_size = 16;
+                    for batch_start in (0..chunks.len()).step_by(batch_size) {
+                        let batch_end = std::cmp::min(batch_start + batch_size, chunks.len());
+                        let batch: Vec<String> = chunks[batch_start..batch_end].to_vec();
+                        match crate::local_embedding::embed_text_local(&local_state.local_embedding, &batch) {
+                            Ok(embeddings) => {
+                                for (j, emb) in embeddings.iter().enumerate() {
+                                    if batch_start + j < vectors.len() {
+                                        vectors[batch_start + j] = Some(emb.clone());
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("[kb_index] Local embedding batch {} failed: {}", batch_start / batch_size, e);
+                            }
+                        }
+                    }
+                }
+
                 for (ci, chunk_content) in chunks.iter().enumerate() {
                     let chunk_id = uuid::Uuid::new_v4().to_string();
                     let vector_blob = vectors.get(ci).and_then(|v| v.as_ref()).map(|v| vec_to_blob(v));
@@ -2102,6 +2308,12 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
         "id": &id, "status": "done", "current": total, "total": total, "file": ""
     }));
 
+    let fw_state = app.state::<crate::AppState>();
+    let dirs_vec: Vec<String> = serde_json::from_str::<Vec<String>>(&kb.directories).unwrap_or_default();
+    if let Err(e) = crate::file_watcher::start_watching(&fw_state.file_watcher, app.clone(), &id, &dirs_vec) {
+        log::warn!("[kb_index] 启动文件监控失败: {}", e);
+    }
+
     Ok(serde_json::json!({
         "fileCount": total_files,
         "chunkCount": total_chunks
@@ -2165,7 +2377,7 @@ pub async fn search_knowledge_base(app: AppHandle, id: String, query: String, li
 }
 
 #[tauri::command]
-pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str, limit: Option<i64>) -> Result<Vec<String>, String> {
+pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str, limit: Option<i64>) -> Result<Vec<KnowledgeChunk>, String> {
     let limit_val = limit.unwrap_or(8);
     let pool = get_pool(app)?;
 
@@ -2229,31 +2441,48 @@ pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str,
                 }
             }
         }
+        "local" => {
+            let local_state = app.state::<crate::AppState>();
+            match crate::local_embedding::embed_text_local_single(&local_state.local_embedding, query) {
+                Ok(vec) => Some(vec),
+                Err(e) => {
+                    log::warn!("[kb_retrieve] Local embedding query failed: {}", e);
+                    None
+                }
+            }
+        }
         _ => None,
     };
 
     if let Some(qvec) = query_vector {
-        let rows: Vec<(String, Vec<u8>)> = sqlx::query_as(
-            "SELECT content, vector FROM knowledge_chunks WHERE knowledge_base_id = ? AND vector IS NOT NULL"
+        let rows: Vec<(String, Vec<u8>, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT kc.content, kc.vector, kf.file_name, kf.file_path FROM knowledge_chunks kc LEFT JOIN knowledge_files kf ON kc.file_id = kf.id WHERE kc.knowledge_base_id = ? AND kc.vector IS NOT NULL"
         )
         .bind(id)
         .fetch_all(&pool)
         .await
         .map_err(|e| e.to_string())?;
 
-        let mut scored: Vec<(f32, String)> = rows.into_iter().map(|(content, blob)| {
+        let mut scored: Vec<(f32, String, Option<String>, Option<String>)> = rows.into_iter().map(|(content, blob, file_name, file_path)| {
             let vec = blob_to_vec(&blob);
             let score = cosine_similarity(&qvec, &vec);
-            (score, content)
+            (score, content, file_name, file_path)
         }).collect();
 
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(limit_val as usize);
 
         let min_score = 0.3;
-        let results: Vec<String> = scored.into_iter()
-            .filter(|(score, _)| *score > min_score)
-            .map(|(_, content)| content)
+        let results: Vec<KnowledgeChunk> = scored.into_iter()
+            .filter(|(score, _, _, _)| *score > min_score)
+            .map(|(score, content, file_name, file_path)| KnowledgeChunk {
+                content,
+                file_name,
+                file_path,
+                score: Some(score),
+                kb_name: None,
+                source_type: "vector".to_string(),
+            })
             .collect();
 
         if !results.is_empty() {
@@ -2269,26 +2498,33 @@ pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str,
         let conditions: Vec<String> = keywords.iter().map(|_| "content LIKE ?".to_string()).collect();
         let where_clause = conditions.join(" OR ");
 
-        let sql = format!("SELECT content FROM knowledge_chunks WHERE knowledge_base_id = ? AND ({}) LIMIT ?", where_clause);
-        let mut sql_query = sqlx::query_as::<_, (String,)>(&sql).bind(id);
+        let sql = format!("SELECT kc.content, kf.file_name, kf.file_path FROM knowledge_chunks kc LEFT JOIN knowledge_files kf ON kc.file_id = kf.id WHERE kc.knowledge_base_id = ? AND ({}) LIMIT ?", where_clause);
+        let mut sql_query = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(&sql).bind(id);
         for kw in &keywords {
             sql_query = sql_query.bind(format!("%{}%", kw.replace('%', "\\%").replace('_', "\\_")));
         }
         sql_query = sql_query.bind(limit_val);
 
-        let rows: Vec<(String,)> = sql_query
+        let rows: Vec<(String, Option<String>, Option<String>)> = sql_query
             .fetch_all(&pool)
             .await
             .map_err(|e| e.to_string())?;
 
         if !rows.is_empty() {
-            return Ok(rows.into_iter().map(|(c,)| c).collect());
+            return Ok(rows.into_iter().map(|(content, file_name, file_path)| KnowledgeChunk {
+                content,
+                file_name,
+                file_path,
+                score: None,
+                kb_name: None,
+                source_type: "keyword".to_string(),
+            }).collect());
         }
     }
 
     let like_pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT content FROM knowledge_chunks WHERE knowledge_base_id = ? AND content LIKE ? LIMIT ?"
+    let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT kc.content, kf.file_name, kf.file_path FROM knowledge_chunks kc LEFT JOIN knowledge_files kf ON kc.file_id = kf.id WHERE kc.knowledge_base_id = ? AND kc.content LIKE ? LIMIT ?"
     )
     .bind(id)
     .bind(&like_pattern)
@@ -2298,7 +2534,14 @@ pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str,
     .map_err(|e| e.to_string())?;
 
     if !rows.is_empty() {
-        return Ok(rows.into_iter().map(|(c,)| c).collect());
+        return Ok(rows.into_iter().map(|(content, file_name, file_path)| KnowledgeChunk {
+            content,
+            file_name,
+            file_path,
+            score: None,
+            kb_name: None,
+            source_type: "like".to_string(),
+        }).collect());
     }
 
     let file_rows: Vec<(String, String)> = sqlx::query_as(
@@ -2313,7 +2556,14 @@ pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str,
     .map_err(|e| e.to_string())?;
 
     if !file_rows.is_empty() {
-        return Ok(file_rows.iter().map(|(name, path)| format!("文件: {} (路径: {})", name, path)).collect());
+        return Ok(file_rows.iter().map(|(name, path)| KnowledgeChunk {
+            content: format!("文件: {} (路径: {})", name, path),
+            file_name: Some(name.clone()),
+            file_path: Some(path.clone()),
+            score: None,
+            kb_name: None,
+            source_type: "filename".to_string(),
+        }).collect());
     }
 
     let file_list: Vec<(String, i64)> = sqlx::query_as(
@@ -2335,8 +2585,8 @@ pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str,
         for (name, cc) in &file_list {
             parts.push(format!("- {} ({} 个片段)", name, cc));
         }
-        let top_chunks: Vec<(String,)> = sqlx::query_as(
-            "SELECT content FROM knowledge_chunks WHERE knowledge_base_id = ? ORDER BY created_at DESC LIMIT ?"
+        let top_chunks: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT kc.content, kf.file_name, kf.file_path FROM knowledge_chunks kc LEFT JOIN knowledge_files kf ON kc.file_id = kf.id WHERE kc.knowledge_base_id = ? ORDER BY kc.created_at DESC LIMIT ?"
         )
         .bind(id)
         .bind(limit_val)
@@ -2345,12 +2595,19 @@ pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str,
         .map_err(|e| e.to_string())?;
         if !top_chunks.is_empty() {
             parts.push("\n部分内容预览：".to_string());
-            for (content,) in top_chunks {
+            for (content, _, _) in top_chunks {
                 let preview: String = content.chars().take(200).collect();
                 parts.push(format!("---\n{}", preview));
             }
         }
-        return Ok(parts);
+        return Ok(vec![KnowledgeChunk {
+            content: parts.join("\n"),
+            file_name: None,
+            file_path: None,
+            score: None,
+            kb_name: None,
+            source_type: "overview".to_string(),
+        }]);
     }
 
     Ok(Vec::new())
@@ -2366,8 +2623,9 @@ pub async fn retrieve_knowledge(app: AppHandle, id: String, query: String, limit
             "message": "No relevant content found"
         }))
     } else {
+        let source_type = chunks.first().map(|c| c.source_type.as_str()).unwrap_or("unknown");
         Ok(serde_json::json!({
-            "source": "retrieved",
+            "source": source_type,
             "chunks": chunks
         }))
     }
