@@ -2214,11 +2214,11 @@ function SettingsPanel() {
           {([
             { key: "provider", icon: "🔌", labelKey: "nav.provider" as const, dirty: 0 },
             { key: "agent", icon: "👾", labelKey: "nav.agent" as const, dirty: sectionDirtyCount("model") },
+            { key: "knowledge", icon: "📚", labelKey: "nav.knowledge" as const, dirty: 0 },
             { key: "gesture", icon: "💃", labelKey: "nav.gesture" as const, dirty: 0 },
             { key: "cardManager", icon: "🃏", labelKey: "nav.cardManager" as const, dirty: 0 },
             { key: "aiRoles", icon: "👥", labelKey: "nav.aiRoles" as const, dirty: 0 },
             { key: "system", icon: "⚙️", labelKey: "nav.system" as const, dirty: sectionDirtyCount("system") },
-            { key: "knowledge", icon: "📚", labelKey: "nav.knowledge" as const, dirty: 0 },
             { key: "about", icon: "ℹ️", labelKey: "nav.about" as const, dirty: 0 },
           ] as const).map((item) => (
             <button
@@ -2313,7 +2313,7 @@ function SettingsPanel() {
                       value={baseUrl}
                       readOnly
                       placeholder={t("agent.baseUrl")}
-                      style={{ background: '#F5F5F7', color: '#666' }}
+                      className="readonly-input"
                     />
                   </div>
                   <div className="form-group">
@@ -2690,11 +2690,9 @@ function SettingsPanel() {
                       setGestureForm({ name: "", duration: 1000, lookAtX: 0, lookAtY: 0, tilt: 0, targetJson: "{}" });
                       setShowGestureModal(true);
                     }}>
-                      <span className="gesture-add-icon">+</span>
                       {t("gesture.add")}
                     </button>
-                    <button className="gesture-add-btn gesture-import-btn" onClick={() => handleImportGestureJson()} title={t("gesture.import")}>
-                      <span className="gesture-add-icon">📥</span>
+                    <button className="gesture-add-btn" onClick={() => handleImportGestureJson()} title={t("gesture.import")}>
                       {t("gesture.import")}
                     </button>
                     <input type="file" ref={gestureFileInputRef} style={{ display: 'none' }} />
@@ -5614,6 +5612,12 @@ function SkillsPanel({ t }: { t: (key: string, params?: Record<string, string | 
   const [browsePage, setBrowsePage] = useState(1);
   const [installing, setInstalling] = useState<string | null>(null);
   const [installMsg, setInstallMsg] = useState("");
+  const [skillPage, setSkillPage] = useState(1);
+  const skillPageSize = 20;
+
+  useEffect(() => {
+    setSkillPage(1);
+  }, [searchQuery, filterSource, activeCategory]);
 
   useEffect(() => {
     loadSkills();
@@ -5716,13 +5720,12 @@ function SkillsPanel({ t }: { t: (key: string, params?: Record<string, string | 
     <div className="panel skills-panel">
       <div className="skills-header">
         <div className="skills-header-left">
-          <h2>{t("skills.title")}</h2>
         </div>
         <div className="skills-header-actions">
-          <button className="refresh-btn" onClick={loadSkills} disabled={loading}>
+          <button className="card-add-btn" onClick={loadSkills} disabled={loading}>
             {loading ? "..." : t("skills.refresh")}
           </button>
-          <button className="add-skill-btn" onClick={() => { setShowAddSkill(true); loadBrowse(1); }}>
+          <button className="card-add-btn" onClick={() => { setShowAddSkill(true); loadBrowse(1); }}>
             + {t("skills.addSkill")}
           </button>
         </div>
@@ -5746,24 +5749,18 @@ function SkillsPanel({ t }: { t: (key: string, params?: Record<string, string | 
           <option value="local">{t("skills.localSources")}</option>
           <option value="hub">{t("skills.hubSources")}</option>
         </select>
-      </div>
-
-      <div className="skills-category-tabs">
-        <button
-          className={`category-tab ${activeCategory === "all" ? "active" : ""}`}
-          onClick={() => setActiveCategory("all")}
+        <select
+          className="skills-filter"
+          value={activeCategory}
+          onChange={(e) => setActiveCategory(e.target.value)}
         >
-          {t("skills.all")} {skillsResult?.total ?? 0}
-        </button>
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            className={`category-tab ${activeCategory === cat.id ? "active" : ""}`}
-            onClick={() => setActiveCategory(cat.id)}
-          >
-            {cat.icon} {cat.name} {cat.count}
-          </button>
-        ))}
+          <option value="all">{t("skills.all")} ({skillsResult?.total ?? 0})</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.icon} {cat.name} ({cat.count})
+            </option>
+          ))}
+        </select>
       </div>
 
       {loading && (
@@ -5774,56 +5771,75 @@ function SkillsPanel({ t }: { t: (key: string, params?: Record<string, string | 
       )}
 
       {!loading && filteredSkills.length > 0 && (
-        <div className="skills-grid">
-          {filteredSkills.map((skill) => (
-            <div key={skill.name} className="skill-card">
-              <div className="skill-card-top">
-                <div className="skill-card-icon" data-category={skill.category}>
-                  <span className="skill-icon-emoji">{getCategoryIcon(skill.category)}</span>
-                  <span className="skill-icon-letter">{getSkillInitial(skill.name)}</span>
-                </div>
-                <div className="skill-card-header">
-                  <span className="skill-card-name">{skill.name}</span>
-                  {skill.version && <span className="skill-version">v{skill.version}</span>}
-                </div>
-                <div className="skill-card-menu-wrap">
-                  <button
-                    className="skill-card-menu-btn"
-                    onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === skill.name ? null : skill.name); }}
-                  >
-                    ⋮
-                  </button>
-                  {menuOpen === skill.name && (
-                    <div className="skill-card-menu" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => { handleInspect(skill); setMenuOpen(null); }}>
-                        {t("skills.viewDetail")}
-                      </button>
-                      {skill.source === "hub" && (
-                        <button onClick={() => { handleUninstall(skill.name); }}>
-                          {t("skills.uninstall")}
+        (() => {
+          const totalPages = Math.max(1, Math.ceil(filteredSkills.length / skillPageSize));
+          const safePage = Math.min(skillPage, totalPages);
+          const pagedSkills = filteredSkills.slice((safePage - 1) * skillPageSize, safePage * skillPageSize);
+          return (
+            <>
+              <div className="skills-grid">
+                {pagedSkills.map((skill) => (
+                  <div key={skill.name} className="skill-card">
+                    <div className="skill-card-top">
+                      <div className="skill-card-icon" data-category={skill.category}>
+                        <span className="skill-icon-emoji">{getCategoryIcon(skill.category)}</span>
+                        <span className="skill-icon-letter">{getSkillInitial(skill.name)}</span>
+                      </div>
+                      <div className="skill-card-header">
+                        <span className="skill-card-name">{skill.name}</span>
+                        {skill.version && <span className="skill-version">v{skill.version}</span>}
+                      </div>
+                      <div className="skill-card-menu-wrap">
+                        <button
+                          className="skill-card-menu-btn"
+                          onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === skill.name ? null : skill.name); }}
+                        >
+                          ⋮
                         </button>
-                      )}
+                        {menuOpen === skill.name && (
+                          <div className="skill-card-menu" onClick={(e) => e.stopPropagation()}>
+                            <button onClick={() => { handleInspect(skill); setMenuOpen(null); }}>
+                              {t("skills.viewDetail")}
+                            </button>
+                            {skill.source === "hub" && (
+                              <button onClick={() => { handleUninstall(skill.name); }}>
+                                {t("skills.uninstall")}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
+                    <p className="skill-card-desc">
+                      {skill.description || t("skills.noDesc")}
+                    </p>
+                    <div className="skill-card-bottom">
+                      <div className="skill-card-tags">
+                        <span className={`source-badge ${skill.source}`}>{skill.source}</span>
+                        <span className={`enabled-badge ${skill.enabled ? "enabled" : "disabled"}`}>
+                          {skill.enabled ? t("skills.enabled") : t("skills.disabled")}
+                        </span>
+                        {skill.tags.slice(0, 2).map((tag) => (
+                          <span key={tag} className="tag-badge">{tag}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <p className="skill-card-desc">
-                {skill.description || t("skills.noDesc")}
-              </p>
-              <div className="skill-card-bottom">
-                <div className="skill-card-tags">
-                  <span className={`source-badge ${skill.source}`}>{skill.source}</span>
-                  <span className={`enabled-badge ${skill.enabled ? "enabled" : "disabled"}`}>
-                    {skill.enabled ? t("skills.enabled") : t("skills.disabled")}
-                  </span>
-                  {skill.tags.slice(0, 2).map((tag) => (
-                    <span key={tag} className="tag-badge">{tag}</span>
+              {totalPages > 1 && (
+                <div className="kb-pagination">
+                  <button className="kb-page-btn" disabled={safePage <= 1} onClick={() => setSkillPage(safePage - 1)}>‹</button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                    <button key={page} className={`kb-page-btn ${page === safePage ? 'active' : ''}`} onClick={() => setSkillPage(page)}>{page}</button>
                   ))}
+                  <button className="kb-page-btn" disabled={safePage >= totalPages} onClick={() => setSkillPage(safePage + 1)}>›</button>
+                  <span className="kb-page-info">{filteredSkills.length} {t("skills.all")}</span>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
+              )}
+            </>
+          );
+        })()
       )}
 
       {!loading && filteredSkills.length === 0 && (
