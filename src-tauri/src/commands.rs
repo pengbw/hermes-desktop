@@ -2669,9 +2669,14 @@ pub async fn set_knowledge_config(app: AppHandle, config: serde_json::Value) -> 
             .args(&["config", "set", "knowledgebase.embedding_model", model])
             .output();
     }
-    if let Some(mode) = config.get("defaultRetrievalMode").and_then(|v| v.as_str()) {
+    if let Some(auto) = config.get("globalAutoRetrieve").and_then(|v| v.as_bool()) {
         let _ = crate::command(&crate::hermes_bin())
-            .args(&["config", "set", "knowledgebase.auto_retrieve", &format!("{}", mode != "off")])
+            .args(&["config", "set", "knowledgebase.auto_retrieve", &auto.to_string()])
+            .output();
+    }
+    if let Some(chunks) = config.get("defaultMaxContextChunks").and_then(|v| v.as_i64()) {
+        let _ = crate::command(&crate::hermes_bin())
+            .args(&["config", "set", "knowledgebase.max_context_chunks", &chunks.to_string()])
             .output();
     }
 
@@ -2707,34 +2712,48 @@ pub async fn install_local_embedding_model(app: AppHandle) -> Result<String, Str
 
     let _ = std::fs::create_dir_all(&data_dir);
 
-    let model_url = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/model.safetensors";
-    let config_url = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json";
-    let tokenizer_url = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json";
-    let special_tokens_url = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/special_tokens_map.json";
-
     let model_path = data_dir.join("model.safetensors");
     let config_path = data_dir.join("config.json");
     let tokenizer_path = data_dir.join("tokenizer.json");
     let special_tokens_path = data_dir.join("special_tokens_map.json");
 
-    let files: Vec<(&str, std::path::PathBuf)> = vec![
-        (config_url, config_path),
-        (special_tokens_url, special_tokens_path),
-        (tokenizer_url, tokenizer_path),
-        (model_url, model_path),
-    ];
+    let mirror_base = "https://hf-mirror.com/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
+    let origin_base = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
 
-    let total = files.len();
+    let file_names = vec!["config.json", "special_tokens_map.json", "tokenizer.json", "model.safetensors"];
+    let file_paths: Vec<std::path::PathBuf> = vec![config_path, special_tokens_path, tokenizer_path, model_path];
+
+    let total = file_names.len();
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(600))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    for (i, (url, path)) in files.iter().enumerate() {
-        let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    for (i, (name, path)) in file_names.iter().zip(file_paths.iter()).enumerate() {
+        let file_name = name.to_string();
         let _ = app.emit("local-embedding-model-progress", (i as f64 / total as f64 * 100.0) as u8);
 
-        let resp = client.get(*url).send().await.map_err(|e| format!("Download {} failed: {}", file_name, e))?;
+        let mirror_url = format!("{}/{}", mirror_base, name);
+        let origin_url = format!("{}/{}", origin_base, name);
+
+        let resp = match client.get(&mirror_url).send().await {
+            Ok(r) if r.status().is_success() => {
+                log::info!("[embedding] Downloading {} from mirror", file_name);
+                r
+            }
+            Ok(r) => {
+                log::warn!("[embedding] Mirror returned status {}, trying origin for {}", r.status(), file_name);
+                drop(r);
+                client.get(&origin_url).send().await
+                    .map_err(|e| format!("Download {} failed: {}", file_name, e))?
+            }
+            Err(e) => {
+                log::warn!("[embedding] Mirror failed for {}: {}, trying origin", file_name, e);
+                client.get(&origin_url).send().await
+                    .map_err(|e| format!("Download {} failed (mirror & origin): {}", file_name, e))?
+            }
+        };
+
         if !resp.status().is_success() {
             return Err(format!("Download {} failed with status: {}", file_name, resp.status()));
         }

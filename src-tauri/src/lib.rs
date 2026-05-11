@@ -13,6 +13,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use std::os::windows::process::CommandExt;
 
 pub(crate) fn command(program: &str) -> Command {
+    #[allow(unused_mut)]
     let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
@@ -1453,6 +1454,11 @@ fn is_windowsapps_stub(path: &str) -> bool {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
+fn is_windowsapps_stub(_path: &str) -> bool {
+    false
+}
+
 #[cfg(target_os = "windows")]
 fn validate_python_version(path: &str) -> Option<String> {
     let output = command(path)
@@ -2485,7 +2491,7 @@ async fn chat_with_hermes_api(
                 }
             };
 
-            log::info!("[chat_api] target_kbs count={}, kbs={:?}", target_kbs.len(), target_kbs.iter().map(|(id, name)| name.clone()).collect::<Vec<_>>());
+            log::info!("[chat_api] target_kbs count={}, kbs={:?}", target_kbs.len(), target_kbs.iter().map(|(_id, name)| name.clone()).collect::<Vec<_>>());
 
             let mut retrieve_futures = Vec::new();
             for (kb_id, kb_name) in &target_kbs {

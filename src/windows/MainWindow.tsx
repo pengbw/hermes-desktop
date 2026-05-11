@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useTheme } from "../contexts/ThemeContext";
@@ -7,8 +7,81 @@ import GestureEditor from "./GestureEditor";
 import InstallGuidePanel from "./InstallGuide";
 import WorkflowDesigner from "./WorkflowDesigner";
 import FilePreviewModal from "./FilePreviewModal";
-import VirtualOffice from "./VirtualOffice";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import hljs from "highlight.js";
+import "highlight.js/styles/github.css";
+const VirtualOffice = lazy(() => import("./VirtualOffice"));
 import "./MainWindow.css";
+
+function MarkdownRenderer({ content }: { content: string }) {
+  const codeRef = useCallback((node: HTMLElement | null) => {
+    if (node) {
+      const codeEl = node.querySelector("code");
+      if (codeEl && !codeEl.classList.contains("hljs")) {
+        try {
+          hljs.highlightElement(codeEl);
+        } catch {}
+      }
+    }
+  }, []);
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        code({ className, children, ...props }) {
+          const match = /language-(\w+)/.exec(className || "");
+          const codeStr = String(children).replace(/\n$/, "");
+          if (match) {
+            return (
+              <div ref={codeRef} className="md-code-block">
+                <div className="md-code-header">
+                  <span className="md-code-lang">{match[1]}</span>
+                  <button
+                    className="md-code-copy"
+                    onClick={() => navigator.clipboard.writeText(codeStr)}
+                  >
+                    📋
+                  </button>
+                </div>
+                <pre className="md-code-pre">
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                </pre>
+              </div>
+            );
+          }
+          return (
+            <code className="md-inline-code" {...props}>
+              {children}
+            </code>
+          );
+        },
+        pre({ children }) {
+          return <>{children}</>;
+        },
+        table({ children }) {
+          return (
+            <div className="md-table-wrap">
+              <table>{children}</table>
+            </div>
+          );
+        },
+        a({ href, children }) {
+          return (
+            <a href={href} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          );
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
 
 type Tab = "home" | "chat" | "studio" | "knowledge" | "settings" | "skills";
 
@@ -1029,7 +1102,6 @@ interface ChatPanelProps {
 
 function ChatPanel({
   conversations,
-  setConversations,
   currentConversationId,
   onSelectConversation,
   onNewConversation,
@@ -1430,7 +1502,11 @@ function ChatPanel({
                       ))}
                     </div>
                   )}
-                  {msg.content && <div className="message-text">{msg.content}</div>}
+                  {msg.content && (
+                    <div className="message-text">
+                      {msg.role === "assistant" ? <MarkdownRenderer content={msg.content} /> : msg.content}
+                    </div>
+                  )}
                   {msg.knowledgeSources && msg.knowledgeSources.length > 0 && (
                     <div className="knowledge-sources">
                       <div className="knowledge-sources-header">
@@ -1460,7 +1536,7 @@ function ChatPanel({
             <div className="message-row assistant">
               <div className="message-avatar"><img src="/bot.svg" alt="bot" className="message-avatar-img" /></div>
               <div className="message-bubble">
-                <div className="message-text">{streamedContent}</div>
+                <div className="message-text"><MarkdownRenderer content={streamedContent} /></div>
                 <span className="streaming-cursor">▊</span>
               </div>
             </div>
@@ -3220,20 +3296,20 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
   return (
     <div className="settings-section-card">
       <div className="settings-section">
-        <div className="settings-header">
+        <div className="card-manager-header">
           <h3>{t("aiRoles.title")}</h3>
-          <button className="studio-btn-primary" onClick={() => setShowNewRole(true)}>
+          <button className="card-add-btn" onClick={() => setShowNewRole(true)}>
             + {t("aiRoles.addRole")}
           </button>
         </div>
         <p className="settings-desc">{t("aiRoles.desc")}</p>
 
-        <div className="ai-role-list">
+        <div className="card-manager-grid">
           {roles.map((role) => (
-            <div key={role.id} className="ai-role-card" style={role.avatarColor ? { borderLeftColor: role.avatarColor } : undefined}>
+            <div key={role.id} className="card-manager-item custom" style={role.avatarColor ? { borderLeftColor: role.avatarColor } : undefined}>
               <div className="ai-role-card-header">
-                <span className="ai-role-icon" style={role.avatarColor ? { backgroundColor: role.avatarColor + '22', color: role.avatarColor } : undefined}>{role.icon}</span>
-                <span className="ai-role-name">{role.name}</span>
+                <span className="card-manager-icon" style={role.avatarColor ? { backgroundColor: role.avatarColor + '22', color: role.avatarColor, borderRadius: '50%', width: '28px', height: '28px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' } : undefined}>{role.icon}</span>
+                <span className="card-manager-name">{role.name}</span>
                 {role.isBuiltin && <span className="ai-role-builtin-badge">{t("aiRoles.builtin")}</span>}
                 {role.avatarPreset && (
                   <span className="ai-role-avatar-badge" style={role.avatarColor ? { backgroundColor: role.avatarColor } : undefined}>
@@ -3241,16 +3317,12 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   </span>
                 )}
               </div>
-              <p className="ai-role-desc">{role.description}</p>
+              <p className="card-manager-desc">{role.description}</p>
               <p className="ai-role-resp">{role.responsibilities}</p>
-              <div className="ai-role-actions">
-                <button className="ai-role-edit-btn" onClick={() => startEdit(role)}>
-                  ✏️
-                </button>
+              <div className="card-manager-actions">
+                <button onClick={() => startEdit(role)}>✏️</button>
                 {!role.isBuiltin && (
-                  <button className="ai-role-delete-btn" onClick={() => handleDelete(role.id)}>
-                    🗑️
-                  </button>
+                  <button onClick={() => handleDelete(role.id)}>🗑️</button>
                 )}
               </div>
             </div>
@@ -4553,9 +4625,9 @@ function StudioPanel() {
   const PAGE_SIZE = 12;
   const [projectMembers, setProjectMembers] = useState<any[]>([]);
   const [projectArtifacts, setProjectArtifacts] = useState<any[]>([]);
+  const [projectWorkflows, setProjectWorkflows] = useState<any[]>([]);
   const [allRoles, setAllRoles] = useState<any[]>([]);
   const [projectMembersMap, setProjectMembersMap] = useState<Record<string, any[]>>({});
-  const [activeProjectTab, setActiveProjectTab] = useState<"overview" | "members" | "artifacts" | "workflows">("overview");
   const [settingsProjectId, setSettingsProjectId] = useState<string | null>(null);
   const [settingsTab, setSettingsTab] = useState<"members" | "artifacts" | "workflows">("members");
   const [settingsMaximized, setSettingsMaximized] = useState(false);
@@ -4735,26 +4807,19 @@ function StudioPanel() {
     }
   };
 
-  const handleUpdateProjectTag = async (projectId: string, tag: string) => {
-    try {
-      await invoke("update_project", { req: { id: projectId, tag } });
-      loadProjects();
-    } catch (err) {
-      console.error("Failed to update project tag:", err);
-    }
-  };
-
   const handleSelectProject = async (project: ProjectItem) => {
     setSelectedProject(project);
     try {
-      const [members, artifacts, messages] = await Promise.all([
+      const [members, artifacts, messages, workflows] = await Promise.all([
         invoke<any[]>("list_project_members", { projectId: project.id }),
         invoke<any[]>("list_project_artifacts", { projectId: project.id }),
         invoke<any[]>("list_project_messages", { projectId: project.id }),
+        invoke<any[]>("list_project_workflows", { projectId: project.id }),
       ]);
       setProjectMembers(members);
       setProjectArtifacts(artifacts);
       setProjectMessages(messages);
+      setProjectWorkflows(workflows);
     } catch (err) {
       console.error("Failed to load project data:", err);
     }
@@ -4808,20 +4873,6 @@ function StudioPanel() {
   const getRoleName = (roleId: string) => {
     const role = allRoles.find((r) => r.id === roleId);
     return role ? `${role.icon} ${role.name}` : roleId;
-  };
-
-  const getRoleIcon = (roleId: string) => {
-    const role = allRoles.find((r) => r.id === roleId);
-    return role ? role.icon : "👤";
-  };
-
-  const getRoleIconFromPreset = (preset: string) => {
-    const map: Record<string, string> = {
-      office_worker: "📋", explorer: "🔍", scholar: "📊", creative: "📝",
-      artist: "🎨", architect: "🏗️", coder: "💻", engineer: "⚙️",
-      tester: "🧪", boss: "👤",
-    };
-    return map[preset] || "🤖";
   };
 
   const loadProjectMessages = async (projectId: string) => {
@@ -4953,24 +5004,33 @@ function StudioPanel() {
                   <h3>🏢 {t("studio.virtualOffice")}</h3>
                 </div>
                 <div className="studio-office-scene">
-                  <VirtualOffice
-                    members={projectMembers.map((member) => {
-                      const role = allRoles.find((r) => r.id === member.roleId);
-                      const isUser = member.roleId === "builtin_user";
-                      return {
-                        id: member.id,
-                        name: getRoleName(member.roleId),
-                        icon: role?.icon || "🤖",
-                        color: role?.avatarColor || "#6c5ce7",
-                        isUser,
-                        isWorking: false,
-                        preset: role?.avatarPreset,
-                      };
-                    })}
-                    onSpeak={(_memberId, text) => {
-                      handleSendMessage(text);
-                    }}
-                  />
+                  <Suspense fallback={<div style={{padding: 20, color: '#999', textAlign: 'center'}}>加载虚拟办公...</div>}>
+                    <VirtualOffice
+                      members={projectMembers.map((member) => {
+                        const role = allRoles.find((r) => r.id === member.roleId);
+                        const isUser = member.roleId === "builtin_user";
+                        return {
+                          id: member.id,
+                          name: getRoleName(member.roleId),
+                          icon: role?.icon || "🤖",
+                          color: role?.avatarColor || "#6c5ce7",
+                          isUser,
+                          isWorking: false,
+                          preset: role?.avatarPreset,
+                          roleId: member.roleId,
+                        };
+                      })}
+                      workflows={projectWorkflows.map((wf: any) => ({
+                        fromRoleId: wf.fromRoleId,
+                        toRoleId: wf.toRoleId,
+                        artifactType: wf.artifactType || "",
+                        transitionType: wf.transitionType || "auto_push",
+                      }))}
+                      onSpeak={(_memberId, text) => {
+                        handleSendMessage(text);
+                      }}
+                    />
+                  </Suspense>
                 </div>
               </div>
 
