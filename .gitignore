@@ -40,3 +40,9 @@ docs/knowledge-base.md
 docs/development-plan.md
 docs/rule.md
 docs/studio.md
+docs/refactor-plan.md
+
+# 工具配置
+.trae/
+.github/
+.husky/
