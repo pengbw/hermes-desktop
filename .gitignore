@@ -44,5 +44,4 @@ docs/refactor-plan.md
 
 # 工具配置
 .trae/
-.github/
 .husky/

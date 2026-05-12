@@ -25,6 +25,7 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 ## ✨ 核心特性
 
 ### 🎭 悬浮数字人
+
 - 启动后默认进入悬浮 Widget 模式，无边框、透明、漂浮桌面
 - VRM 3D数字人形象，idle 动画（呼吸/眨眼）
 - 打招呼语音："Hi 主人您好，我是你的助理小跃"
@@ -33,57 +34,77 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 - 可拖动，位置记忆
 
 ### 🗨️ 智能对话
+
 - 实时流式响应，打字机效果
 - Agent 思考过程可见可追溯
 - 多会话管理，历史记录持久化
 
 ### ⚙️ 完整配置中心
+
 - 模型配置 / 记忆管理 / 技能中心 / MCP Server / 平台连接 / 安全沙盒
 
-### 🖥️ 跨平台
+### � 知识库
+
+- 本地文档索引与检索（RAG）
+- 支持 ONNX Runtime 本地嵌入，无需联网
+- 文件监听自动更新索引
+
+### �🖥️ 跨平台
+
 - ✅ macOS（Apple Silicon）
-- ⏳ Windows（开发中）
+- ✅ Windows（x86_64）
 
 ---
 
 ## 📷 界面预览
 
 ### 安装引导
+
 ![安装引导](./docs/screenshots/07-install.jpg)
 
 > 📥 安装完成后，进入 **设置 → 供应商管理** 配置 API Key → 选择供应商 → 配置模型 → 保存，即可开始使用。
 
 ### 首页
+
 ![首页](./docs/screenshots/01-home.jpg)
 
 ### 智能对话
+
 ![对话](./docs/screenshots/02-chat.jpg)
 
 ### 技能中心
+
 ![技能中心](./docs/screenshots/03-skills.jpg)
 
 ### 系统设置
+
 ![设置](./docs/screenshots/04-settings.jpg)
 
 ### VRM 数字人
+
 ![VRM数字人](./docs/screenshots/05-vrm.jpg)
 
 ### 数字人对话
+
 ![数字人对话](./docs/screenshots/06-chat-vrm.jpg)
 
 ### 动作管理
+
 ![动作管理](./docs/screenshots/08-gesture.jpg)
 
 ---
 
 ## 🛠️ 技术栈
 
-| 层级 | 技术 |
-|------|------|
-| 桌面框架 | Tauri 2.x |
-| 前端 | React + TypeScript + Tailwind CSS |
-| 3D渲染 | Three.js + @pixiv/three-vrm |
-| 对话内核 | Hermes Agent |
+| 层级     | 技术                             |
+| -------- | -------------------------------- |
+| 桌面框架 | Tauri 2.x                        |
+| 前端     | React + TypeScript + CSS Modules |
+| 3D渲染   | Three.js + @pixiv/three-vrm      |
+| 状态管理 | Zustand                          |
+| 后端     | Rust + SQLx + SQLite             |
+| 嵌入模型 | ONNX Runtime                     |
+| 对话内核 | Hermes Agent                     |
 
 ---
 
