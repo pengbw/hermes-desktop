@@ -1,8 +1,6 @@
 mod commands;
 mod database;
-mod db;
-mod file_watcher;
-mod local_embedding;
+mod services;
 
 use commands::helpers::{
     hermes_command, ensure_gateway_config, kill_hermes_process,
@@ -32,7 +30,7 @@ pub fn run() {
                 let _ = avatar_win.set_shadow(false);
             }
 
-            let db_path = db::db_path();
+            let db_path = database::models::db_path();
             log::info!("Database path: {}", db_path.display());
 
             if let Some(parent) = db_path.parent() {
@@ -68,10 +66,10 @@ pub fn run() {
 
                 match result {
                     Ok(pool) => {
-                        if let Err(e) = db::init_db(&pool).await {
+                        if let Err(e) = database::models::init_db(&pool).await {
                             log::error!("Failed to initialize database: {}", e);
                         }
-                        app_handle.manage(AppState { db_pool: pool, local_embedding: local_embedding::LocalEmbeddingState::new(), file_watcher: file_watcher::FileWatcherState::new() });
+                        app_handle.manage(AppState { db_pool: pool, local_embedding: services::local_embedding::LocalEmbeddingState::new(), file_watcher: services::file_watcher::FileWatcherState::new() });
                     }
                     Err(e) => {
                         log::warn!("Database connection failed: {}, attempting recovery...", e);
@@ -83,10 +81,10 @@ pub fn run() {
                         match SqlitePool::connect_with(connect_fn()).await {
                             Ok(pool) => {
                                 log::info!("Database rebuilt successfully");
-                                if let Err(e) = db::init_db(&pool).await {
+                                if let Err(e) = database::models::init_db(&pool).await {
                                     log::error!("Failed to initialize database: {}", e);
                                 }
-                                app_handle.manage(AppState { db_pool: pool, local_embedding: local_embedding::LocalEmbeddingState::new(), file_watcher: file_watcher::FileWatcherState::new() });
+                                app_handle.manage(AppState { db_pool: pool, local_embedding: services::local_embedding::LocalEmbeddingState::new(), file_watcher: services::file_watcher::FileWatcherState::new() });
                             }
                             Err(e2) => {
                                 log::error!("Database recovery failed: {}", e2);

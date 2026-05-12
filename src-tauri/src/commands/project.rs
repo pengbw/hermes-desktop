@@ -1,4 +1,4 @@
-use crate::db;
+use crate::database::models as db;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter, Manager};

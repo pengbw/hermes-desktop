@@ -1,5 +1,5 @@
 use crate::commands::helpers::{command, hermes_bin};
-use crate::db;
+use crate::database::models as db;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
 

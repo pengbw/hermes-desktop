@@ -1,4 +1,4 @@
-use crate::db;
+use crate::database::models as db;
 use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter, Manager};
@@ -712,7 +712,7 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
                         }));
                         log::info!("[kb_index] Local embedding batch {}/{} (chunks {}-{})", batch_num + 1, total_batches, batch_start, batch_end);
                         let batch: Vec<String> = chunks[batch_start..batch_end].to_vec();
-                        match crate::local_embedding::embed_text_local(&local_state.local_embedding, &batch) {
+                        match crate::services::local_embedding::embed_text_local(&local_state.local_embedding, &batch) {
                             Ok(embeddings) => {
                                 log::info!("[kb_index] Local embedding batch {} done, got {} vectors", batch_num + 1, embeddings.len());
                                 for (j, emb) in embeddings.iter().enumerate() {
@@ -795,7 +795,7 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
 
     let fw_state = app.state::<crate::commands::helpers::AppState>();
     let dirs_vec: Vec<String> = serde_json::from_str::<Vec<String>>(&kb.directories).unwrap_or_default();
-    if let Err(e) = crate::file_watcher::start_watching(&fw_state.file_watcher, app.clone(), &id, &dirs_vec) {
+    if let Err(e) = crate::services::file_watcher::start_watching(&fw_state.file_watcher, app.clone(), &id, &dirs_vec) {
         log::warn!("[kb_index] 启动文件监控失败: {}", e);
     }
 
@@ -928,7 +928,7 @@ pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str,
         }
         "local" => {
             let local_state = app.state::<crate::commands::helpers::AppState>();
-            match crate::local_embedding::embed_text_local_single(&local_state.local_embedding, query) {
+            match crate::services::local_embedding::embed_text_local_single(&local_state.local_embedding, query) {
                 Ok(vec) => Some(vec),
                 Err(e) => {
                     log::warn!("[kb_retrieve] Local embedding query failed: {}", e);

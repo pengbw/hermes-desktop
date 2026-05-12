@@ -246,7 +246,7 @@ pub fn restart_hermes(state: State<'_, AgentProcess>) -> Result<String, String> 
 
 #[tauri::command]
 pub fn open_log_dir() -> Result<(), String> {
-    let log_dir = crate::db::log_dir();
+    let log_dir = crate::database::models::log_dir();
 
     #[cfg(target_os = "macos")]
     command("open")

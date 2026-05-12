@@ -524,8 +524,8 @@ except Exception as e:
 
 pub struct AppState {
     pub db_pool: SqlitePool,
-    pub local_embedding: crate::local_embedding::LocalEmbeddingState,
-    pub file_watcher: crate::file_watcher::FileWatcherState,
+    pub local_embedding: crate::services::local_embedding::LocalEmbeddingState,
+    pub file_watcher: crate::services::file_watcher::FileWatcherState,
 }
 
 pub(crate) struct AgentProcess(pub(crate) Mutex<Option<std::process::Child>>);

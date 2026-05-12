@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 fn load_gesture_json(name: &str) -> &'static str {
     let raw = match name {
-        "silent" => include_str!("../../public/silent.json"),
-        "greeting" => include_str!("../../public/greeting.json"),
-        "think" => include_str!("../../public/think.json"),
+        "silent" => include_str!("../../../public/silent.json"),
+        "greeting" => include_str!("../../../public/greeting.json"),
+        "think" => include_str!("../../../public/think.json"),
         _ => return "{}",
     };
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
