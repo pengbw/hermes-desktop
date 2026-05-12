@@ -1,0 +1,11 @@
+pub mod avatar;
+pub mod chat;
+pub mod config;
+pub mod helpers;
+pub mod hermes_chat;
+pub mod install;
+pub mod knowledge;
+pub mod project;
+pub mod provider;
+pub mod skill;
+pub mod window;

@@ -61,14 +61,20 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     window.addEventListener("storage", handleStorage);
 
     let unlisten: (() => void) | undefined;
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      listen<{ locale: string }>("locale-changed", (event) => {
-        const valid = ["zh-CN", "zh-XG", "en"].includes(event.payload.locale);
-        if (valid) {
-          setLocaleState(event.payload.locale as Locale);
-        }
-      }).then((fn) => { unlisten = fn; }).catch(() => {});
-    }).catch(() => {});
+    import("@tauri-apps/api/event")
+      .then(({ listen }) => {
+        listen<{ locale: string }>("locale-changed", (event) => {
+          const valid = ["zh-CN", "zh-XG", "en"].includes(event.payload.locale);
+          if (valid) {
+            setLocaleState(event.payload.locale as Locale);
+          }
+        })
+          .then((fn) => {
+            unlisten = fn;
+          })
+          .catch(() => {});
+      })
+      .catch(() => {});
 
     return () => {
       window.removeEventListener("storage", handleStorage);
@@ -82,7 +88,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     try {
       const { emit } = await import("@tauri-apps/api/event");
       await emit("locale-changed", { locale: l });
-    } catch {}
+    } catch (err) {
+      console.warn("Failed to emit locale-changed event:", err);
+    }
   }, []);
 
   const t = useCallback(
@@ -96,14 +104,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       }
       return text;
     },
-    [messages, loaded],
+    [messages, loaded]
   );
 
-  return (
-    <I18nContext.Provider value={{ locale, setLocale, t }}>
-      {children}
-    </I18nContext.Provider>
-  );
+  return <I18nContext.Provider value={{ locale, setLocale, t }}>{children}</I18nContext.Provider>;
 }
 
 export function useI18n() {

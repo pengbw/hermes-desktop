@@ -1,0 +1,181 @@
+/* ── 卡片管理 ── */
+.cardManagerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.cardManagerHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cardAddBtn {
+  padding: 6px 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cardAddBtn:hover {
+  background: var(--color-nav-hover);
+}
+
+.cardForm {
+  background: var(--color-section-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cardFormRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cardFormRow label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.cardFormRow input,
+.cardFormRow textarea {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  outline: none;
+}
+
+.cardFormRow input:focus,
+.cardFormRow textarea:focus {
+  border-color: var(--color-primary);
+}
+
+.cardFormActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.cardFormBtn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid var(--color-border);
+}
+
+.cardFormBtn.save {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.cardFormBtn.cancel {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.cardManagerBuiltin h4,
+.cardManagerCustom h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0 0 10px;
+}
+
+.cardManagerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.cardManagerItem {
+  background: var(--color-section-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+
+.cardManagerItem.builtin {
+  opacity: 0.7;
+}
+
+.cardManagerItem.custom[style*="border-left-color"] {
+  border-left-width: 3px;
+}
+
+.cardManagerIcon {
+  font-size: 20px;
+}
+
+.cardManagerName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.cardManagerDesc {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.cardManagerActions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.cardManagerItem:hover .cardManagerActions {
+  opacity: 1;
+}
+
+.cardManagerActions button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  transition: all 0.15s;
+}
+
+.cardManagerActions button:hover {
+  border-color: var(--color-primary);
+}
+
+.cardManagerEmpty {
+  padding: 20px;
+  text-align: center;
+  color: var(--color-about-text-secondary);
+  font-size: 13px;
+}
+
+.cardManagerCustom {
+  margin-top: 20px;
+}

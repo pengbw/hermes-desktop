@@ -5,8 +5,6 @@ import "./styles/themes.css";
 
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { I18nProvider } from "./contexts/I18nContext";
-import AvatarWindow from "./windows/AvatarWindow";
-import ChatWindow from "./windows/ChatWindow";
 import MainWindow from "./windows/MainWindow";
 
 async function bootstrap() {
@@ -19,9 +17,10 @@ async function bootstrap() {
     const root = document.getElementById("root") as HTMLElement;
 
     if (label === "avatar") {
-      document.querySelectorAll('link[rel="icon"]').forEach(el => el.remove());
+      document.querySelectorAll('link[rel="icon"]').forEach((el) => el.remove());
       document.body.style.background = "transparent";
       document.documentElement.style.background = "transparent";
+      const { default: AvatarWindow } = await import("./windows/AvatarWindow");
       ReactDOM.createRoot(root).render(
         <React.StrictMode>
           <ThemeProvider>
@@ -32,9 +31,10 @@ async function bootstrap() {
         </React.StrictMode>
       );
     } else if (label === "chat") {
-      document.querySelectorAll('link[rel="icon"]').forEach(el => el.remove());
+      document.querySelectorAll('link[rel="icon"]').forEach((el) => el.remove());
       document.body.style.background = "transparent";
       document.documentElement.style.background = "transparent";
+      const { default: ChatWindow } = await import("./windows/ChatWindow");
       ReactDOM.createRoot(root).render(
         <React.StrictMode>
           <ThemeProvider>

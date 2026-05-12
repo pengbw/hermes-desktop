@@ -1,0 +1,89 @@
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { KnowledgeSource } from "@core/types";
+
+export interface InstallProgress {
+  step: string;
+  progress: number;
+  message: string;
+}
+
+export interface EmbeddingModelProgress {
+  progress: number;
+  message: string;
+}
+
+export interface NavigateToTabPayload {
+  tab: string;
+}
+
+export interface ChatStreamEvent {
+  type: "thinking" | "content" | "tool_progress" | "done" | "error";
+  content: string;
+}
+
+export const TauriEvents = {
+  onNavigateToTab(callback: (tab: string) => void): Promise<UnlistenFn> {
+    return listen<NavigateToTabPayload>("navigate-to-tab", (event) => {
+      callback(event.payload.tab);
+    });
+  },
+
+  onInstallProgress(callback: (progress: InstallProgress) => void): Promise<UnlistenFn> {
+    return listen<InstallProgress>("install-progress", (event) => {
+      callback(event.payload);
+    });
+  },
+
+  onEmbeddingModelProgress(
+    callback: (progress: EmbeddingModelProgress) => void
+  ): Promise<UnlistenFn> {
+    return listen<EmbeddingModelProgress>("local-embedding-model-progress", (event) => {
+      callback(event.payload);
+    });
+  },
+
+  onChatStream(eventId: string, callback: (data: ChatStreamEvent) => void): Promise<UnlistenFn> {
+    return listen<ChatStreamEvent>(eventId, (event) => {
+      callback(event.payload);
+    });
+  },
+
+  onChatThinking(eventId: string, callback: (content: string) => void): Promise<UnlistenFn> {
+    return listen<string>(`${eventId}_thinking`, (event) => {
+      callback(event.payload);
+    });
+  },
+
+  onChatContent(eventId: string, callback: (content: string) => void): Promise<UnlistenFn> {
+    return listen<string>(`${eventId}_content`, (event) => {
+      callback(event.payload);
+    });
+  },
+
+  onChatToolProgress(eventId: string, callback: (content: string) => void): Promise<UnlistenFn> {
+    return listen<string>(`${eventId}_tool_progress`, (event) => {
+      callback(event.payload);
+    });
+  },
+
+  onChatDone(eventId: string, callback: () => void): Promise<UnlistenFn> {
+    return listen(`${eventId}_done`, () => {
+      callback();
+    });
+  },
+
+  onChatError(eventId: string, callback: (error: string) => void): Promise<UnlistenFn> {
+    return listen<string>(`${eventId}_error`, (event) => {
+      callback(event.payload);
+    });
+  },
+
+  onKnowledgeSources(
+    eventId: string,
+    callback: (sources: KnowledgeSource[]) => void
+  ): Promise<UnlistenFn> {
+    return listen<KnowledgeSource[]>(`${eventId}_knowledge_sources`, (event) => {
+      callback(event.payload);
+    });
+  },
+};

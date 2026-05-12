@@ -1,0 +1,113 @@
+.mainWindow {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.loadingScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 16px;
+  color: #888;
+  font-size: 14px;
+  background: var(--color-bg);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e5e5e5;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.toolbar {
+  height: 40px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.toolbarNav {
+  display: flex;
+  gap: 4px;
+}
+
+.tabBtn {
+  padding: 5px 14px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tabBtn:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.tabBtnActive {
+  background: #4fc3f7;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.avatarToggleBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.avatarToggleBtn:hover {
+  background: rgba(79, 195, 247, 0.1);
+}
+
+.avatarToggleActive {
+  background: rgba(79, 195, 247, 0.15);
+}
+
+.toolbarAvatarIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+
+.contentArea {
+  flex: 1;
+  overflow: hidden;
+}
+
+.tabLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #888;
+}

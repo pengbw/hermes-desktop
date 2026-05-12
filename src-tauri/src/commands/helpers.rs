@@ -1,0 +1,1172 @@
+use serde::Serialize;
+use sqlx::SqlitePool;
+use std::process::{Command, Stdio};
+use std::sync::Mutex;
+use tauri::{AppHandle, Emitter, Manager};
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+pub(crate) fn command(program: &str) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    cmd
+}
+
+pub(crate) fn hermes_bin() -> String {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let candidates = [
+            format!("{}/.hermes/hermes-agent/venv/bin/hermes", home),
+            format!("{}/.local/bin/hermes", home),
+            "/usr/local/bin/hermes".to_string(),
+        ];
+        for path in &candidates {
+            if std::path::Path::new(path).exists() {
+                return path.clone();
+            }
+        }
+        if let Ok(output) = command("which").arg("hermes").output() {
+            if output.status.success() {
+                let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !p.is_empty() {
+                    return p;
+                }
+            }
+        }
+        "hermes".to_string()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        let candidates = [
+            format!("{}\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe", local_appdata),
+            format!("{}\\hermes\\hermes-agent\\.venv\\Scripts\\hermes.exe", local_appdata),
+            format!("{}\\hermes\\hermes-agent\\python.exe", local_appdata),
+        ];
+        for path in &candidates {
+            if std::path::Path::new(path).exists() {
+                return path.clone();
+            }
+        }
+        "hermes".to_string()
+    }
+}
+
+pub(crate) fn hermes_command() -> Command {
+    command(&hermes_bin())
+}
+
+pub(crate) fn home_dir() -> String {
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::env::var("HOME").unwrap_or_default()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("USERPROFILE").unwrap_or_default()
+    }
+}
+
+pub(crate) fn which_exists(cmd: &str) -> bool {
+    command("which")
+        .arg(cmd)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+#[allow(dead_code)]
+pub(crate) fn show_error_dialog(message: &str) {
+    log::error!("{}", message);
+    #[cfg(target_os = "windows")]
+    {
+        let ps_cmd = format!(
+            "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); [System.Windows.Forms.MessageBox]::Show('{}', 'Hermes Desktop Error')",
+            message.replace("'", "''").replace("\n", " ")
+        );
+        let _ = command("powershell")
+            .args(["-NoProfile", "-Command", &ps_cmd])
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "display dialog \"{}\" with title \"Hermes Desktop Error\" buttons {{\"OK\"}} default button \"OK\" with icon stop",
+            message.replace("\\", "\\\\").replace("\"", "\\\"")
+        );
+        let _ = command("osascript")
+            .args(["-e", &script])
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = command("zenity")
+            .args(["--error", "--title=Hermes Desktop Error", &format!("--text={}", message)])
+            .spawn();
+    }
+}
+
+pub(crate) fn default_shell() -> &'static str {
+    if which_exists("zsh") { "zsh" } else { "bash" }
+}
+
+pub(crate) fn path_with_local_bin() -> String {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let local_bin = format!("{}/.local/bin", home);
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        if current_path.contains(&local_bin) {
+            current_path
+        } else {
+            format!("{}:{}", local_bin, current_path)
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let userprofile = std::env::var("USERPROFILE").unwrap_or_default();
+        let local_bin = format!("{}\\AppData\\Local\\hermes", userprofile);
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        if current_path.to_lowercase().contains(&local_bin.to_lowercase()) {
+            current_path
+        } else {
+            format!("{};{}", local_bin, current_path)
+        }
+    }
+}
+
+pub(crate) fn strip_ansi(s: &str) -> String {
+    let mut result = String::new();
+    let mut in_escape = false;
+    for c in s.chars() {
+        if c == '\x1b' {
+            in_escape = true;
+        } else if in_escape {
+            if c.is_ascii_alphabetic() {
+                in_escape = false;
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+pub(crate) fn kill_hermes_process() {
+    #[cfg(unix)]
+    {
+        let _ = command("pkill")
+            .args(&["-f", "hermes (acp|gateway)"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
+        let _ = command("pkill")
+            .args(&["-f", "python.*hermes"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
+    }
+    #[cfg(windows)]
+    {
+        let _ = command("taskkill")
+            .args(&["/F", "/IM", "hermes.exe"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
+        let _ = command("taskkill")
+            .args(&["/F", "/IM", "python.exe"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
+        let _ = command("taskkill")
+            .args(&["/F", "/IM", "python3.exe"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
+    }
+}
+
+pub(crate) fn check_hermes_process() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = command("pgrep")
+            .arg("-f")
+            .arg("hermes (acp|gateway)")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+        {
+            return output.status.success();
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(output) = command("tasklist")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+        {
+            let out = String::from_utf8_lossy(&output.stdout);
+            return out.contains("hermes");
+        }
+    }
+    false
+}
+
+pub(crate) fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    if !dst.exists() {
+        std::fs::create_dir_all(dst).map_err(|e| format!("Failed to create dir {}: {}", dst.display(), e))?;
+    }
+    let entries = std::fs::read_dir(src).map_err(|e| format!("Failed to read dir {}: {}", src.display(), e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)
+                .map_err(|e| format!("Failed to copy {} to {}: {}", src_path.display(), dst_path.display(), e))?;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn serde_yaml_to_json(yaml_str: &str) -> serde_json::Value {
+    let mut root = serde_json::Map::new();
+    let mut current_section = String::new();
+
+    for line in yaml_str.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        let indent = line.len() - line.trim_start().len();
+
+        if let Some(colon_pos) = trimmed.find(':') {
+            let key = trimmed[..colon_pos].trim().to_string();
+            let value_str = trimmed[colon_pos + 1..].trim();
+
+            if indent == 0 {
+                if value_str.is_empty() || value_str == "{}" || value_str == "[]" {
+                    current_section = key.clone();
+                    if !root.contains_key(&key) {
+                        root.insert(key, serde_json::Value::Object(serde_json::Map::new()));
+                    }
+                } else {
+                    current_section.clear();
+                    root.insert(key, parse_yaml_value(value_str));
+                }
+            } else if indent >= 2 && !current_section.is_empty() {
+                let section = root.entry(current_section.clone())
+                    .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+                if let serde_json::Value::Object(map) = section {
+                    map.insert(key, parse_yaml_value(value_str));
+                }
+            }
+        }
+    }
+
+    serde_json::Value::Object(root)
+}
+
+fn parse_yaml_value(s: &str) -> serde_json::Value {
+    if s.is_empty() || s == "''" || s == "\"\"" {
+        return serde_json::Value::String(String::new());
+    }
+    if s == "true" || s == "yes" {
+        return serde_json::Value::Bool(true);
+    }
+    if s == "false" || s == "no" || s == "off" {
+        return serde_json::Value::Bool(false);
+    }
+    if let Ok(n) = s.parse::<i64>() {
+        return serde_json::Value::Number(serde_json::Number::from(n));
+    }
+    if let Ok(f) = s.parse::<f64>() {
+        if let Some(n) = serde_json::Number::from_f64(f) {
+            return serde_json::Value::Number(n);
+        }
+    }
+    let unquoted = s.trim_matches('\'').trim_matches('"');
+    serde_json::Value::String(unquoted.to_string())
+}
+
+pub(crate) fn tool_label(tool_name: &str) -> &str {
+    match tool_name {
+        "read_file" => "Reading file...",
+        "write_file" => "Writing file...",
+        "execute_code" => "Executing code...",
+        "web_search" => "Searching web...",
+        "browser" => "Browsing web...",
+        "terminal" => "Executing command...",
+        "bash" => "Executing command...",
+        "list_files" => "Listing files...",
+        "search_files" => "Searching files...",
+        "grep" => "Searching code...",
+        "memory_search" => "Searching memory...",
+        "delegate_task" => "Delegating task...",
+        "clarify" => "Requesting clarification...",
+        _ => "Processing...",
+    }
+}
+
+pub(crate) async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
+    let pool = match app.try_state::<AppState>() {
+        Some(s) => s.db_pool.clone(),
+        None => {
+            log::warn!("Cannot get database connection, skipping API key sync");
+            return;
+        }
+    };
+
+    let env_path_output = match hermes_command()
+        .args(&["config", "env-path"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => return,
+    };
+    let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
+    if env_path.is_empty() {
+        return;
+    }
+
+    if let Some(parent) = std::path::Path::new(&env_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let mut env_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if std::path::Path::new(&env_path).exists() {
+        if let Ok(content) = std::fs::read_to_string(&env_path) {
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some((k, v)) = line.split_once('=') {
+                    env_map.insert(k.trim().to_uppercase(), v.trim().trim_matches('"').trim_matches('\'').to_string());
+                }
+            }
+        }
+    }
+
+    let providers: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
+        "SELECT api_key_env, api_key FROM providers WHERE api_key != '' AND api_key_env != ''"
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_else(|e| {
+        log::warn!("Failed to query providers: {}", e);
+        Vec::new()
+    });
+
+    let mut changed = false;
+    for (key_env, api_key) in &providers {
+        let key_upper = key_env.to_uppercase();
+        if let Some(existing) = env_map.get(&key_upper) {
+            if existing != api_key {
+                env_map.insert(key_upper, api_key.clone());
+                changed = true;
+            }
+        } else {
+            env_map.insert(key_upper, api_key.clone());
+            changed = true;
+        }
+    }
+
+    if changed {
+        let content: String = env_map.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join("\n");
+        match std::fs::write(&env_path, content) {
+            Ok(_) => log::info!("Synced {} API keys to Hermes .env", env_map.len()),
+            Err(e) => log::warn!("Failed to write .env: {}", e),
+        }
+    }
+}
+
+pub(crate) async fn sync_hermes_providers_to_db(app: &tauri::AppHandle) {
+    let pool = match app.try_state::<AppState>() {
+        Some(s) => s.db_pool.clone(),
+        None => return,
+    };
+
+    let hermes_bin_path = hermes_bin();
+    #[cfg(not(target_os = "windows"))]
+    let venv_python = std::path::Path::new(&hermes_bin_path)
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("bin").join("python"))
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| hermes_bin_path.replace("/bin/hermes", "/bin/python"));
+    #[cfg(target_os = "windows")]
+    let venv_python = std::path::Path::new(&hermes_bin_path)
+        .parent()
+        .map(|p| p.join("python.exe"))
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| hermes_bin_path.replace("hermes.exe", "python.exe"));
+    if !std::path::Path::new(&venv_python).exists() {
+        log::warn!("hermes venv python not found: {}", venv_python);
+        return;
+    }
+
+    let script = r#"
+import json, sys
+try:
+    from hermes_cli.providers import HERMES_OVERLAYS
+    from agent.models_dev import get_provider_info
+    results = []
+    for pid in HERMES_OVERLAYS:
+        info = get_provider_info(pid)
+        if info and info.env:
+            results.append({
+                'id': info.id,
+                'name': info.name,
+                'env_vars': list(info.env),
+                'base_url': info.api or ''
+            })
+    print(json.dumps(results, ensure_ascii=False))
+except Exception as e:
+    print(json.dumps({'error': str(e)}), file=sys.stderr)
+    sys.exit(1)
+"#;
+
+    let output = match command(&venv_python)
+        .args(["-c", script])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("Failed to query hermes providers: {}", e);
+            return;
+        }
+    };
+
+    let json_str = String::from_utf8_lossy(&output.stdout);
+    let providers: Vec<serde_json::Value> = match serde_json::from_str(&json_str) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("Failed to parse hermes provider JSON: {}", e);
+            return;
+        }
+    };
+
+    let now = chrono::Utc::now().timestamp_millis();
+
+    for (i, p) in providers.iter().enumerate() {
+        let pid = p["id"].as_str().unwrap_or("");
+        let name = p["name"].as_str().unwrap_or("");
+        let base_url = p["base_url"].as_str().unwrap_or("");
+        let env_vars: Vec<String> = p["env_vars"]
+            .as_array()
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let api_key_env = env_vars.first().cloned().unwrap_or_default();
+
+        let provider_value = pid.to_string();
+        let db_id = format!("hermes_{}", pid.replace('-', "_"));
+
+        let exists: bool = sqlx::query_scalar(
+            "SELECT COUNT(*) > 0 FROM providers WHERE value = ?"
+        )
+        .bind(&provider_value)
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(false);
+
+        if exists {
+            let _ = sqlx::query(
+                "UPDATE providers SET name = ?, base_url = ?, api_key_env = ?, updated_at = ? WHERE value = ?"
+            )
+            .bind(name)
+            .bind(base_url)
+            .bind(&api_key_env)
+            .bind(now)
+            .bind(&provider_value)
+            .execute(&pool)
+            .await
+            .map_err(|e| {
+                log::warn!("Failed to update hermes provider {}: {}", pid, e);
+            });
+        } else {
+            let _ = sqlx::query(
+                "INSERT INTO providers (id, name, value, base_url, api_key_env, is_builtin, sort_order, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)"
+            )
+            .bind(&db_id)
+            .bind(name)
+            .bind(&provider_value)
+            .bind(base_url)
+            .bind(&api_key_env)
+            .bind(i as i64 + 100)
+            .bind(now)
+            .bind(now)
+            .execute(&pool)
+            .await
+            .map_err(|e| {
+                log::warn!("Failed to insert hermes provider {}: {}", pid, e);
+            });
+        }
+    }
+
+    log::info!("Synced {} Hermes providers to local database", providers.len());
+}
+
+pub struct AppState {
+    pub db_pool: SqlitePool,
+    pub local_embedding: crate::local_embedding::LocalEmbeddingState,
+    pub file_watcher: crate::file_watcher::FileWatcherState,
+}
+
+pub(crate) struct AgentProcess(pub(crate) Mutex<Option<std::process::Child>>);
+
+#[derive(Serialize, Clone)]
+pub(crate) struct ChatStreamEvent {
+    pub chunk: String,
+    pub done: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_label: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub(crate) struct InstallProgress {
+    pub line: String,
+    pub done: bool,
+    pub success: bool,
+}
+
+pub(crate) fn ensure_gateway_config(app: &AppHandle) {
+    let home = home_dir();
+    let hermes_home = format!("{}/.hermes", home);
+    let config_path = format!("{}/config.yaml", hermes_home);
+    let env_path = format!("{}/.env", hermes_home);
+
+    if let Err(e) = std::fs::create_dir_all(&hermes_home) {
+        log::warn!("Failed to create .hermes directory: {}", e);
+        return;
+    }
+
+    let mut env_content = String::new();
+    if let Ok(existing) = std::fs::read_to_string(&env_path) {
+        env_content = existing;
+    }
+    if !env_content.contains("GATEWAY_ALLOW_ALL_USERS") {
+        env_content.push_str("\nGATEWAY_ALLOW_ALL_USERS=true\n");
+        if let Err(e) = std::fs::write(&env_path, &env_content) {
+            log::warn!("Failed to write gateway env config: {}", e);
+        } else {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Gateway API access configured".to_string(), done: false, success: false,
+            });
+        }
+    }
+
+    let mut config_content = String::new();
+    if let Ok(existing) = std::fs::read_to_string(&config_path) {
+        config_content = existing;
+    }
+    if !config_content.contains("api_server") {
+        config_content.push_str("\n\nplatforms:\n  api_server:\n    port: 8642\n    enabled: true\n");
+        if let Err(e) = std::fs::write(&config_path, &config_content) {
+            log::warn!("Failed to write gateway api_server config: {}", e);
+        } else {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Local API Server enabled (port 8642)".to_string(), done: false, success: false,
+            });
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn is_windowsapps_stub(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    if !lower.contains("windowsapps") {
+        return false;
+    }
+    if lower.contains("pythonsoftwarefoundation") {
+        return false;
+    }
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() == 0 {
+            return true;
+        }
+    }
+    let check = command(path)
+        .args(["-c", "import sys; print(sys.version)"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+    match check {
+        Ok(output) => !output.status.success(),
+        Err(_) => true,
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn validate_python_version(path: &str) -> Option<String> {
+    let output = command(path)
+        .args(["-c", "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}')"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let parts: Vec<&str> = ver.split('.').collect();
+    if parts.len() >= 2 {
+        if let (Ok(major), Ok(minor)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+            if major > 3 || (major == 3 && minor >= 11) {
+                return Some(path.to_string());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn find_windows_python() -> Option<String> {
+    let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
+
+    if let Ok(output) = command("py").args(["-0p"]).output() {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut candidates: Vec<(u32, u32, String)> = Vec::new();
+            for line in stdout.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('-') {
+                    continue;
+                }
+                let path = if line.contains(' ') {
+                    line.split_whitespace().last().unwrap_or("")
+                } else {
+                    line
+                };
+                if path.is_empty() || !path.to_lowercase().ends_with("python.exe") {
+                    continue;
+                }
+                if is_windowsapps_stub(path) {
+                    continue;
+                }
+                if std::path::Path::new(path).exists() {
+                    if let Some((major, minor, validated)) = validate_and_get_version(path) {
+                        candidates.push((major, minor, validated));
+                    }
+                }
+            }
+            candidates.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.cmp(&a.0)));
+            if let Some((_, _, path)) = candidates.into_iter().next() {
+                log::info!("[install] Found Python via py -0p: {}", path);
+                return Some(path);
+            }
+        }
+    }
+
+    let python_dir = format!("{}\\Programs\\Python", local_appdata);
+    if let Some(py) = scan_python_dir(&python_dir) {
+        log::info!("[install] Found Python via Programs\\Python scan: {}", py);
+        return Some(py);
+    }
+
+    let uv_python_dir = format!("{}\\AppData\\Local\\uv\\python", user_profile);
+    if let Some(py) = scan_python_dir(&uv_python_dir) {
+        log::info!("[install] Found Python via uv directory scan: {}", py);
+        return Some(py);
+    }
+
+    for cmd in &["python3.13", "python3.12", "python3.11", "python3", "python"] {
+        if let Ok(output) = command(cmd).arg("--version").output() {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout);
+                let stderr_version = String::from_utf8_lossy(&output.stderr);
+                let combined = format!("{}{}", version, stderr_version);
+                if combined.contains("Python 3.") {
+                    let major_minor: Vec<&str> = combined.split("Python ")
+                        .nth(1).unwrap_or("0.0")
+                        .split('.').collect();
+                    if major_minor.len() >= 2 {
+                        if let (Ok(major), Ok(minor)) = (major_minor[0].parse::<u32>(), major_minor[1].parse::<u32>()) {
+                            if major == 3 && minor >= 11 {
+                                let exe_path = windows_which(cmd);
+                                let path = exe_path.as_deref().unwrap_or(cmd);
+                                if !is_windowsapps_stub(path) {
+                                    if let Some(validated) = validate_python_version(path) {
+                                        log::info!("[install] Found Python via PATH: {}", validated);
+                                        return Some(validated);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    log::warn!("[install] No Python 3.11+ found on system");
+    None
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn scan_python_dir(base_dir: &str) -> Option<String> {
+    let entries = match std::fs::read_dir(base_dir) {
+        Ok(e) => e,
+        Err(_) => return None,
+    };
+    let mut candidates: Vec<(u32, u32, String)> = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let python_exe = entry.path().join("python.exe");
+        if !python_exe.exists() {
+            continue;
+        }
+        let path_str = python_exe.to_string_lossy().to_string();
+        if is_windowsapps_stub(&path_str) {
+            continue;
+        }
+        if let Some((major, minor, validated)) = validate_and_get_version(&path_str) {
+            candidates.push((major, minor, validated));
+        }
+    }
+    candidates.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.cmp(&a.0)));
+    candidates.into_iter().next().map(|(_, _, path)| path)
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn validate_and_get_version(path: &str) -> Option<(u32, u32, String)> {
+    let output = command(path)
+        .args(["-c", "import sys; v=sys.version_info; print(f'{v.major}.{v.minor}')"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let parts: Vec<&str> = ver.split('.').collect();
+    if parts.len() >= 2 {
+        if let (Ok(major), Ok(minor)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+            if major > 3 || (major == 3 && minor >= 11) {
+                return Some((major, minor, path.to_string()));
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn windows_which(cmd: &str) -> Option<String> {
+    if let Ok(output) = command("where").arg(cmd).output() {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let line = line.trim();
+                if !line.is_empty() && std::path::Path::new(line).exists() {
+                    return Some(line.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn try_install_python_via_uv(app: &AppHandle) -> Option<String> {
+    let uv_exe = {
+        let local = format!("{}\\AppData\\Local\\hermes", std::env::var("USERPROFILE").unwrap_or_default());
+        let custom_path = format!("{};{}", local, std::env::var("PATH").unwrap_or_default());
+        let candidates = [
+            format!("{}\\.local\\bin\\uv.exe", std::env::var("USERPROFILE").unwrap_or_default()),
+            format!("{}\\.cargo\\bin\\uv.exe", std::env::var("USERPROFILE").unwrap_or_default()),
+        ];
+        let mut found = None;
+        for p in &candidates {
+            if std::path::Path::new(p).exists() {
+                found = Some(p.clone());
+                break;
+            }
+        }
+        if found.is_none() {
+            if let Ok(output) = command("uv").arg("--version").env("PATH", &custom_path).output() {
+                if output.status.success() {
+                    found = Some("uv".to_string());
+                }
+            }
+        }
+        found
+    };
+
+    let uv_exe = match uv_exe {
+        Some(e) => e,
+        None => {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Installing uv package manager...".to_string(), done: false, success: false,
+            });
+            let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
+            let uv_target = format!("{}\\.local\\bin\\uv.exe", user_profile);
+            if !std::path::Path::new(&uv_target).exists() {
+                let powershell_install = command("powershell")
+                    .args(["-ExecutionPolicy", "ByPass", "-NoProfile", "-Command",
+                        "irm https://astral.sh/uv/install.ps1 | iex"])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .output();
+                match powershell_install {
+                    Ok(output) => {
+                        if !output.status.success() {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            log::warn!("[install] uv install failed: {}", stderr.trim());
+                            return None;
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("[install] uv install error: {}", e);
+                        return None;
+                    }
+                }
+            }
+            if std::path::Path::new(&uv_target).exists() {
+                uv_target
+            } else {
+                let cargo_target = format!("{}\\.cargo\\bin\\uv.exe", user_profile);
+                if std::path::Path::new(&cargo_target).exists() {
+                    cargo_target
+                } else {
+                    log::warn!("[install] uv installed but executable not found");
+                    return None;
+                }
+            }
+        }
+    };
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: "Installing Python 3.11 via uv...".to_string(), done: false, success: false,
+    });
+    let _ = command(&uv_exe).args(["python", "install", "3.11"]).output();
+    let _ = command(&uv_exe).args(["python", "install", "3.12"]).output();
+
+    if let Some(py) = find_windows_python() {
+        return Some(py);
+    }
+
+    for ver in &["3.12", "3.11"] {
+        if let Ok(output) = command(&uv_exe).args(["python", "find", ver]).output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() && std::path::Path::new(&path).exists() {
+                    if let Some(validated) = validate_python_version(&path) {
+                        log::info!("[install] Found Python via uv python find: {}", validated);
+                        return Some(validated);
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn find_unix_python() -> Option<String> {
+    let brew_prefixes = if std::path::Path::new("/opt/homebrew/bin/brew").exists() {
+        vec!["/opt/homebrew"]
+    } else if std::path::Path::new("/usr/local/bin/brew").exists() {
+        vec!["/usr/local"]
+    } else {
+        vec!["/opt/homebrew", "/usr/local"]
+    };
+
+    for prefix in &brew_prefixes {
+        for ver in &["3.13", "3.12", "3.11"] {
+            let path = format!("{}/opt/python@{}/bin/python3", prefix, ver);
+            if std::path::Path::new(&path).exists() {
+                if verify_python_version(&path) {
+                    log::info!("[install] Found Python via brew: {}", path);
+                    return Some(path);
+                }
+            }
+        }
+        let default_brew = format!("{}/bin/python3", prefix);
+        if std::path::Path::new(&default_brew).exists() {
+            if verify_python_version(&default_brew) {
+                log::info!("[install] Found Python via brew default: {}", default_brew);
+                return Some(default_brew);
+            }
+        }
+    }
+
+    let explicit_paths = [
+        "/usr/local/bin/python3.13", "/usr/local/bin/python3.12", "/usr/local/bin/python3.11",
+        "/usr/bin/python3.13", "/usr/bin/python3.12", "/usr/bin/python3.11",
+        "/usr/local/bin/python3",
+        "/usr/bin/python3",
+    ];
+    for path in &explicit_paths {
+        if std::path::Path::new(path).exists() {
+            if verify_python_version(path) {
+                log::info!("[install] Found Python at: {}", path);
+                return Some(path.to_string());
+            }
+        }
+    }
+
+    for cmd in &["python3.13", "python3.12", "python3.11", "python3", "python"] {
+        if let Ok(output) = command(cmd).arg("--version").output() {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout);
+                let stderr_version = String::from_utf8_lossy(&output.stderr);
+                let combined = format!("{}{}", version, stderr_version);
+                if combined.contains("Python 3.") {
+                    let major_minor: Vec<&str> = combined.split("Python ")
+                        .nth(1).unwrap_or("0.0")
+                        .split('.').collect();
+                    if major_minor.len() >= 2 {
+                        if let (Ok(major), Ok(minor)) = (major_minor[0].parse::<u32>(), major_minor[1].parse::<u32>()) {
+                            if major == 3 && minor >= 11 {
+                                let full = unix_which(cmd);
+                                let exe_path = full.as_deref().unwrap_or(cmd);
+                                log::info!("[install] Found Python via PATH: {} -> {}", exe_path, version.trim());
+                                return Some(exe_path.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    log::warn!("[install] No Python 3.11+ found on system");
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn verify_python_version(path: &str) -> bool {
+    if let Ok(output) = command(path).arg("--version").output() {
+        if output.status.success() {
+            let version = String::from_utf8_lossy(&output.stdout);
+            let stderr_version = String::from_utf8_lossy(&output.stderr);
+            let combined = format!("{}{}", version, stderr_version);
+            if let Some(ver_start) = combined.find("Python ") {
+                let ver_str = &combined[ver_start + 7..];
+                let parts: Vec<&str> = ver_str.splitn(2, '.').collect();
+                if parts.len() >= 2 {
+                    if let (Ok(major), Ok(minor)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+                        return major == 3 && minor >= 11;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn unix_which(cmd: &str) -> Option<String> {
+    if let Ok(output) = command("which").arg(cmd).output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() && std::path::Path::new(&path).exists() {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_ansi_no_codes() {
+        assert_eq!(strip_ansi("hello world"), "hello world");
+    }
+
+    #[test]
+    fn test_strip_ansi_color_code() {
+        assert_eq!(strip_ansi("\x1b[32mgreen\x1b[0m"), "green");
+    }
+
+    #[test]
+    fn test_strip_ansi_multiple_codes() {
+        assert_eq!(
+            strip_ansi("\x1b[1;31merror\x1b[0m: \x1b[33mwarning\x1b[0m"),
+            "error: warning"
+        );
+    }
+
+    #[test]
+    fn test_strip_ansi_empty_string() {
+        assert_eq!(strip_ansi(""), "");
+    }
+
+    #[test]
+    fn test_parse_yaml_value_string() {
+        let val = parse_yaml_value("hello");
+        assert_eq!(val, serde_json::Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_parse_yaml_value_quoted_string() {
+        let val = parse_yaml_value("'hello world'");
+        assert_eq!(val, serde_json::Value::String("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_parse_yaml_value_double_quoted() {
+        let val = parse_yaml_value("\"test\"");
+        assert_eq!(val, serde_json::Value::String("test".to_string()));
+    }
+
+    #[test]
+    fn test_parse_yaml_value_bool_true() {
+        let val = parse_yaml_value("true");
+        assert_eq!(val, serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn test_parse_yaml_value_bool_yes() {
+        let val = parse_yaml_value("yes");
+        assert_eq!(val, serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn test_parse_yaml_value_bool_false() {
+        let val = parse_yaml_value("false");
+        assert_eq!(val, serde_json::Value::Bool(false));
+    }
+
+    #[test]
+    fn test_parse_yaml_value_bool_no() {
+        let val = parse_yaml_value("no");
+        assert_eq!(val, serde_json::Value::Bool(false));
+    }
+
+    #[test]
+    fn test_parse_yaml_value_integer() {
+        let val = parse_yaml_value("42");
+        assert_eq!(val, serde_json::Value::Number(serde_json::Number::from(42)));
+    }
+
+    #[test]
+    fn test_parse_yaml_value_float() {
+        let val = parse_yaml_value("3.14");
+        assert!(val.is_number());
+    }
+
+    #[test]
+    fn test_parse_yaml_value_empty() {
+        let val = parse_yaml_value("");
+        assert_eq!(val, serde_json::Value::String(String::new()));
+    }
+
+    #[test]
+    fn test_parse_yaml_value_empty_quotes() {
+        let val = parse_yaml_value("''");
+        assert_eq!(val, serde_json::Value::String(String::new()));
+    }
+
+    #[test]
+    fn test_serde_yaml_to_json_simple() {
+        let yaml = "name: test\nport: 8080\n";
+        let json = serde_yaml_to_json(yaml);
+        assert_eq!(json["name"], serde_json::Value::String("test".to_string()));
+        assert_eq!(json["port"], serde_json::Value::Number(serde_json::Number::from(8080)));
+    }
+
+    #[test]
+    fn test_serde_yaml_to_json_nested() {
+        let yaml = "server:\n  host: localhost\n  port: 3000\n";
+        let json = serde_yaml_to_json(yaml);
+        assert!(json["server"].is_object());
+        assert_eq!(json["server"]["host"], serde_json::Value::String("localhost".to_string()));
+        assert_eq!(json["server"]["port"], serde_json::Value::Number(serde_json::Number::from(3000)));
+    }
+
+    #[test]
+    fn test_serde_yaml_to_json_skip_comments() {
+        let yaml = "# comment\nname: test\n# another comment\n";
+        let json = serde_yaml_to_json(yaml);
+        assert_eq!(json["name"], serde_json::Value::String("test".to_string()));
+        assert!(json.get("# comment").is_none());
+    }
+
+    #[test]
+    fn test_serde_yaml_to_json_empty() {
+        let json = serde_yaml_to_json("");
+        assert!(json.as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_tool_label_known() {
+        assert_eq!(tool_label("read_file"), "Reading file...");
+        assert_eq!(tool_label("write_file"), "Writing file...");
+        assert_eq!(tool_label("execute_code"), "Executing code...");
+        assert_eq!(tool_label("web_search"), "Searching web...");
+        assert_eq!(tool_label("terminal"), "Executing command...");
+        assert_eq!(tool_label("bash"), "Executing command...");
+    }
+
+    #[test]
+    fn test_tool_label_unknown() {
+        assert_eq!(tool_label("unknown_tool"), "Processing...");
+    }
+
+    #[test]
+    fn test_home_dir_not_empty() {
+        let home = home_dir();
+        assert!(!home.is_empty());
+    }
+
+    #[test]
+    fn test_copy_dir_recursive() {
+        let src = std::env::temp_dir().join("hermes_test_src");
+        let dst = std::env::temp_dir().join("hermes_test_dst");
+
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&dst);
+
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("test.txt"), "hello").unwrap();
+        std::fs::create_dir_all(src.join("subdir")).unwrap();
+        std::fs::write(src.join("subdir/nested.txt"), "world").unwrap();
+
+        copy_dir_recursive(&src, &dst).unwrap();
+
+        assert!(dst.join("test.txt").exists());
+        assert!(dst.join("subdir/nested.txt").exists());
+        assert_eq!(std::fs::read_to_string(dst.join("test.txt")).unwrap(), "hello");
+
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&dst);
+    }
+
+    #[test]
+    fn test_copy_dir_recursive_nonexistent_src() {
+        let dst = std::env::temp_dir().join("hermes_test_dst2");
+        let result = copy_dir_recursive(
+            std::path::Path::new("/nonexistent/path"),
+            dst.as_path(),
+        );
+        assert!(result.is_err());
+    }
+}

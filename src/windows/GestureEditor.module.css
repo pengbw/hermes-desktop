@@ -1,0 +1,315 @@
+.gestureEditorOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: gestureEditorFadeIn 0.25s ease;
+}
+
+@keyframes gestureEditorFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.gestureEditorModal {
+  width: 920px;
+  max-width: 95vw;
+  max-height: 90vh;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: gestureEditorSlideUp 0.3s ease;
+}
+
+@keyframes gestureEditorSlideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.gestureEditorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e8e8ed;
+}
+
+.gestureEditorHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gestureEditorHeader h3::before {
+  content: "🎭";
+}
+
+.gestureEditorClose {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: #f5f5f7;
+  color: #666;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.gestureEditorClose:hover {
+  background: #ffe5e5;
+  color: #e53935;
+}
+
+.gestureEditorBody {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.gesturePreviewPanel {
+  width: 380px;
+  min-width: 380px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e8e8ed;
+}
+
+.gesturePreviewCanvasWrap {
+  flex: 1;
+  position: relative;
+  background: linear-gradient(180deg, #f0f2f8 0%, #e8eaf0 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+.gesturePreviewCanvasWrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.gesturePreviewLoading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #999;
+  font-size: 14px;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e0e0e0;
+  border-top-color: #7c6fff;
+  border-radius: 50%;
+  animation: gestureSpin 0.8s linear infinite;
+}
+
+@keyframes gestureSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gestureMetaBar {
+  padding: 12px 16px;
+  border-top: 1px solid #e8e8ed;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: #fafafa;
+}
+
+.metaField {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 100px;
+}
+
+.metaField label {
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.metaField input {
+  width: 100%;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  background: #fff;
+  color: #333;
+  font-size: 13px;
+  font-family: "SF Mono", "Menlo", monospace;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.metaField input:focus {
+  border-color: #7c6fff;
+}
+
+.gestureGuiPanel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.gestureGuiMount {
+  flex: 1;
+  padding: 8px 12px;
+  overflow-y: auto;
+}
+
+.gestureGuiMount :global(.lil-gui) {
+  --background-color: transparent !important;
+  --widget-color: #f0f0f4 !important;
+  --hover-color: rgba(124, 111, 255, 0.08) !important;
+  --focus-color: rgba(124, 111, 255, 0.15) !important;
+  --number-color: #5b4fd4 !important;
+  --string-color: #0d9488 !important;
+  --font-size: 11px !important;
+  --font-family: "Inter", -apple-system, sans-serif !important;
+  --text-color: #333 !important;
+  --title-background-color: #f5f5f9 !important;
+  --title-text-color: #555 !important;
+  width: 100% !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.gestureGuiMount :global(.lil-gui .title) {
+  font-weight: 600 !important;
+  color: #555 !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+.gestureGuiMount :global(.lil-gui.root > .title) {
+  display: none !important;
+}
+
+.gestureEditorFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid #e8e8ed;
+  background: #fafafa;
+}
+
+.gestureBtnCancel {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  background: #fff;
+  color: #666;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.gestureBtnCancel:hover {
+  background: #f5f5f7;
+  color: #333;
+}
+
+.gestureBtnSave {
+  padding: 8px 28px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #7c6fff, #5b4fd4);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 12px rgba(124, 111, 255, 0.25);
+}
+
+.gestureBtnSave:hover {
+  background: linear-gradient(135deg, #8b7fff, #6a5fe3);
+  box-shadow: 0 4px 20px rgba(124, 111, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.gestureBtnReset {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  background: #fff;
+  color: #e68a00;
+  font-size: 12px;
+  cursor: pointer;
+  margin-right: auto;
+  transition: all 0.2s;
+}
+
+.gestureBtnReset:hover {
+  background: #fff8ee;
+}
+
+.gestureNameInput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px 0 0;
+}
+
+.gestureNameInput input {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  background: #fff;
+  color: #333;
+  font-size: 14px;
+  outline: none;
+  width: 140px;
+}
+
+.gestureNameInput input:focus {
+  border-color: #7c6fff;
+}

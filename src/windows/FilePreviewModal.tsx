@@ -13,30 +13,86 @@ function getFileType(fileName: string): "markdown" | "html" | "pdf" | "word" | "
   if (["html", "htm"].includes(ext)) return "html";
   if (ext === "pdf") return "pdf";
   if (["doc", "docx"].includes(ext)) return "word";
-  if ([
-    "js", "jsx", "ts", "tsx", "py", "rs", "go", "java", "c", "cpp", "h",
-    "css", "scss", "less", "json", "yaml", "yml", "toml", "xml", "sql",
-    "sh", "bash", "zsh", "rb", "php", "swift", "kt", "dart", "lua",
-  ].includes(ext)) return "code";
+  if (
+    [
+      "js",
+      "jsx",
+      "ts",
+      "tsx",
+      "py",
+      "rs",
+      "go",
+      "java",
+      "c",
+      "cpp",
+      "h",
+      "css",
+      "scss",
+      "less",
+      "json",
+      "yaml",
+      "yml",
+      "toml",
+      "xml",
+      "sql",
+      "sh",
+      "bash",
+      "zsh",
+      "rb",
+      "php",
+      "swift",
+      "kt",
+      "dart",
+      "lua",
+    ].includes(ext)
+  )
+    return "code";
   return "unknown";
 }
 
 function getLanguage(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
   const map: Record<string, string> = {
-    js: "javascript", jsx: "javascript", ts: "typescript", tsx: "typescript",
-    py: "python", rs: "rust", go: "go", java: "java", c: "c", cpp: "cpp",
-    h: "c", css: "css", scss: "scss", less: "less", json: "json",
-    yaml: "yaml", yml: "yaml", toml: "toml", xml: "xml", sql: "sql",
-    sh: "bash", bash: "bash", zsh: "bash", rb: "ruby", php: "php",
-    swift: "swift", kt: "kotlin", dart: "dart", lua: "lua",
-    html: "html", htm: "html", md: "markdown", markdown: "markdown",
+    js: "javascript",
+    jsx: "javascript",
+    ts: "typescript",
+    tsx: "typescript",
+    py: "python",
+    rs: "rust",
+    go: "go",
+    java: "java",
+    c: "c",
+    cpp: "cpp",
+    h: "c",
+    css: "css",
+    scss: "scss",
+    less: "less",
+    json: "json",
+    yaml: "yaml",
+    yml: "yaml",
+    toml: "toml",
+    xml: "xml",
+    sql: "sql",
+    sh: "bash",
+    bash: "bash",
+    zsh: "bash",
+    rb: "ruby",
+    php: "php",
+    swift: "swift",
+    kt: "kotlin",
+    dart: "dart",
+    lua: "lua",
+    html: "html",
+    htm: "html",
+    md: "markdown",
+    markdown: "markdown",
   };
   return map[ext] || "plaintext";
 }
 
 export default function FilePreviewModal({ filePath, fileName, onClose }: FilePreviewModalProps) {
   const [content, setContent] = useState<string>("");
+  const [wordBuffer, setWordBuffer] = useState<ArrayBuffer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -46,14 +102,21 @@ export default function FilePreviewModal({ filePath, fileName, onClose }: FilePr
     setLoading(true);
     setError("");
     try {
-      const text = await invoke<string>("read_text_file", { path: filePath });
-      setContent(text);
+      if (fileType === "word") {
+        const arrayBuffer = await invoke<ArrayBuffer>("read_binary_file", { path: filePath });
+        setContent("");
+        setWordBuffer(arrayBuffer);
+      } else {
+        const text = await invoke<string>("read_text_file", { path: filePath });
+        setContent(text);
+        setWordBuffer(null);
+      }
     } catch (err) {
       setError(String(err));
     } finally {
       setLoading(false);
     }
-  }, [filePath]);
+  }, [filePath, fileType]);
 
   useEffect(() => {
     loadContent();
@@ -98,8 +161,8 @@ export default function FilePreviewModal({ filePath, fileName, onClose }: FilePr
   const renderWord = async () => {
     try {
       const mammoth = await import("mammoth");
-      const arrayBuffer = new TextEncoder().encode(content).buffer;
-      const result = await mammoth.default.convertToHtml({ arrayBuffer });
+      if (!wordBuffer) return `<p>Word 文件加载失败</p>`;
+      const result = await mammoth.default.convertToHtml({ arrayBuffer: wordBuffer });
       return result.value;
     } catch {
       return `<p>Word 文件预览失败，请尝试直接打开文件</p>`;
@@ -147,7 +210,9 @@ export default function FilePreviewModal({ filePath, fileName, onClose }: FilePr
             <span className="file-preview-type-badge">{fileType}</span>
             <h3>{fileName}</h3>
           </div>
-          <button className="file-preview-close" onClick={onClose}>✕</button>
+          <button className="file-preview-close" onClick={onClose}>
+            ✕
+          </button>
         </div>
         <div className="file-preview-body">
           {loading && (
@@ -162,11 +227,7 @@ export default function FilePreviewModal({ filePath, fileName, onClose }: FilePr
             </div>
           )}
           {!loading && !error && fileType === "pdf" && (
-            <iframe
-              src={filePath}
-              className="file-preview-pdf"
-              title={fileName}
-            />
+            <iframe src={filePath} className="file-preview-pdf" title={fileName} />
           )}
           {!loading && !error && fileType === "html" && (
             <iframe

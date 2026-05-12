@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import path from "path";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -8,6 +9,26 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
+
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      "@core": path.resolve(__dirname, "./src/core"),
+      "@services": path.resolve(__dirname, "./src/services"),
+      "@hooks": path.resolve(__dirname, "./src/hooks"),
+      "@components": path.resolve(__dirname, "./src/components"),
+      "@pages": path.resolve(__dirname, "./src/pages"),
+      "@stores": path.resolve(__dirname, "./src/stores"),
+      "@utils": path.resolve(__dirname, "./src/utils"),
+      "@constants": path.resolve(__dirname, "./src/constants"),
+      "@types": path.resolve(__dirname, "./src/@types"),
+      "@i18n": path.resolve(__dirname, "./src/i18n"),
+      "@contexts": path.resolve(__dirname, "./src/contexts"),
+      "@styles": path.resolve(__dirname, "./src/styles"),
+      "@windows": path.resolve(__dirname, "./src/windows"),
+      "@assets": path.resolve(__dirname, "./src/assets"),
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

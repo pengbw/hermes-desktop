@@ -1,0 +1,38 @@
+.chatLayout {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.chatMain {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-input-bg);
+}
+
+.chatPanel {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.messagesList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.emptyChat {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999999;
+  font-size: 14px;
+  padding: 48px;
+}

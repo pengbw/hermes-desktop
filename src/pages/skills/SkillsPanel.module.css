@@ -1,0 +1,530 @@
+/* ── 技能中心 ── */
+
+.skillsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.skillsPanel > .skillsHeader,
+.skillsPanel > .skillsToolbar {
+  flex-shrink: 0;
+}
+
+.skillsPanel > .skillsGrid,
+.skillsPanel > .skillsLoading,
+.skillsPanel > .skillsEmpty {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.skillsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.skillsHeaderLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skillsHeaderActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.skillsToolbar {
+  display: flex;
+  gap: 10px;
+}
+
+.skillsSearch {
+  flex: 1;
+  padding: 9px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  transition: border-color 0.15s;
+}
+
+.skillsSearch:focus {
+  border-color: var(--color-primary);
+}
+
+.skillsFilter {
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.skillsFilter:focus {
+  border-color: var(--color-primary);
+}
+
+.skillsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.skillCard {
+  background: var(--color-surface);
+  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  transition:
+    box-shadow 0.2s,
+    border-color 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 140px;
+}
+
+.skillCard:hover {
+  box-shadow: 0 4px 12px var(--color-shadow);
+  border-color: var(--color-primary);
+}
+
+.skillCardTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.skillCardIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  background: var(--color-section-bg);
+}
+
+.skillIconEmoji {
+  font-size: 18px;
+  position: absolute;
+  top: 2px;
+  left: 4px;
+}
+
+.skillIconLetter {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  position: relative;
+  margin-top: 4px;
+}
+
+.skillCardHeader {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.skillCardName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  font-family: "SF Mono", "Menlo", "Monaco", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skillVersion {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  background: var(--color-section-bg);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.skillCardMenuWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.skillCardMenuBtn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.skillCardMenuBtn:hover {
+  background: var(--color-section-bg);
+}
+
+.skillCardMenu {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px var(--color-shadow);
+  z-index: 100;
+  min-width: 120px;
+  overflow: hidden;
+}
+
+.skillCardMenu button {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.skillCardMenu button:hover {
+  background: var(--color-section-bg);
+}
+
+.skillCardDesc {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.skillCardBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.skillCardTags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.sourceBadge,
+.trustBadge,
+.enabledBadge,
+.tagBadge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.sourceBadge.builtin {
+  background: var(--color-toast-success-bg);
+  color: var(--color-toast-success-text);
+}
+
+.sourceBadge.local {
+  background: var(--color-dirty-badge-bg);
+  color: var(--color-dirty-badge-text);
+}
+
+.sourceBadge.hub {
+  background: var(--color-skill-hub-bg);
+  color: var(--color-skill-hub-text);
+}
+
+.sourceBadge.official {
+  background: var(--color-toast-success-bg);
+  color: var(--color-toast-success-text);
+}
+
+.sourceBadge.community {
+  background: var(--color-dirty-badge-bg);
+  color: var(--color-dirty-badge-text);
+}
+
+.enabledBadge.enabled {
+  background: var(--color-toast-success-bg);
+  color: var(--color-toast-success-text);
+}
+
+.enabledBadge.disabled {
+  background: var(--color-section-bg);
+  color: var(--color-text-secondary);
+}
+
+.tagBadge {
+  background: var(--color-section-bg);
+  color: var(--color-text-secondary);
+}
+
+.skillsLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 0;
+}
+
+.loadingSpinner {
+  font-size: 24px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.skillsLoading p {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.skillsEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 0;
+}
+
+.skillsEmpty span {
+  font-size: 32px;
+}
+
+.skillsEmpty p {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalContent {
+  background: var(--color-bg);
+  border-radius: 14px;
+  width: 90%;
+  max-width: 640px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modalHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--color-text);
+}
+
+.modalClose {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modalClose:hover {
+  background: var(--color-section-bg);
+}
+
+.modalBody {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.skillDetailContent {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "SF Mono", "Menlo", "Monaco", monospace;
+  background: var(--color-surface);
+  padding: 12px;
+  border-radius: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.addSkillModal .modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.browseSkillItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+}
+
+.browseSkillInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.browseSkillName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.browseSkillDesc {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browseSkillMeta {
+  display: flex;
+  gap: 6px;
+}
+
+.installBtn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.installBtn:hover {
+  opacity: 0.85;
+}
+
+.installBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.browsePagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.browsePagination button {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.browsePagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.browsePagination span {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.installMsg {
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-primary);
+  margin: 4px 0 0;
+}
+
+/* 会话重命名 */
+.convRenameInput {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
+  padding: 2px 6px;
+  outline: none;
+  min-width: 0;
+}
+
+.convRenameInput:focus {
+  border-color: rgba(100, 180, 255, 0.6);
+}

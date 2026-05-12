@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { VRMLoaderPlugin, VRMHumanBoneName } from "@pixiv/three-vrm";
+import { VRMLoaderPlugin, VRMHumanBoneName, VRM } from "@pixiv/three-vrm";
 import GUI from "lil-gui";
-import "./GestureEditor.css";
+import { useI18n } from "../contexts/I18nContext";
+import styles from "./GestureEditor.module.css";
 
 const MODEL_PATH = "/vrm/miko.vrm";
 
@@ -67,22 +68,30 @@ const BONE_MAP: Record<string, VRMHumanBoneName> = {
 const BONE_KEYS = Object.keys(BONE_MAP);
 
 const BONE_GROUPS: Record<string, string[]> = {
-  "躯干 Torso": ["hips", "spine", "chest", "upperChest"],
-  "头部 Head": ["neck", "head", "leftEye", "rightEye"],
-  "左臂 Left Arm": ["leftShoulder", "leftUpperArm", "leftLowerArm", "leftHand"],
-  "右臂 Right Arm": ["rightShoulder", "rightUpperArm", "rightLowerArm", "rightHand"],
-  "左腿 Left Leg": ["leftUpperLeg", "leftLowerLeg", "leftFoot", "leftToes"],
-  "右腿 Right Leg": ["rightUpperLeg", "rightLowerLeg", "rightFoot", "rightToes"],
-  "左手拇指 L.Thumb": ["leftThumbMetacarpal", "leftThumbProximal", "leftThumbDistal"],
-  "左手食指 L.Index": ["leftIndexProximal", "leftIndexIntermediate", "leftIndexDistal"],
-  "左手中指 L.Middle": ["leftMiddleProximal", "leftMiddleIntermediate", "leftMiddleDistal"],
-  "左手无名指 L.Ring": ["leftRingProximal", "leftRingIntermediate", "leftRingDistal"],
-  "左手小指 L.Little": ["leftLittleProximal", "leftLittleIntermediate", "leftLittleDistal"],
-  "右手拇指 R.Thumb": ["rightThumbMetacarpal", "rightThumbProximal", "rightThumbDistal"],
-  "右手食指 R.Index": ["rightIndexProximal", "rightIndexIntermediate", "rightIndexDistal"],
-  "右手中指 R.Middle": ["rightMiddleProximal", "rightMiddleIntermediate", "rightMiddleDistal"],
-  "右手无名指 R.Ring": ["rightRingProximal", "rightRingIntermediate", "rightRingDistal"],
-  "右手小指 R.Little": ["rightLittleProximal", "rightLittleIntermediate", "rightLittleDistal"],
+  "gesture.boneTorso": ["hips", "spine", "chest", "upperChest"],
+  "gesture.boneHead": ["neck", "head", "leftEye", "rightEye"],
+  "gesture.boneLeftArm": ["leftShoulder", "leftUpperArm", "leftLowerArm", "leftHand"],
+  "gesture.boneRightArm": ["rightShoulder", "rightUpperArm", "rightLowerArm", "rightHand"],
+  "gesture.boneLeftLeg": ["leftUpperLeg", "leftLowerLeg", "leftFoot", "leftToes"],
+  "gesture.boneRightLeg": ["rightUpperLeg", "rightLowerLeg", "rightFoot", "rightToes"],
+  "gesture.boneLeftThumb": ["leftThumbMetacarpal", "leftThumbProximal", "leftThumbDistal"],
+  "gesture.boneLeftIndex": ["leftIndexProximal", "leftIndexIntermediate", "leftIndexDistal"],
+  "gesture.boneLeftMiddle": ["leftMiddleProximal", "leftMiddleIntermediate", "leftMiddleDistal"],
+  "gesture.boneLeftRing": ["leftRingProximal", "leftRingIntermediate", "leftRingDistal"],
+  "gesture.boneLeftLittle": ["leftLittleProximal", "leftLittleIntermediate", "leftLittleDistal"],
+  "gesture.boneRightThumb": ["rightThumbMetacarpal", "rightThumbProximal", "rightThumbDistal"],
+  "gesture.boneRightIndex": ["rightIndexProximal", "rightIndexIntermediate", "rightIndexDistal"],
+  "gesture.boneRightMiddle": [
+    "rightMiddleProximal",
+    "rightMiddleIntermediate",
+    "rightMiddleDistal",
+  ],
+  "gesture.boneRightRing": ["rightRingProximal", "rightRingIntermediate", "rightRingDistal"],
+  "gesture.boneRightLittle": [
+    "rightLittleProximal",
+    "rightLittleIntermediate",
+    "rightLittleDistal",
+  ],
 };
 
 const OLD_TO_NEW_BONE_MAP: Record<string, string> = {
@@ -120,29 +129,52 @@ const OLD_TO_NEW_BONE_MAP: Record<string, string> = {
   leftLittle3: "leftLittleDistal",
 };
 
-function eulerToQuat(euler: { x: number; y: number; z: number }): { x: number; y: number; z: number; w: number } {
-  const e = new THREE.Euler(euler.x, euler.y, euler.z, 'XYZ');
+function eulerToQuat(euler: { x: number; y: number; z: number }): {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+} {
+  const e = new THREE.Euler(euler.x, euler.y, euler.z, "XYZ");
   const q = new THREE.Quaternion().setFromEuler(e);
   return { x: q.x, y: q.y, z: q.z, w: q.w };
 }
 
-function quatToEuler(quat: { x: number; y: number; z: number; w: number }): { x: number; y: number; z: number } {
+function quatToEuler(quat: { x: number; y: number; z: number; w: number }): {
+  x: number;
+  y: number;
+  z: number;
+} {
   const q = new THREE.Quaternion(quat.x, quat.y, quat.z, quat.w);
-  const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
+  const e = new THREE.Euler().setFromQuaternion(q, "XYZ");
   return { x: e.x, y: e.y, z: e.z };
 }
 
-function isPoseFormat(v: any): boolean {
-  return v && Array.isArray(v.rotation) && v.rotation.length === 4;
+function isPoseFormat(v: unknown): v is { rotation: number[] } {
+  return (
+    !!v &&
+    typeof v === "object" &&
+    Array.isArray((v as { rotation: number[] }).rotation) &&
+    (v as { rotation: number[] }).rotation.length === 4
+  );
 }
 
-function isOldQuatFormat(v: any): boolean {
-  return v && typeof v.w === 'number' && !Array.isArray(v.rotation);
+function isOldQuatFormat(v: unknown): v is { x: number; y: number; z: number; w: number } {
+  return (
+    !!v &&
+    typeof v === "object" &&
+    typeof (v as { w: number }).w === "number" &&
+    !Array.isArray((v as { rotation: unknown }).rotation)
+  );
 }
 
 function parseTargetJson(json: string): Record<string, { x: number; y: number; z: number }> {
-  let parsed: any;
-  try { parsed = JSON.parse(json || "{}"); } catch { return {}; }
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(json || "{}");
+  } catch {
+    return {};
+  }
 
   const result: Record<string, { x: number; y: number; z: number }> = {};
   for (const key of BONE_KEYS) {
@@ -153,11 +185,22 @@ function parseTargetJson(json: string): Record<string, { x: number; y: number; z
     }
     if (v) {
       if (isPoseFormat(v)) {
-        result[key] = quatToEuler({ x: v.rotation[0], y: v.rotation[1], z: v.rotation[2], w: v.rotation[3] });
+        result[key] = quatToEuler({
+          x: v.rotation[0],
+          y: v.rotation[1],
+          z: v.rotation[2],
+          w: v.rotation[3],
+        });
       } else if (isOldQuatFormat(v)) {
         result[key] = quatToEuler(v);
-      } else if (typeof v.x === 'number') {
-        result[key] = { x: v.x ?? 0, y: v.y ?? 0, z: v.z ?? 0 };
+      } else if (
+        typeof v === "object" &&
+        v !== null &&
+        "x" in v &&
+        typeof (v as { x: number }).x === "number"
+      ) {
+        const obj = v as { x?: number; y?: number; z?: number };
+        result[key] = { x: obj.x ?? 0, y: obj.y ?? 0, z: obj.z ?? 0 };
       } else {
         result[key] = { x: 0, y: 0, z: 0 };
       }
@@ -198,10 +241,11 @@ export default function GestureEditor({
   onSave,
   onCancel,
 }: GestureEditorProps) {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const guiMountRef = useRef<HTMLDivElement>(null);
   const guiRef = useRef<GUI | null>(null);
-  const vrmRef = useRef<any>(null);
+  const vrmRef = useRef<VRM | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const animRef = useRef<number>(0);
   const [loading, setLoading] = useState(true);
@@ -226,7 +270,12 @@ export default function GestureEditor({
     let destroyed = false;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(22, canvas.clientWidth / canvas.clientHeight, 0.1, 20);
+    const camera = new THREE.PerspectiveCamera(
+      22,
+      canvas.clientWidth / canvas.clientHeight,
+      0.1,
+      20
+    );
     camera.position.set(0, 1.3, 3.5);
     camera.lookAt(0, 1.2, 0);
 
@@ -260,14 +309,14 @@ export default function GestureEditor({
 
         applyBonesToModel(vrm);
 
-        const gui = new GUI({ container: guiMount, title: "骨骼参数" });
+        const gui = new GUI({ container: guiMount, title: t("gesture.boneParams") });
         guiRef.current = gui;
 
         const params = boneParamsRef.current;
         const PI = Math.PI;
 
         for (const [groupName, boneKeys] of Object.entries(BONE_GROUPS)) {
-          const folder = gui.addFolder(groupName);
+          const folder = gui.addFolder(t(groupName));
           for (const key of boneKeys) {
             if (!params[key]) continue;
             const sub = folder.addFolder(key);
@@ -276,7 +325,12 @@ export default function GestureEditor({
             sub.add(params[key], "z", -PI, PI, 0.01).onChange(() => applyBonesToModel(vrm));
             sub.close();
           }
-          const isFinger = groupName.includes("Thumb") || groupName.includes("Index") || groupName.includes("Middle") || groupName.includes("Ring") || groupName.includes("Little");
+          const isFinger =
+            groupName.includes("Thumb") ||
+            groupName.includes("Index") ||
+            groupName.includes("Middle") ||
+            groupName.includes("Ring") ||
+            groupName.includes("Little");
           const isLeg = groupName.includes("Leg");
           if (isFinger || isLeg) {
             folder.close();
@@ -323,7 +377,7 @@ export default function GestureEditor({
     };
   }, []);
 
-  function applyBonesToModel(vrm: any) {
+  function applyBonesToModel(vrm: VRM) {
     const params = boneParamsRef.current;
     for (const [key, boneName] of Object.entries(BONE_MAP)) {
       const p = params[key];
@@ -334,7 +388,9 @@ export default function GestureEditor({
           const q = eulerToQuat(p);
           node.quaternion.set(q.x, q.y, q.z, q.w);
         }
-      } catch {}
+      } catch (err) {
+        console.warn("Failed to apply gesture pose:", err);
+      }
     }
   }
 
@@ -359,73 +415,102 @@ export default function GestureEditor({
     }
     if (vrmRef.current) applyBonesToModel(vrmRef.current);
     if (guiRef.current) {
-      guiRef.current.controllersRecursive().forEach(c => c.updateDisplay());
+      guiRef.current.controllersRecursive().forEach((c) => c.updateDisplay());
     }
   }
 
   return (
-    <div className="gesture-editor-overlay" onClick={onCancel}>
-      <div className="gesture-editor-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="gesture-editor-header">
+    <div className={styles.gestureEditorOverlay} onClick={onCancel}>
+      <div className={styles.gestureEditorModal} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.gestureEditorHeader}>
           <h3>
-            <span className="gesture-name-input">
+            <span className={styles.gestureNameInput}>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="动作名称"
+                placeholder={t("gesture.namePlaceholder")}
               />
             </span>
           </h3>
-          <button className="gesture-editor-close" onClick={onCancel}>✕</button>
+          <button className={styles.gestureEditorClose} onClick={onCancel}>
+            ✕
+          </button>
         </div>
 
-        <div className="gesture-editor-body">
-          <div className="gesture-preview-panel">
-            <div className="gesture-preview-canvas-wrap">
+        <div className={styles.gestureEditorBody}>
+          <div className={styles.gesturePreviewPanel}>
+            <div className={styles.gesturePreviewCanvasWrap}>
               <canvas ref={canvasRef} />
               {loading && (
-                <div className="gesture-preview-loading">
-                  <div className="spinner" />
-                  <span>加载模型中...</span>
+                <div className={styles.gesturePreviewLoading}>
+                  <div className={styles.spinner} />
+                  <span>{t("gesture.loadingModel")}</span>
                 </div>
               )}
             </div>
-            <div className="gesture-meta-bar">
-              <div className="meta-field">
-                <label>时长</label>
-                <input type="number" value={duration} onChange={(e) => setDuration(parseInt(e.target.value) || 0)} />
+            <div className={styles.gestureMetaBar}>
+              <div className={styles.metaField}>
+                <label>{t("gesture.duration")}</label>
+                <input
+                  type="number"
+                  value={duration}
+                  onChange={(e) => setDuration(parseInt(e.target.value) || 0)}
+                />
               </div>
-              <div className="meta-field">
-                <label>视线X</label>
-                <input type="number" step="0.1" value={lookAtX} onChange={(e) => setLookAtX(parseFloat(e.target.value) || 0)} />
+              <div className={styles.metaField}>
+                <label>{t("gesture.lookAtX")}</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={lookAtX}
+                  onChange={(e) => setLookAtX(parseFloat(e.target.value) || 0)}
+                />
               </div>
-              <div className="meta-field">
-                <label>视线Y</label>
-                <input type="number" step="0.1" value={lookAtY} onChange={(e) => setLookAtY(parseFloat(e.target.value) || 0)} />
+              <div className={styles.metaField}>
+                <label>{t("gesture.lookAtY")}</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={lookAtY}
+                  onChange={(e) => setLookAtY(parseFloat(e.target.value) || 0)}
+                />
               </div>
-              <div className="meta-field">
-                <label>倾斜</label>
-                <input type="number" step="0.01" value={tilt} onChange={(e) => setTilt(parseFloat(e.target.value) || 0)} />
+              <div className={styles.metaField}>
+                <label>{t("gesture.tilt")}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={tilt}
+                  onChange={(e) => setTilt(parseFloat(e.target.value) || 0)}
+                />
               </div>
             </div>
           </div>
 
-          <div className="gesture-gui-panel">
-            <div className="gesture-gui-mount" ref={guiMountRef} />
+          <div className={styles.gestureGuiPanel}>
+            <div className={styles.gestureGuiMount} ref={guiMountRef} />
           </div>
         </div>
 
-        <div className="gesture-editor-footer">
+        <div className={styles.gestureEditorFooter}>
           {!readOnly && (
             <>
-              <button className="gesture-btn-reset" onClick={handleReset}>🔄 重置所有</button>
-              <button className="gesture-btn-cancel" onClick={onCancel}>取消</button>
-              <button className="gesture-btn-save" onClick={handleSave}>💾 保存动作</button>
+              <button className={styles.gestureBtnReset} onClick={handleReset}>
+                🔄 {t("gesture.resetAll")}
+              </button>
+              <button className={styles.gestureBtnCancel} onClick={onCancel}>
+                {t("gesture.cancel")}
+              </button>
+              <button className={styles.gestureBtnSave} onClick={handleSave}>
+                💾 {t("gesture.saveAction")}
+              </button>
             </>
           )}
           {readOnly && (
-            <button className="gesture-btn-cancel" onClick={onCancel}>关闭</button>
+            <button className={styles.gestureBtnCancel} onClick={onCancel}>
+              {t("gesture.close")}
+            </button>
           )}
         </div>
       </div>

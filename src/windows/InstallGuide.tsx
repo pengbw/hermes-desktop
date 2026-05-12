@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import "./InstallGuide.css";
+import styles from "./InstallGuide.module.css";
 
 interface InstallProgress {
   line: string;
@@ -73,48 +73,70 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
   };
 
   return (
-    <div className="ig">
-      <div className="ig-bg">
-        <div className="ig-orb ig-orb-1" />
-        <div className="ig-orb ig-orb-2" />
-        <div className="ig-orb ig-orb-3" />
+    <div className={styles.ig}>
+      <div className={styles.igBg}>
+        <div className={styles.igOrb + " " + styles.igOrb1} />
+        <div className={styles.igOrb + " " + styles.igOrb2} />
+        <div className={styles.igOrb + " " + styles.igOrb3} />
       </div>
 
-      <div className="ig-card">
-        <div className="ig-header">
-          <div className="ig-logo-ring">
-            <img src="/bot.svg" alt="Hermes" className="ig-logo" />
+      <div className={styles.igCard}>
+        <div className={styles.igHeader}>
+          <div className={styles.igLogoRing}>
+            <img src="/bot.svg" alt="Hermes" className={styles.igLogo} />
           </div>
           <h1>Hermes Desktop</h1>
-          <p className="ig-desc">
+          <p className={styles.igDesc}>
             Install Hermes Agent core engine to enable AI conversation capabilities
           </p>
         </div>
 
         {!installing && !installSuccess && !installError && (
-          <div className="ig-methods">
-            <button className="ig-method ig-method--primary" onClick={() => handleInstall("curl")}>
-              <div className="ig-method-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <div className={styles.igMethods}>
+            <button
+              className={styles.igMethod + " " + styles.igMethodPrimary}
+              onClick={() => handleInstall("curl")}
+            >
+              <div className={styles.igMethodIcon}>
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M12 2L2 7l10 5 10-5-10-5z" />
                   <path d="M2 17l10 5 10-5" />
                   <path d="M2 12l10 5 10-5" />
                 </svg>
               </div>
-              <div className="ig-method-info">
-                <span className="ig-method-name">One-Click Install</span>
-                <span className="ig-method-desc">
+              <div className={styles.igMethodInfo}>
+                <span className={styles.igMethodName}>One-Click Install</span>
+                <span className={styles.igMethodDesc}>
                   {isWindows ? "Windows Native" : "Official Script · Recommended"}
                 </span>
               </div>
-              <svg className="ig-method-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                className={styles.igMethodArrow}
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </button>
 
             {/*
             {isWindows && (
-              <div className="ig-notice">
+              <div className={styles.igNotice}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
                   <path d="M12 16v-4M12 8h.01" />
@@ -127,14 +149,16 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
         )}
 
         {installing && (
-          <div className="ig-progress">
-            <div className="ig-progress-head">
-              <div className="ig-spinner" />
+          <div className={styles.igProgress}>
+            <div className={styles.igProgressHead}>
+              <div className={styles.igSpinner} />
               <span>Installing...</span>
             </div>
-            <div className="ig-terminal">
+            <div className={styles.igTerminal}>
               {logs.map((log, i) => (
-                <div key={i} className="ig-terminal-line">{log}</div>
+                <div key={i} className={styles.igTerminalLine}>
+                  {log}
+                </div>
               ))}
               <div ref={logEndRef} />
             </div>
@@ -142,9 +166,18 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
         )}
 
         {installSuccess && (
-          <div className="ig-result ig-result--success">
-            <div className="ig-result-check">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className={styles.igResult + " " + styles.igResultSuccess}>
+            <div className={styles.igResultCheck}>
+              <svg
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M20 6L9 17l-5-5" />
               </svg>
             </div>
@@ -154,20 +187,33 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
         )}
 
         {installError && (
-          <div className="ig-result ig-result--error">
-            <div className="ig-result-x">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <div className={styles.igResult + " " + styles.igResultError}>
+            <div className={styles.igResultX}>
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </div>
             <h3>Installation Failed</h3>
             <p>{installError}</p>
-            <div className="ig-terminal ig-terminal--error">
+            <div className={styles.igTerminal + " " + styles.igTerminalError}>
               {logs.map((log, i) => (
-                <div key={i} className="ig-terminal-line">{log}</div>
+                <div key={i} className={styles.igTerminalLine}>
+                  {log}
+                </div>
               ))}
             </div>
-            <button className="ig-retry" onClick={handleRetry}>Retry</button>
+            <button className={styles.igRetry} onClick={handleRetry}>
+              Retry
+            </button>
           </div>
         )}
       </div>

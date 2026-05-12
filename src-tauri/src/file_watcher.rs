@@ -96,37 +96,3 @@ pub fn start_watching(
 
     Ok(())
 }
-
-pub fn stop_watching(
-    state: &FileWatcherState,
-    kb_id: &str,
-) -> Result<(), String> {
-    let mut watched = state.watched_dirs.lock().map_err(|e| format!("获取监控目录锁失败: {}", e))?;
-    watched.remove(kb_id);
-
-    let mut watcher_guard = state.watcher.lock().map_err(|e| format!("获取监控器锁失败: {}", e))?;
-
-    if let Some(ref mut watcher) = *watcher_guard {
-        if watched.is_empty() {
-            *watcher_guard = None;
-        } else {
-            let _ = watcher;
-            let mut new_watcher = RecommendedWatcher::new(
-                |_res: Result<Event, notify::Error>| {},
-                Config::default(),
-            ).map_err(|e| format!("创建文件监控器失败: {}", e))?;
-
-            for (_, dirs) in watched.iter() {
-                for dir in dirs.iter() {
-                    if dir.exists() {
-                        new_watcher.watch(dir, RecursiveMode::Recursive)
-                            .map_err(|e| format!("监控目录 {:?} 失败: {}", dir, e))?;
-                    }
-                }
-            }
-            *watcher_guard = Some(new_watcher);
-        }
-    }
-
-    Ok(())
-}
