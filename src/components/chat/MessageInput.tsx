@@ -264,7 +264,9 @@ export default function MessageInput({
             isComposingRef.current = true;
           }}
           onCompositionEnd={() => {
-            isComposingRef.current = false;
+            queueMicrotask(() => {
+              isComposingRef.current = false;
+            });
           }}
           placeholder={t("chat.inputPlaceholder")}
           rows={1}

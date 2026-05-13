@@ -101,7 +101,9 @@ export default function ConversationList({
               isComposingRef.current = true;
             }}
             onCompositionEnd={() => {
-              isComposingRef.current = false;
+              queueMicrotask(() => {
+                isComposingRef.current = false;
+              });
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !isComposingRef.current) commitRename();

@@ -195,7 +195,9 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, t }: HomeChatInp
             isComposingRef.current = true;
           }}
           onCompositionEnd={() => {
-            isComposingRef.current = false;
+            queueMicrotask(() => {
+              isComposingRef.current = false;
+            });
           }}
           placeholder={placeholder}
           rows={1}

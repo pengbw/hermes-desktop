@@ -819,7 +819,9 @@ export default function AvatarWindow() {
                 isComposingRef.current = true;
               }}
               onCompositionEnd={() => {
-                isComposingRef.current = false;
+                queueMicrotask(() => {
+                  isComposingRef.current = false;
+                });
               }}
               placeholder={t("avatar.inputPlaceholder")}
               disabled={isWaitingResponse}

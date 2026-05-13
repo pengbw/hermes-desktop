@@ -191,7 +191,9 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
                   isComposingRef.current = true;
                 }}
                 onCompositionEnd={() => {
-                  isComposingRef.current = false;
+                  queueMicrotask(() => {
+                    isComposingRef.current = false;
+                  });
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
