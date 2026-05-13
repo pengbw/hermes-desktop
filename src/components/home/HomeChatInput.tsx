@@ -20,6 +20,7 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, t }: HomeChatInp
   const [homeInput, setHomeInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isComposingRef = useRef(false);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [showKbSelector, setShowKbSelector] = useState(false);
@@ -124,7 +125,7 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, t }: HomeChatInp
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
       e.preventDefault();
       handleSend();
     }
@@ -190,6 +191,12 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, t }: HomeChatInp
           value={homeInput}
           onChange={(e) => setHomeInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onCompositionStart={() => {
+            isComposingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            isComposingRef.current = false;
+          }}
           placeholder={placeholder}
           rows={1}
           disabled={isStreaming}

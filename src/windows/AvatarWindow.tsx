@@ -232,6 +232,7 @@ export default function AvatarWindow() {
   }, [calcChatPosition]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isComposingRef = useRef(false);
 
   const handleSendMessage = useCallback(async () => {
     const text = inputText.trim();
@@ -246,7 +247,7 @@ export default function AvatarWindow() {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
         e.preventDefault();
         handleSendMessage();
       }
@@ -814,6 +815,12 @@ export default function AvatarWindow() {
               onFocus={() => setIsInputFocused(true)}
               onBlur={() => setIsInputFocused(false)}
               onKeyDown={handleKeyDown}
+              onCompositionStart={() => {
+                isComposingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                isComposingRef.current = false;
+              }}
               placeholder={t("avatar.inputPlaceholder")}
               disabled={isWaitingResponse}
             />

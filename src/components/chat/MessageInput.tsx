@@ -47,6 +47,7 @@ export default function MessageInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isComposingRef = useRef(false);
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -183,7 +184,7 @@ export default function MessageInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
       e.preventDefault();
       handleSend();
     }
@@ -259,6 +260,12 @@ export default function MessageInput({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onCompositionStart={() => {
+            isComposingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            isComposingRef.current = false;
+          }}
           placeholder={t("chat.inputPlaceholder")}
           rows={1}
           disabled={isStreaming}

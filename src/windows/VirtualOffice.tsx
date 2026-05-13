@@ -37,6 +37,7 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
     const { t } = useI18n();
     const containerRef = useRef<HTMLDivElement>(null);
     const sceneRef = useRef<OfficeScene3D | null>(null);
+    const isComposingRef = useRef(false);
     const [speakingMember, setSpeakingMember] = useState<string | null>(null);
     const [speakText, setSpeakText] = useState("");
     const [zoneInfo, setZoneInfo] = useState<string | null>(null);
@@ -186,8 +187,14 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
                 placeholder={t("office.speakPlaceholder")}
                 value={speakText}
                 onChange={(e) => setSpeakText(e.target.value)}
+                onCompositionStart={() => {
+                  isComposingRef.current = true;
+                }}
+                onCompositionEnd={() => {
+                  isComposingRef.current = false;
+                }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
                     e.preventDefault();
                     handleSpeak();
                   }

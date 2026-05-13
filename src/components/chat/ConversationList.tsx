@@ -28,6 +28,7 @@ export default function ConversationList({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const isComposingRef = useRef(false);
   const [convSearch, setConvSearch] = useState("");
   const [convPage, setConvPage] = useState(1);
   const PAGE_SIZE = 10;
@@ -96,8 +97,14 @@ export default function ConversationList({
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
             onBlur={commitRename}
+            onCompositionStart={() => {
+              isComposingRef.current = true;
+            }}
+            onCompositionEnd={() => {
+              isComposingRef.current = false;
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) commitRename();
+              if (e.key === "Enter" && !isComposingRef.current) commitRename();
               if (e.key === "Escape") setRenamingId(null);
             }}
             onClick={(e) => e.stopPropagation()}
