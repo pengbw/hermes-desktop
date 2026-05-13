@@ -254,6 +254,7 @@ export default function AvatarWindow() {
           return;
         }
         if (e.nativeEvent.isComposing || isComposingRef.current) {
+          isComposingRef.current = false;
           return;
         }
         e.preventDefault();

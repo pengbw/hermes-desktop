@@ -204,6 +204,7 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
                       return;
                     }
                     if (e.nativeEvent.isComposing || isComposingRef.current) {
+                      isComposingRef.current = false;
                       return;
                     }
                     e.preventDefault();

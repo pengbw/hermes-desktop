@@ -114,6 +114,7 @@ export default function ConversationList({
                   return;
                 }
                 if (e.nativeEvent.isComposing || isComposingRef.current) {
+                  isComposingRef.current = false;
                   return;
                 }
                 commitRename();

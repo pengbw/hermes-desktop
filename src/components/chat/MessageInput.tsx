@@ -49,7 +49,6 @@ export default function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isComposingRef = useRef(false);
   const lastCompositionEndRef = useRef(0);
-
   useEffect(() => {
     const loadProviders = async () => {
       try {
@@ -191,6 +190,7 @@ export default function MessageInput({
         return;
       }
       if (e.nativeEvent.isComposing || isComposingRef.current) {
+        isComposingRef.current = false;
         return;
       }
       e.preventDefault();

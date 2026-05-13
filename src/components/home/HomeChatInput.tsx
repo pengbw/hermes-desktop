@@ -132,6 +132,7 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, t }: HomeChatInp
         return;
       }
       if (e.nativeEvent.isComposing || isComposingRef.current) {
+        isComposingRef.current = false;
         return;
       }
       e.preventDefault();
