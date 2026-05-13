@@ -191,7 +191,7 @@ export function useAvatarChat({
           image: imagePath || null,
           eventId: eventId,
           forceKbRetrieve: false,
-          conversationId: null,
+          conversationId: convId,
         });
       } catch (err) {
         console.error("[Avatar] Chat error:", err);

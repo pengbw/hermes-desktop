@@ -203,6 +203,8 @@ pub async fn chat_with_hermes_api(
     let mut kb_context_parts: Vec<String> = Vec::new();
     let api_base: String;
     let api_key: String;
+    let history_messages: Vec<serde_json::Value>;
+    let workspace_root: String;
     {
         let state = app.state::<AppState>();
         let pool = state.db_pool.clone();
@@ -305,6 +307,48 @@ pub async fn chat_with_hermes_api(
                 let _ = app.emit(&format!("{}_knowledge_sources", event_id), sources_json);
             }
         }
+
+        history_messages = if let Some(ref conv_id) = conversation_id {
+            let rows: Vec<(String, String)> = sqlx::query_as(
+                "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC LIMIT 40"
+            )
+            .bind(conv_id)
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default();
+            if rows.len() > 1 {
+                rows[..rows.len() - 1]
+                    .iter()
+                    .map(|(role, content)| {
+                        serde_json::json!({"role": role, "content": content})
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        workspace_root = sqlx::query_scalar(
+            "SELECT value FROM app_config WHERE key = 'workspace_root'"
+        )
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(None)
+        .unwrap_or_default();
+    }
+
+    if !workspace_root.is_empty() {
+        messages.push(serde_json::json!({
+            "role": "system",
+            "content": format!("【重要 - 工作空间路径】\n当前工作空间根目录：{}\n如果用户要求读取、写入或操作文件，所有路径默认基于此目录。", workspace_root)
+        }));
+    }
+
+    if !history_messages.is_empty() {
+        log::info!("[chat_api] injected {} history messages (excluding current)", history_messages.len());
+        messages.extend(history_messages);
     }
 
     if !kb_context_parts.is_empty() {

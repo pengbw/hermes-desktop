@@ -312,8 +312,18 @@ pub async fn get_conversation_count(app: AppHandle) -> Result<i64, String> {
 }
 
 #[tauri::command]
-pub async fn get_hermes_config() -> Result<serde_json::Value, String> {
+pub async fn get_hermes_config(app: AppHandle) -> Result<serde_json::Value, String> {
     use crate::commands::helpers::serde_yaml_to_json;
+
+    let workspace_root: String = {
+        let state = app.state::<crate::commands::helpers::AppState>();
+        let pool = state.db_pool.clone();
+        sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'workspace_root'")
+            .fetch_optional(&pool)
+            .await
+            .unwrap_or(None)
+            .unwrap_or_default()
+    };
 
     let config_path_output = hermes_command()
         .args(&["config", "path"])
@@ -376,6 +386,7 @@ pub async fn get_hermes_config() -> Result<serde_json::Value, String> {
         "tts_provider": tts_provider,
         "config_path": config_path,
         "env_path": env_path,
+        "workspaceRoot": workspace_root,
     }))
 }
 
