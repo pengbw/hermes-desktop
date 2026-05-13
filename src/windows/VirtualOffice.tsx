@@ -9,7 +9,6 @@ interface OfficeMember {
   name: string;
   icon: string;
   color: string;
-  isUser: boolean;
   isWorking: boolean;
   preset?: string;
   roleId?: string;
@@ -48,7 +47,6 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
           id: m.id,
           name: m.name,
           color: m.color,
-          isUser: m.isUser,
           isWorking: m.isWorking,
           roleId: m.roleId,
         })),
@@ -129,7 +127,7 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
 
     const handleSpeak = useCallback(() => {
       if (!speakText.trim()) return;
-      const u = members.find((m) => m.isUser);
+      const u = members[0];
       if (u) {
         sceneRef.current?.showBubble(u.id, speakText);
         onSpeak(u.id, speakText);
@@ -149,7 +147,7 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
         <div className={styles.office3dControls}>
           <button
             className={styles.office3dCtrlBtn}
-            onClick={() => setSpeakingMember(members.find((m) => m.isUser)?.id || null)}
+            onClick={() => setSpeakingMember(members[0]?.id || null)}
             title={t("office.speak")}
           >
             🎤

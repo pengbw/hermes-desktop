@@ -49,6 +49,11 @@ function download(url, destPath) {
 }
 
 async function main() {
+  if (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0) {
+    console.log("[hermes-source] Source directory already exists, skipping download.");
+    return;
+  }
+
   console.log("[hermes-source] Downloading hermes-agent source code...");
 
   if (fs.existsSync(targetDir)) {

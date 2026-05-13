@@ -177,7 +177,15 @@ function SettingsPanel() {
   };
 
   const SECTION_FIELDS: Record<string, string[]> = {
-    model: ["model", "provider", "baseUrl", "maxTurns"],
+    model: [
+      "model",
+      "provider",
+      "baseUrl",
+      "maxTurns",
+      "workspaceRoot",
+      "hermesApiBase",
+      "hermesApiKey",
+    ],
     display: ["personality", "showReasoning", "ttsProvider"],
     terminal: ["terminalBackend", "terminalTimeout", "compressionEnabled", "memoryEnabled"],
     system: [
@@ -188,7 +196,6 @@ function SettingsPanel() {
       "terminalTimeout",
       "compressionEnabled",
       "memoryEnabled",
-      "workspaceRoot",
     ],
   };
 
@@ -236,10 +243,12 @@ function SettingsPanel() {
         ttsProvider,
       };
 
+      let needRestartGateway = false;
       for (const field of fieldsToSave) {
         if (field === "workspaceRoot") {
           const cfg = config;
           await invoke("set_config", { key: "workspace_root", value: cfg?.workspaceRoot || "" });
+          needRestartGateway = true;
           continue;
         }
         if (field === "hermesApiBase") {
@@ -266,6 +275,16 @@ function SettingsPanel() {
         fieldsToSave.forEach((f) => next.delete(f));
         return next;
       });
+
+      if (needRestartGateway) {
+        try {
+          await invoke("restart_hermes");
+          setSaveMessage({ text: "设置已保存，网关已重启", type: "success" });
+        } catch (restartErr) {
+          console.error("Failed to restart gateway:", restartErr);
+          setSaveMessage({ text: "设置已保存，但网关重启失败，请手动重启", type: "error" });
+        }
+      }
     } catch (err) {
       console.error("Failed to save config:", err);
       setSaveMessage({ text: `${t("settings.saveFailed")}: ${err}`, type: "error" });

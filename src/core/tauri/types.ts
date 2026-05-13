@@ -1,3 +1,5 @@
+import type { AiRoleItem } from "../types";
+
 export interface TauriCommandParams {
   [key: string]: unknown;
 }
@@ -143,4 +145,37 @@ export interface KnowledgeConfig {
   cloudEmbeddingModel: string;
   ollamaEndpoint: string;
   ollamaModel: string;
+}
+
+export interface TemplateWorkflow {
+  id: string;
+  templateId: string;
+  fromRoleId: string | null;
+  toRoleId: string;
+  artifactType: string;
+  transitionType: string;
+  sortOrder: number;
+}
+
+export interface ProjectTemplateDetail {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  projectRule: string;
+  projectGuidelines: string;
+  isBuiltin: boolean;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+  roles: AiRoleItem[];
+  workflows: TemplateWorkflow[];
+}
+
+export interface CreateProjectFromTemplateRequest {
+  name: string;
+  description?: string;
+  icon?: string;
+  templateId: string;
+  officeTheme?: string;
 }

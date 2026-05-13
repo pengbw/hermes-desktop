@@ -181,6 +181,10 @@ export interface ProjectWorkflow {
   toRoleId: string;
   artifactType: string;
   transitionType: string;
+  taskId: string;
+  conditionExpr: string;
+  branchLabel: string;
+  parallelGroup: string;
   sortOrder: number;
   createdAt: number;
 }
@@ -206,7 +210,23 @@ export interface ProjectMessage {
   roleId: string;
   content: string;
   messageType: string;
+  promptTokens: number;
+  completionTokens: number;
   createdAt: number;
+}
+
+export interface ProjectFileRecord {
+  id: string;
+  projectId: string;
+  roleId: string;
+  filePath: string;
+  fileName: string;
+  fileExt: string;
+  fileSize: number;
+  description: string;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface ProjectTask {
@@ -220,8 +240,156 @@ export interface ProjectTask {
   parentTaskId: string;
   artifactId: string;
   result: string;
+  claimLock: string;
+  claimExpireAt: number;
+  startedAt: number | null;
+  completedAt: number | null;
+  skills: string;
+  maxRetries: number;
+  retryCount: number;
+  workspaceKind: string;
+  workspacePath: string;
+  boardId: string;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface ProjectBoard {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  sortOrder: number;
+  isDefault: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  roleId: string;
+  content: string;
+  createdAt: number;
+}
+
+export interface TaskLink {
+  id: string;
+  fromTaskId: string;
+  toTaskId: string;
+  linkType: string;
+  createdAt: number;
+}
+
+export interface TaskEvent {
+  id: string;
+  taskId: string;
+  eventType: string;
+  roleId: string | null;
+  detail: string;
+  createdAt: number;
+}
+
+export interface TaskDispatch {
+  id: string;
+  taskId: string;
+  roleId: string;
+  dispatchType: "manual" | "auto" | "workflow";
+  message: string;
+  status: "pending" | "sent" | "acknowledged" | "failed";
+  createdAt: number;
+}
+
+export interface WorkflowRun {
+  id: string;
+  projectId: string;
+  workflowId: string | null;
+  currentStep: number;
+  status: string;
+  context: string;
+  startedAt: number;
+  completedAt: number | null;
+}
+
+export interface WorkflowRunStep {
+  id: string;
+  runId: string;
+  stepIndex: number;
+  roleId: string | null;
+  action: string;
+  status: string;
+  input: string;
+  output: string;
+  startedAt: number | null;
+  completedAt: number | null;
+}
+
+export interface WorkflowRunStatus {
+  run: WorkflowRun;
+  steps: WorkflowRunStep[];
+}
+
+export interface ArtifactVersion {
+  id: string;
+  artifactId: string;
+  version: number;
+  content: string;
+  filePath: string;
+  createdAt: number;
+}
+
+export interface ArtifactDiff {
+  fromVersion: ArtifactVersion;
+  toVersion: ArtifactVersion;
+  additions: number;
+  deletions: number;
+  diffText: string;
+}
+
+export interface RoleSkill {
+  id: string;
+  roleId: string;
+  skillName: string;
+  enabled: boolean;
+  createdAt: number;
+}
+
+export interface ProjectActivity {
+  id: string;
+  projectId: string;
+  roleId: string | null;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  detail: string;
+  createdAt: number;
+}
+
+export interface ProjectStats {
+  taskStats: TaskStats;
+  artifactStats: ArtifactStats;
+  roleWorkload: RoleWorkload[];
+  healthScore: number;
+}
+
+export interface TaskStats {
+  total: number;
+  byStatus: Record<string, number>;
+  completionRate: number;
+}
+
+export interface ArtifactStats {
+  total: number;
+  byStatus: Record<string, number>;
+  approvalRate: number;
+}
+
+export interface RoleWorkload {
+  roleId: string;
+  name: string;
+  taskCount: number;
+  completedCount: number;
+  avgDuration: number;
 }
 
 export interface SkillItem {
@@ -233,6 +401,17 @@ export interface SkillItem {
   description: string;
   version: string;
   tags: string[];
+}
+
+export interface ProjectMemory {
+  id: string;
+  projectId: string;
+  roleId: string;
+  category: string;
+  content: string;
+  importance: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface SkillCategory {
@@ -282,6 +461,9 @@ export interface WorkflowData {
   toRoleId: string;
   artifactType: string;
   transitionType: string;
+  conditionExpr: string;
+  branchLabel: string;
+  parallelGroup: string;
   sortOrder: number;
 }
 

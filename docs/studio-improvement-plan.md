@@ -38,23 +38,23 @@
 
 Hermes Agent 拥有完整的 15 动词 Kanban 系统：
 
-| 操作        | 说明         | 工作室现状    |
-| ----------- | ------------ | ------------- |
-| `add`       | 创建任务     | ✅ 已有       |
-| `list`      | 列出任务     | ✅ 已有       |
-| `show`      | 任务详情     | ❌ 缺失       |
-| `edit`      | 编辑任务     | ⚠️ 仅状态变更 |
-| `status`    | 变更状态     | ✅ 已有       |
-| `claim`     | 认领任务     | ❌ 缺失       |
-| `heartbeat` | 续期认领     | ❌ 缺失       |
-| `release`   | 释放认领     | ❌ 缺失       |
-| `comment`   | 添加评论     | ❌ 缺失       |
-| `link`      | 关联任务     | ❌ 缺失       |
-| `retry`     | 重试任务     | ❌ 缺失       |
-| `archive`   | 归档任务     | ❌ 缺失       |
-| `boards`    | 多看板管理   | ❌ 缺失       |
-| `dispatch`  | 自动调度     | ❌ 缺失       |
-| `workspace` | 工作空间管理 | ❌ 缺失       |
+| 操作        | 说明         | 工作室现状 |
+| ----------- | ------------ | ---------- |
+| `add`       | 创建任务     | ✅ 已有    |
+| `list`      | 列出任务     | ✅ 已有    |
+| `show`      | 任务详情     | ✅ 已实现  |
+| `edit`      | 编辑任务     | ✅ 已实现  |
+| `status`    | 变更状态     | ✅ 已有    |
+| `claim`     | 认领任务     | ✅ 已实现  |
+| `heartbeat` | 续期认领     | ✅ 已实现  |
+| `release`   | 释放认领     | ✅ 已实现  |
+| `comment`   | 添加评论     | ✅ 已实现  |
+| `link`      | 关联任务     | ✅ 已实现  |
+| `retry`     | 重试任务     | ✅ 已实现  |
+| `archive`   | 归档任务     | ✅ 已实现  |
+| `boards`    | 多看板管理   | ✅ 已实现  |
+| `dispatch`  | 自动调度     | ✅ 已实现  |
+| `workspace` | 工作空间管理 | ✅ 已实现  |
 
 **关键差距**：
 
@@ -69,44 +69,46 @@ Hermes Agent 拥有完整的 15 动词 Kanban 系统：
 
 Hermes Agent 的 `ContextEngine` 抽象：
 
-| 能力       | 说明                      | 工作室现状 |
-| ---------- | ------------------------- | ---------- |
-| 上下文压缩 | 接近 token 限制时自动摘要 | ❌ 缺失    |
-| 插件化引擎 | 支持第三方引擎（LCM等）   | ❌ 缺失    |
-| Token 追踪 | 每轮对话后更新 token 用量 | ❌ 缺失    |
-| 保护机制   | 保护前N条和后N条消息      | ❌ 缺失    |
+| 能力       | 说明                      | 工作室现状                                                                           |
+| ---------- | ------------------------- | ------------------------------------------------------------------------------------ |
+| 上下文压缩 | 接近 token 限制时自动摘要 | ✅ 已实现（`chat_with_project_role` 中超过 20 条消息时自动压缩旧消息为摘要）         |
+| 插件化引擎 | 支持第三方引擎（LCM等）   | ❌ 缺失                                                                              |
+| Token 追踪 | 每轮对话后更新 token 用量 | ✅ 已实现（`update_message_tokens` 命令 + `prompt_tokens`/`completion_tokens` 字段） |
+| 保护机制   | 保护前N条和后N条消息      | ✅ 已实现（保留最近 10 条完整消息，旧消息压缩为摘要）                                |
 
-**当前工作室**：项目对话只加载最近 20 条消息，无压缩机制。
+**当前工作室**：项目对话加载最近 40 条消息，超过 20 条时自动将旧消息压缩为摘要，保留最近 10 条完整消息。
 
 ### 2.3 记忆系统（agent/memory_manager.py）
 
-| 能力       | 说明                   | 工作室现状 |
-| ---------- | ---------------------- | ---------- |
-| 记忆提供者 | 插件化记忆后端         | ❌ 缺失    |
-| 预取       | 对话前预取相关记忆     | ❌ 缺失    |
-| 同步       | 对话后同步记忆         | ❌ 缺失    |
-| 上下文清洗 | 流式输出中清洗记忆标签 | ❌ 缺失    |
+| 能力       | 说明                                            | 工作室现状                                                                        |
+| ---------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
+| 记忆提供者 | 插件化记忆后端                                  | ❌ 缺失（当前使用 SQLite 内置存储）                                               |
+| 预取       | 对话前预取相关记忆                              | ✅ 已实现                                                                         |
+| 同步       | 对话后同步记忆                                  | ✅ 已实现                                                                         |
+| 自动提取   | 角色回复后自动提取关键决策存入 project_memories | ✅ 已实现（`extract_and_save_memory`）                                            |
+| 前端管理   | 项目设置中记忆标签页                            | ✅ 已实现（`MemoriesTab` 组件）                                                   |
+| 上下文清洗 | 流式输出中清洗记忆标签                          | ✅ 已实现（`clean_context_tags` 清洗 `<memory>`/`[memory]`/`<!--memory-->` 标签） |
 
 ### 2.4 技能系统（agent/skill_commands.py）
 
-| 能力       | 说明                   | 工作室现状 |
-| ---------- | ---------------------- | ---------- |
-| 技能绑定   | 任务可绑定技能         | ❌ 缺失    |
-| 技能调用   | 角色对话中调用技能     | ❌ 缺失    |
-| 技能预处理 | 模板变量替换/内联Shell | ❌ 缺失    |
+| 能力       | 说明                   | 工作室现状                                                                   |
+| ---------- | ---------------------- | ---------------------------------------------------------------------------- |
+| 技能绑定   | 任务可绑定技能         | ✅ 已实现                                                                    |
+| 技能调用   | 角色对话中调用技能     | ✅ 已实现                                                                    |
+| 技能预处理 | 模板变量替换/内联Shell | ✅ 已实现（`preprocess_skill_template` 命令 + system prompt 中模板变量替换） |
 
 **当前工作室**：角色只有 `soulContent` 和 `responsibilities`，无法调用 Hermes Agent 的工具/技能。
 
 ### 2.5 工作流执行
 
-| 能力      | Hermes Agent | 工作室现状                        |
-| --------- | ------------ | --------------------------------- |
-| 线性执行  | ✅           | ✅ `run_workflow_auto_chat`       |
-| 条件分支  | ✅           | ❌ 前端有视觉节点，后端无执行逻辑 |
-| 并行执行  | ✅           | ❌ 前端有视觉节点，后端无执行逻辑 |
-| 运行实例  | ✅           | ❌ 无运行状态追踪                 |
-| 暂停/恢复 | ✅           | ❌                                |
-| 步骤确认  | ✅           | ⚠️ `need_confirm` 只在审批时使用  |
+| 能力      | Hermes Agent | 工作室现状                                                                |
+| --------- | ------------ | ------------------------------------------------------------------------- |
+| 线性执行  | ✅           | ✅ `run_workflow_auto_chat`                                               |
+| 条件分支  | ✅           | ✅ `trigger_workflow_execution` 支持 condition_expr/branch_label 条件判断 |
+| 并行执行  | ✅           | ✅ `trigger_workflow_execution` 支持 parallel_group 并行触发              |
+| 运行实例  | ✅           | ✅ 已实现                                                                 |
+| 暂停/恢复 | ✅           | ✅ 已实现                                                                 |
+| 步骤确认  | ✅           | ✅ `confirm_workflow_step` 确认后自动触发下一步                           |
 
 ---
 
@@ -521,17 +523,21 @@ CREATE INDEX IF NOT EXISTS idx_project_activities_created ON project_activities(
 
 #### 3.5.2 活动记录触发点
 
-| 触发操作       | action                    | target_type |
-| -------------- | ------------------------- | ----------- |
-| 创建任务       | `task_created`            | `task`      |
-| 认领任务       | `task_claimed`            | `task`      |
-| 完成任务       | `task_completed`          | `task`      |
-| 提交产物       | `artifact_submitted`      | `artifact`  |
-| 审批产物       | `artifact_approved`       | `artifact`  |
-| 打回产物       | `artifact_rejected`       | `artifact`  |
-| 发送消息       | `message_sent`            | `message`   |
-| 工作流步骤完成 | `workflow_step_completed` | `workflow`  |
-| 角色加入       | `member_added`            | `member`    |
+| 触发操作       | action                     | target_type | 实现状态  |
+| -------------- | -------------------------- | ----------- | --------- |
+| 创建任务       | `task_created`             | `task`      | ✅ 已实现 |
+| 认领任务       | `task_claimed`             | `task`      | ✅ 已实现 |
+| 完成任务       | `task_completed`           | `task`      | ✅ 已实现 |
+| 开始执行任务   | `task_started`             | `task`      | ✅ 已实现 |
+| 派发任务       | `task_dispatched`          | `task`      | ✅ 已实现 |
+| 自动派发任务   | `task_auto_dispatched`     | `task`      | ✅ 已实现 |
+| 工作流驱动派发 | `task_workflow_dispatched` | `task`      | ✅ 已实现 |
+| 提交产物       | `artifact_submitted`       | `artifact`  | ✅ 已实现 |
+| 审批产物       | `artifact_approved`        | `artifact`  | ✅ 已实现 |
+| 打回产物       | `artifact_rejected`        | `artifact`  | ✅ 已实现 |
+| 发送消息       | `message_sent`             | `message`   | ✅ 已实现 |
+| 工作流步骤完成 | `workflow_step_completed`  | `workflow`  | ✅ 已实现 |
+| 角色加入       | `member_added`             | `member`    | ✅ 已实现 |
 
 #### 3.5.3 新增 Rust 命令
 
@@ -738,47 +744,47 @@ CREATE TABLE IF NOT EXISTS schema_version (
 
 ## 五、实施路线图
 
-### Phase 1：核心功能补全（P0）
+### Phase 1：核心功能补全（P0）— ✅ 已完成
 
-| 任务                  | 涉及文件                       | 依赖       |
-| --------------------- | ------------------------------ | ---------- |
-| 任务系统数据库迁移    | `models.rs`                    | 无         |
-| 任务系统新增命令      | `project.rs`                   | 数据库迁移 |
-| 任务系统类型定义      | `types/index.ts`               | 无         |
-| 任务详情前端组件      | `TaskDetailPanel.tsx`（新建）  | 命令+类型  |
-| TaskBoard 增强        | `TaskBoard.tsx`                | 详情组件   |
-| 工作流运行数据库      | `models.rs`                    | 无         |
-| 工作流执行引擎        | `project.rs`                   | 数据库     |
-| 工作流运行前端        | `WorkflowRunPanel.tsx`（新建） | 执行引擎   |
-| WorkflowDesigner 增强 | `WorkflowDesigner.tsx`         | 运行面板   |
+| 任务                  | 涉及文件                       | 依赖       | 状态 |
+| --------------------- | ------------------------------ | ---------- | ---- |
+| 任务系统数据库迁移    | `models.rs`                    | 无         | ✅   |
+| 任务系统新增命令      | `project.rs`                   | 数据库迁移 | ✅   |
+| 任务系统类型定义      | `types/index.ts`               | 无         | ✅   |
+| 任务详情前端组件      | `TaskDetailPanel.tsx`（新建）  | 命令+类型  | ✅   |
+| TaskBoard 增强        | `TaskBoard.tsx`                | 详情组件   | ✅   |
+| 工作流运行数据库      | `models.rs`                    | 无         | ✅   |
+| 工作流执行引擎        | `project.rs`                   | 数据库     | ✅   |
+| 工作流运行前端        | `WorkflowRunPanel.tsx`（新建） | 执行引擎   | ✅   |
+| WorkflowDesigner 增强 | `WorkflowDesigner.tsx`         | 运行面板   | ✅   |
 
-### Phase 2：体验增强（P1）
+### Phase 2：体验增强（P1）— ✅ 已完成
 
-| 任务              | 涉及文件                          | 依赖     |
-| ----------------- | --------------------------------- | -------- |
-| 产物版本数据库    | `models.rs`                       | 无       |
-| 产物版本命令      | `project.rs`                      | 数据库   |
-| 产物详情前端      | `ArtifactDetailPanel.tsx`（新建） | 命令     |
-| ArtifactView 增强 | `ArtifactView.tsx`                | 详情组件 |
-| 角色技能数据库    | `models.rs`                       | 无       |
-| 角色技能命令      | `project.rs`                      | 数据库   |
-| RoleManager 增强  | `RoleManager.tsx`                 | 命令     |
-| 项目活动数据库    | `models.rs`                       | 无       |
-| 活动记录集成      | `project.rs`（各命令中添加）      | 数据库   |
-| 活动流前端        | `ActivityTimeline.tsx`（新建）    | 命令     |
-| 通知系统          | `NotificationCenter.tsx`（新建）  | 活动流   |
+| 任务              | 涉及文件                          | 依赖     | 状态 |
+| ----------------- | --------------------------------- | -------- | ---- |
+| 产物版本数据库    | `models.rs`                       | 无       | ✅   |
+| 产物版本命令      | `project.rs`                      | 数据库   | ✅   |
+| 产物详情前端      | `ArtifactDetailPanel.tsx`（新建） | 命令     | ✅   |
+| ArtifactView 增强 | `ArtifactView.tsx`                | 详情组件 | ✅   |
+| 角色技能数据库    | `models.rs`                       | 无       | ✅   |
+| 角色技能命令      | `project.rs`                      | 数据库   | ✅   |
+| RoleManager 增强  | `RoleManager.tsx`                 | 命令     | ✅   |
+| 项目活动数据库    | `models.rs`                       | 无       | ✅   |
+| 活动记录集成      | `project.rs`（各命令中添加）      | 数据库   | ✅   |
+| 活动流前端        | `ActivityTimeline.tsx`（新建）    | 命令     | ✅   |
+| 通知系统          | `NotificationCenter.tsx`（新建）  | 活动流   | ✅   |
 
-### Phase 3：优化与高级功能（P2）
+### Phase 3：优化与高级功能（P2）— 部分完成
 
-| 任务               | 涉及文件                               | 依赖      |
-| ------------------ | -------------------------------------- | --------- |
-| 项目统计 API       | `project.rs`                           | Phase 1+2 |
-| 统计可视化         | `ProjectSettingsModal.tsx`             | API       |
-| 上下文压缩         | `project.rs`（chat_with_project_role） | 无        |
-| 项目记忆系统       | `project.rs` + `models.rs`             | 无        |
-| 状态管理重构       | `projectStore.ts`（新建）              | 无        |
-| TauriCommands 对齐 | `TauriCommands.ts`                     | 无        |
-| 迁移机制           | `models.rs`                            | 无        |
+| 任务               | 涉及文件                               | 依赖      | 状态 |
+| ------------------ | -------------------------------------- | --------- | ---- |
+| 项目统计 API       | `project.rs`                           | Phase 1+2 | ✅   |
+| 统计可视化         | `ProjectSettingsModal.tsx`             | API       | ✅   |
+| 上下文压缩         | `project.rs`（chat_with_project_role） | 无        | ✅   |
+| 项目记忆系统       | `project.rs` + `models.rs`             | 无        | ✅   |
+| 状态管理重构       | `projectStore.ts`（增强）              | 无        | ✅   |
+| TauriCommands 对齐 | `TauriCommands.ts`                     | 无        | ✅   |
+| 迁移机制           | `models.rs`                            | 无        | ✅   |
 
 ---
 
@@ -798,39 +804,227 @@ CREATE TABLE IF NOT EXISTS schema_version (
 
 ### 任务系统
 
-- [ ] 支持任务认领/释放/续期
-- [ ] 支持任务评论和回复
-- [ ] 支持任务关联（依赖/阻塞/关联）
-- [ ] 任务卡片显示认领者、评论数、关联数
-- [ ] 任务详情面板可展开
+- [x] 支持任务认领/释放/续期
+- [x] 支持任务评论和回复
+- [x] 支持任务关联（依赖/阻塞/关联）
+- [x] 任务卡片显示认领者、评论数、关联数
+- [x] 任务详情面板可展开
 
 ### 工作流执行
 
-- [ ] 支持启动/暂停/恢复工作流
-- [ ] 支持 need_confirm 步骤的确认/打回
-- [ ] 工作流运行状态实时可视化
-- [ ] 运行历史可查看
+- [x] 支持启动/暂停/恢复工作流
+- [x] 支持 need_confirm 步骤的确认/打回
+- [x] 工作流运行状态实时可视化
+- [x] 运行历史可查看
 
 ### 产物管理
 
-- [ ] 产物支持版本历史
-- [ ] 支持版本对比（diff）
-- [ ] 支持内联编辑产物内容
+- [x] 产物支持版本历史
+- [x] 支持版本对比（diff）
+- [x] 支持内联编辑产物内容
 
 ### 角色技能
 
-- [ ] 角色可绑定/解绑技能
-- [ ] 角色对话中可调用技能
-- [ ] 角色卡片显示技能信息
+- [x] 角色可绑定/解绑技能
+- [x] 角色对话中可调用技能
+- [x] 角色卡片显示技能信息
 
 ### 活动流
 
-- [ ] 项目活动时间线可查看
-- [ ] 关键操作自动记录活动
-- [ ] 支持桌面通知
+- [x] 项目活动时间线可查看
+- [x] 关键操作自动记录活动
+- [x] 支持桌面通知
 
 ### 统计
 
-- [ ] 项目概览仪表板
-- [ ] 任务/产物/角色统计图表
-- [ ] 项目健康度评分
+- [x] 项目概览仪表板
+- [x] 任务/产物/角色统计图表
+- [x] 项目健康度评分
+
+---
+
+## 四、任务派发与角色执行（P0）
+
+### 4.1 现状分析
+
+当前系统中任务和角色执行之间**已建立桥梁**，通过派发机制实现了任务与角色执行的关联：
+
+| 环节       | 现状                         | 说明                                                                            |
+| ---------- | ---------------------------- | ------------------------------------------------------------------------------- |
+| 创建任务   | ✅ 可创建并分配 assignee     | ✅ 通过派发机制角色可感知被分配的任务                                           |
+| 认领任务   | ✅ claim_project_task 已实现 | ✅ 派发时自动认领，AI 角色通过派发消息感知任务                                  |
+| 对话触发   | ✅ @角色 可触发对话          | ✅ 派发消息通过对话机制发送，任务与角色执行关联                                 |
+| 工作流执行 | ✅ start_workflow_run 已实现 | ✅ 工作流与任务已打通，支持工作流驱动派发                                       |
+| 任务执行   | ✅ 已实现                    | 6种派发方式：对话触发、自动委派、工作流执行、手动派发、自动派发、工作流驱动派发 |
+
+### 4.2 设计方案：任务派发机制
+
+#### 4.2.1 派发流程
+
+```
+创建任务 → 分配负责人(assignee) → 手动/自动派发 → 角色收到任务消息 → 角色执行 → 产出结果 → 更新任务状态
+```
+
+#### 4.2.2 派发方式
+
+系统中目前存在以下几种让角色执行工作的方式：
+
+| #   | 方式               | 命令/入口                   | 说明                                                        | 状态      |
+| --- | ------------------ | --------------------------- | ----------------------------------------------------------- | --------- |
+| 1   | **对话触发**       | `chat_with_project_roles`   | 在项目对话中 `@角色名` 提及角色，发送消息触发角色回复       | ✅ 已有   |
+| 2   | **自动委派**       | `auto_delegate_chat`        | 角色间自动传递任务，from_role 产出后自动推送给 to_role      | ✅ 已有   |
+| 3   | **工作流执行**     | `run_workflow_auto_chat`    | 按工作流定义线性自动推送，依次触发每个角色                  | ✅ 已有   |
+| 4   | **手动派发**       | `dispatch_task_to_role`     | 在任务管理中点击「🚀 派发」按钮，将任务派发给 assignee 角色 | ✅ 已实现 |
+| 5   | **自动派发**       | `auto_dispatch_ready_tasks` | 任务状态变为 `ready` 时自动向 assignee 发送任务消息         | ✅ 已实现 |
+| 6   | **工作流驱动派发** | 工作流步骤关联任务          | 工作流推进时自动派发关联的任务                              | ✅ 已实现 |
+
+**各方式详细说明：**
+
+**① 对话触发**（已有）
+
+- 入口：项目对话 tab 中输入 `@角色名 消息内容`
+- 流程：用户发消息 → 调用 `chat_with_project_roles` → 角色收到消息并回复
+- 特点：最灵活，但角色不知道有任务，只是被动回复
+- 适用场景：快速沟通、临时问题
+
+**② 自动委派**（已有）
+
+- 入口：`auto_delegate_chat` 命令
+- 流程：from_role 产出产物后 → 自动构建上下文消息 → 推送给 to_role
+- 特点：角色间自动流转，无需人工干预
+- 适用场景：工作流中的产物传递（如：需求分析 → 产品设计）
+
+**③ 工作流执行**（已有）
+
+- 入口：`start_workflow_run` / `run_workflow_auto_chat`
+- 流程：按工作流定义顺序 → 依次触发每个角色 → 每步完成后自动进入下一步
+- 特点：线性自动推送，支持 `need_confirm` 暂停等待确认
+- 适用场景：项目启动时按流程自动执行
+
+**④ 手动派发**（已实现）
+
+- 入口：任务管理 tab 中点击「🚀 派发」按钮
+- 流程：选择任务 → 确认派发 → 更新任务状态为 running → 角色认领任务 → 发送任务上下文消息给角色
+- 特点：用户主动控制，可附加说明，任务与角色执行关联
+- 适用场景：任务分配后需要角色立即执行
+
+**⑤ 自动派发**（已实现）
+
+- 入口：任务管理 tab 中点击「🚀 自动派发」按钮
+- 流程：点击按钮 → 查找项目中所有 `ready` 状态且有 assignee 的任务 → 逐个派发（跳过已派发的）→ 更新状态为 running → 角色认领 → 发送任务上下文消息
+- 特点：无需手动逐个操作，一键派发所有就绪任务
+- 适用场景：任务准备就绪后批量让角色开始工作
+
+**⑥ 工作流驱动派发**（✅ 已实现）
+
+- 入口：工作流步骤关联任务（`project_workflows.task_id` 字段）
+- 流程：工作流推进到某步骤 → 自动派发该步骤关联的任务 → 创建 dispatch 记录 → 更新任务状态为 running
+- 特点：工作流与任务打通，流程驱动任务执行
+- 适用场景：复杂项目中工作流和任务需要联动
+- 实现：在 `trigger_workflow_execution` 中，当工作流步骤有 `task_id` 时，自动创建 `task_dispatches` 记录（dispatch_type='workflow'），并更新任务状态
+
+#### 4.2.3 数据库变更
+
+```sql
+-- 任务派发记录
+CREATE TABLE IF NOT EXISTS task_dispatches (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    role_id TEXT NOT NULL,
+    dispatch_type TEXT NOT NULL DEFAULT 'manual',  -- manual / auto / workflow
+    message TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending / sent / acknowledged / failed
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_dispatches_task ON task_dispatches(task_id);
+```
+
+#### 4.2.4 新增 Rust 命令
+
+```rust
+// 手动派发任务给角色
+#[tauri::command]
+pub async fn dispatch_task_to_role(
+    app: AppHandle,
+    task_id: String,
+    role_id: String,
+    message: Option<String>,
+) -> Result<(), String>
+
+// 自动派发：将所有 ready 状态且未派发的任务派发给 assignee
+#[tauri::command]
+pub async fn auto_dispatch_ready_tasks(
+    app: AppHandle,
+    project_id: String,
+) -> Result<Vec<String>, String>
+
+// 查询任务派发记录
+#[tauri::command]
+pub async fn list_task_dispatches(
+    app: AppHandle,
+    task_id: String,
+) -> Result<Vec<TaskDispatch>, String>
+```
+
+#### 4.2.5 派发核心逻辑
+
+```
+dispatch_task_to_role 流程：
+1. 查询任务详情（title, body, assignee, priority, skills 等）
+2. 构建任务上下文消息：
+   - 任务标题和描述
+   - 优先级和状态
+   - 关联的技能要求
+   - 用户的额外指示（message 参数）
+3. 更新任务状态为 running
+4. 角色认领任务（claim_project_task）
+5. 调用 chat_with_project_roles 发送任务消息给角色
+6. 记录派发事件到 task_dispatches 表
+7. 记录活动日志
+8. 通过 Tauri 事件推送派发状态
+```
+
+#### 4.2.6 前端改动
+
+**TaskManagement.tsx 增强：**
+
+- 任务列表每项增加「派发」按钮
+- 派发确认弹窗：可选择附加消息
+- 派发状态显示：已派发/未派发
+- 批量派发：选中多个任务一键派发
+
+**TaskBoard.tsx 增强：**
+
+- 看板卡片增加派发状态指示器
+- 拖拽到「进行中」列时自动触发派发
+
+**ProjectDetail.tsx 对话增强：**
+
+- 对话中显示关联的任务信息
+- 角色回复中标记任务完成时自动更新任务状态
+
+#### 4.2.7 类型定义
+
+```typescript
+export interface TaskDispatch {
+  id: string;
+  taskId: string;
+  roleId: string;
+  dispatchType: "manual" | "auto" | "workflow";
+  message: string;
+  status: "pending" | "sent" | "acknowledged" | "failed";
+  createdAt: number;
+}
+```
+
+### 4.3 实施计划
+
+- [x] 创建 task_dispatches 表和迁移
+- [x] 实现 dispatch_task_to_role 命令
+- [x] 实现 auto_dispatch_ready_tasks 命令
+- [x] 实现 list_task_dispatches 命令
+- [x] 前端 TaskManagement 添加派发按钮和确认弹窗
+- [x] 前端 TaskBoard 添加派发状态指示
+- [x] 前端对话中关联任务信息

@@ -51,19 +51,19 @@ type MergeNodeType = Node<{
   label: string;
 }>;
 
-type FlowNode = RoleNodeType | ConditionNodeType | ParallelNodeType | MergeNodeType;
+type StartNodeType = Node<{
+  label: string;
+}>;
+
+type FlowNode = RoleNodeType | ConditionNodeType | ParallelNodeType | MergeNodeType | StartNodeType;
 
 function RoleNode({ data, selected }: NodeProps<RoleNodeType>) {
-  const isUser = data.roleId === "builtin_user";
   return (
-    <div
-      className={`${styles.wfRoleNode} ${isUser ? styles.wfUserNode : ""} ${selected ? styles.selected : ""}`}
-    >
+    <div className={`${styles.wfRoleNode} ${selected ? styles.selected : ""}`}>
       <Handle type="target" position={Position.Top} className={styles.wfHandle} />
       <div className={styles.wfRoleNodeHeader}>
         <span className={styles.wfRoleIcon}>{data.icon}</span>
         <span className={styles.wfRoleLabel}>{data.label}</span>
-        {isUser && <span className={styles.wfUserBadge}>YOU</span>}
       </div>
       {data.artifactType && <div className={styles.wfRoleArtifact}>📦 {data.artifactType}</div>}
       <div
@@ -153,11 +153,22 @@ function MergeNode({ data, selected }: NodeProps<MergeNodeType>) {
   );
 }
 
+function StartNode({ data, selected }: NodeProps<StartNodeType>) {
+  return (
+    <div className={`${styles.wfStartNode} ${selected ? styles.selected : ""}`}>
+      <div className={styles.wfStartIcon}>▶</div>
+      <div className={styles.wfStartLabel}>{data.label}</div>
+      <Handle type="source" position={Position.Bottom} className={styles.wfHandle} />
+    </div>
+  );
+}
+
 const nodeTypes = {
   roleNode: RoleNode,
   conditionNode: ConditionNode,
   parallelNode: ParallelNode,
   mergeNode: MergeNode,
+  startNode: StartNode,
 };
 
 const dagreGraph = new dagre.graphlib.Graph();
@@ -166,14 +177,19 @@ dagreGraph.setDefaultEdgeLabel(() => ({}));
 const layoutGraph = (nodes: FlowNode[], edges: Edge[]) => {
   dagreGraph.setGraph({ rankdir: "TB", nodesep: 50, ranksep: 60 });
   nodes.forEach((node) => {
-    const w =
-      node.type === "conditionNode" || node.type === "parallelNode" || node.type === "mergeNode"
-        ? 100
-        : 130;
-    const h =
-      node.type === "conditionNode" || node.type === "parallelNode" || node.type === "mergeNode"
-        ? 70
-        : 60;
+    let w = 130;
+    let h = 60;
+    if (
+      node.type === "conditionNode" ||
+      node.type === "parallelNode" ||
+      node.type === "mergeNode"
+    ) {
+      w = 100;
+      h = 70;
+    } else if (node.type === "startNode") {
+      w = 60;
+      h = 60;
+    }
     dagreGraph.setNode(node.id, { width: w, height: h });
   });
   edges.forEach((edge) => {
@@ -241,14 +257,13 @@ function buildFlowFromWorkflows(
 
     if (wf.transitionType === "need_confirm" && fromId && toId) {
       const condId = `cond_${conditionCounter.val++}`;
-      const isUserConfirm = toId === "builtin_user";
       nodes.push({
         id: condId,
         type: "conditionNode",
         position: { x: 0, y: 0 },
         data: {
-          label: isUserConfirm ? "用户审批" : "审批",
-          conditionDesc: isUserConfirm ? "您确认通过？" : "确认通过？",
+          label: "审批",
+          conditionDesc: "确认通过？",
         },
       });
 
@@ -332,15 +347,10 @@ function buildFlowFromWorkflows(
   if (hasStartTarget) {
     nodes.push({
       id: "start",
-      type: "roleNode",
+      type: "startNode",
       position: { x: 0, y: 0 },
       data: {
-        roleId: "start",
         label: "开始",
-        icon: "🚀",
-        description: "",
-        artifactType: "",
-        transitionType: "auto_push",
       },
     });
   }
@@ -417,6 +427,21 @@ function Sidebar({
 
       <div className={styles.wfSidebarSection}>
         <div className={styles.wfSidebarSectionTitle}>逻辑节点</div>
+        <div
+          className={styles.wfSidebarItem + " " + styles.wfSidebarLogicItem}
+          draggable
+          onDragStart={(e) =>
+            onDragStart(e, {
+              type: "startNode",
+              data: {
+                label: "开始",
+              },
+            })
+          }
+        >
+          <span className={styles.wfSidebarItemIcon}>▶</span>
+          <span className={styles.wfSidebarItemLabel}>开始</span>
+        </div>
         <div
           className={styles.wfSidebarItem + " " + styles.wfSidebarLogicItem}
           draggable
@@ -522,10 +547,36 @@ function EdgeEditorModal({
               />
               🔒 需确认
             </label>
+            <label className={styles.wfAddRadio}>
+              <input
+                type="radio"
+                name="edgeTransitionType"
+                value="condition"
+                checked={transitionType === "condition"}
+                onChange={() => onTransitionTypeChange("condition")}
+              />
+              ◆ 条件分支
+            </label>
+            <label className={styles.wfAddRadio}>
+              <input
+                type="radio"
+                name="edgeTransitionType"
+                value="parallel"
+                checked={transitionType === "parallel"}
+                onChange={() => onTransitionTypeChange("parallel")}
+              />
+              ⊕ 并行执行
+            </label>
           </div>
         </div>
         {transitionType === "need_confirm" && (
           <div className={styles.wfAddHint}>产出物需确认后才流转给下一角色</div>
+        )}
+        {transitionType === "condition" && (
+          <div className={styles.wfAddHint}>根据条件判断结果选择分支（通过/打回）</div>
+        )}
+        {transitionType === "parallel" && (
+          <div className={styles.wfAddHint}>同时触发多个下游角色并行工作</div>
         )}
         <div className={styles.wfAddActions}>
           <button
@@ -699,6 +750,44 @@ function WorkflowDesignerInner({
 
       const sourceNode = nodes.find((n) => n.id === params.source);
       const isConditionNode = sourceNode?.type === "conditionNode";
+      const isStartNode = sourceNode?.type === "startNode";
+
+      if (isStartNode) {
+        const targetNode = nodes.find((n) => n.id === params.target);
+        const targetRole = targetNode as RoleNodeType | undefined;
+        if (targetRole?.type === "roleNode") {
+          const newEdge: Edge = {
+            id: `e-start-${params.target}`,
+            source: params.source,
+            target: params.target,
+            type: "smoothstep",
+            style: { stroke: "#00b894", strokeWidth: 2 },
+            label: "开始",
+            labelStyle: { fill: "#00b894", fontWeight: 600, fontSize: 11 },
+            labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
+            labelBgPadding: [4, 6] as [number, number],
+            labelBgBorderRadius: 4,
+            markerEnd: { type: MarkerType.ArrowClosed as const, color: "#00b894" },
+            data: { artifactType: "", transitionType: "auto_push" },
+          };
+          setEdges((eds) => addEdgeUnique(eds, newEdge));
+          invoke("add_project_workflow", {
+            req: {
+              projectId,
+              fromRoleId: null,
+              toRoleId: targetRole.data.roleId,
+              artifactType: undefined,
+              transitionType: "auto_push",
+            },
+          })
+            .then(() => {
+              loadWorkflows();
+              invoke("sync_workflow_to_file", { projectId }).catch(console.error);
+            })
+            .catch(console.error);
+        }
+        return;
+      }
 
       setEdgeEditorData({
         source: params.source,
@@ -709,7 +798,7 @@ function WorkflowDesignerInner({
       });
       setEdgeEditorOpen(true);
     },
-    [nodes]
+    [nodes, projectId, loadWorkflows, setEdges]
   );
 
   const handleEdgeEditorConfirm = useCallback(() => {
@@ -737,6 +826,18 @@ function WorkflowDesignerInner({
       edgeColor = "#e74c3c";
       edgeAnimated = false;
       edgeMarkerEnd = { type: MarkerType.ArrowClosed as const, color: "#e74c3c" };
+    } else if (transitionType === "condition") {
+      edgeStyle = { stroke: "#f39c12", strokeWidth: 2, strokeDasharray: "10 5" };
+      edgeColor = "#f39c12";
+      edgeLabel = artifactType ? `◆ ${artifactType}` : "◆ 条件分支";
+      edgeAnimated = false;
+      edgeMarkerEnd = { type: MarkerType.ArrowClosed as const, color: "#f39c12" };
+    } else if (transitionType === "parallel") {
+      edgeStyle = { stroke: "#00b894", strokeWidth: 2 };
+      edgeColor = "#00b894";
+      edgeLabel = artifactType ? `⊕ ${artifactType}` : "⊕ 并行执行";
+      edgeAnimated = true;
+      edgeMarkerEnd = { type: MarkerType.ArrowClosed as const, color: "#00b894" };
     } else if (transitionType === "need_confirm") {
       edgeStyle = { stroke: "#e67e22", strokeWidth: 2, strokeDasharray: "8 4" };
       edgeColor = "#e67e22";
@@ -763,17 +864,42 @@ function WorkflowDesignerInner({
     setEdges((eds) => addEdgeUnique(eds, newEdge));
     setEdgeEditorOpen(false);
 
-    const sourceRole = sourceNode as RoleNodeType | undefined;
+    const sourceRole = sourceNode as RoleNodeType | StartNodeType | undefined;
     const targetNode = nodes.find((n) => n.id === target) as RoleNodeType | undefined;
 
-    if (sourceRole?.type === "roleNode" && targetNode?.type === "roleNode") {
+    if (
+      (sourceRole?.type === "roleNode" || sourceRole?.type === "startNode") &&
+      targetNode?.type === "roleNode"
+    ) {
+      let conditionExpr = "";
+      let branchLabel = "";
+      let parallelGroup = "";
+
+      if (isConditionYes) {
+        branchLabel = "yes";
+        conditionExpr = "approved";
+      } else if (isConditionNo) {
+        branchLabel = "no";
+        conditionExpr = "approved";
+      }
+
+      if (transitionType === "parallel") {
+        parallelGroup = `pg-${sourceRole.id}`;
+      }
+
+      const fromRoleId =
+        sourceRole.type === "startNode" ? null : (sourceRole as RoleNodeType).data.roleId;
+
       invoke("add_project_workflow", {
         req: {
           projectId,
-          fromRoleId: sourceRole.data.roleId === "start" ? null : sourceRole.data.roleId || null,
+          fromRoleId,
           toRoleId: targetNode.data.roleId,
           artifactType: artifactType || undefined,
           transitionType: transitionType || undefined,
+          conditionExpr: conditionExpr || undefined,
+          branchLabel: branchLabel || undefined,
+          parallelGroup: parallelGroup || undefined,
         },
       })
         .then(() => {
@@ -786,6 +912,7 @@ function WorkflowDesignerInner({
 
   const handleDeleteNode = useCallback(
     async (nodeId: string) => {
+      if (nodeId === "start") return;
       const node = nodes.find((n) => n.id === nodeId);
       if (!node) return;
 
@@ -826,14 +953,15 @@ function WorkflowDesignerInner({
       const sourceNode = nodes.find((n) => n.id === edge.source);
       const targetNode = nodes.find((n) => n.id === edge.target);
 
-      if (sourceNode?.type === "roleNode" && targetNode?.type === "roleNode") {
-        const sourceData = (sourceNode as RoleNodeType).data;
+      if (
+        (sourceNode?.type === "roleNode" || sourceNode?.type === "startNode") &&
+        targetNode?.type === "roleNode"
+      ) {
         const targetData = (targetNode as RoleNodeType).data;
+        const fromRoleId =
+          sourceNode.type === "startNode" ? null : (sourceNode as RoleNodeType).data.roleId;
         const wf = workflows.find(
-          (w) =>
-            (w.fromRoleId === sourceData.roleId ||
-              (!w.fromRoleId && sourceData.roleId === "start")) &&
-            w.toRoleId === targetData.roleId
+          (w) => w.fromRoleId === fromRoleId && w.toRoleId === targetData.roleId
         );
         if (wf) {
           try {
@@ -868,7 +996,7 @@ function WorkflowDesignerInner({
   const roleMap = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
 
   const minimapNodeColor = (node: FlowNode) => {
-    if (node.id === "start") return "#95a5a6";
+    if (node.id === "start" || node.type === "startNode") return "#00b894";
     if (node.type === "conditionNode") return "#f39c12";
     if (node.type === "parallelNode") return "#00b894";
     if (node.type === "mergeNode") return "#0984e3";
@@ -938,28 +1066,27 @@ function WorkflowDesignerInner({
                   const roleEdges = edges.filter((e) => {
                     const src = nodes.find((n) => n.id === e.source);
                     const tgt = nodes.find((n) => n.id === e.target);
-                    return src?.type === "roleNode" && tgt?.type === "roleNode";
+                    return (
+                      (src?.type === "roleNode" || src?.type === "startNode") &&
+                      tgt?.type === "roleNode"
+                    );
                   });
                   for (const edge of roleEdges) {
-                    const srcNode = nodes.find((n) => n.id === edge.source) as
-                      | RoleNodeType
-                      | undefined;
+                    const srcNode = nodes.find((n) => n.id === edge.source);
                     const tgtNode = nodes.find((n) => n.id === edge.target) as
                       | RoleNodeType
                       | undefined;
                     if (!srcNode || !tgtNode) continue;
+                    const fromRoleId =
+                      srcNode.type === "startNode" ? null : (srcNode as RoleNodeType).data.roleId;
                     const existing = workflows.find(
-                      (w) =>
-                        w.fromRoleId ===
-                          (srcNode.data.roleId === "start" ? null : srcNode.data.roleId) &&
-                        w.toRoleId === tgtNode.data.roleId
+                      (w) => w.fromRoleId === fromRoleId && w.toRoleId === tgtNode.data.roleId
                     );
                     if (existing) continue;
                     await invoke("add_project_workflow", {
                       req: {
                         projectId,
-                        fromRoleId:
-                          srcNode.data.roleId === "start" ? null : srcNode.data.roleId || null,
+                        fromRoleId,
                         toRoleId: tgtNode.data.roleId,
                         artifactType:
                           (edge.data as { artifactType?: string })?.artifactType || undefined,

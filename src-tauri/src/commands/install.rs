@@ -1,6 +1,7 @@
 use crate::commands::helpers::{
     command, copy_dir_recursive, ensure_gateway_config, hermes_command,
-    home_dir, kill_hermes_process, AgentProcess, InstallProgress,
+    home_dir, kill_hermes_process, path_with_local_bin, try_install_python_via_uv,
+    AgentProcess, AppState, InstallProgress,
     sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
 };
 use serde::Serialize;
@@ -191,11 +192,24 @@ pub async fn install_hermes_agent(app: AppHandle, method: String) -> Result<bool
 }
 
 #[tauri::command]
-pub async fn start_hermes_agent(_app: AppHandle, state: State<'_, AgentProcess>) -> Result<String, String> {
+pub async fn start_hermes_agent(app: AppHandle, state: State<'_, AgentProcess>) -> Result<String, String> {
     use crate::commands::helpers::path_with_local_bin;
 
     kill_hermes_process();
     std::thread::sleep(std::time::Duration::from_millis(300));
+
+    let workspace_root = {
+        let state = app.state::<AppState>();
+        let pool = state.db_pool.clone();
+        sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'workspace_root'")
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| format!("{}/hermes-workspace", home_dir()))
+    };
+    let _ = std::fs::create_dir_all(&workspace_root);
 
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     let _ = guard.take();
@@ -205,13 +219,14 @@ pub async fn start_hermes_agent(_app: AppHandle, state: State<'_, AgentProcess>)
     match hermes_command()
         .args(["gateway", "run", "--accept-hooks"])
         .env("PATH", &new_path)
+        .current_dir(&workspace_root)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
     {
         Ok(child) => {
-            log::info!("Hermes Agent started");
+            log::info!("Hermes Agent started (cwd: {})", workspace_root);
             *guard = Some(child);
             Ok("Hermes Agent started".to_string())
         }
@@ -223,24 +238,44 @@ pub async fn start_hermes_agent(_app: AppHandle, state: State<'_, AgentProcess>)
 }
 
 #[tauri::command]
-pub fn restart_hermes(state: State<'_, AgentProcess>) -> Result<String, String> {
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-
-    let _ = guard.take();
+pub fn restart_hermes(app: AppHandle, state: State<'_, AgentProcess>) -> Result<String, String> {
+    {
+        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+        let _ = guard.take();
+    }
 
     kill_hermes_process();
 
     std::thread::sleep(std::time::Duration::from_millis(500));
 
+    let app_state = app.state::<AppState>();
+    let pool = app_state.db_pool.clone();
+    let workspace_root = tauri::async_runtime::block_on(async {
+        sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'workspace_root'")
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten()
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| format!("{}/hermes-workspace", home_dir()))
+    });
+    let _ = std::fs::create_dir_all(&workspace_root);
+
+    let new_path = path_with_local_bin();
+
     let child = hermes_command()
         .args(["gateway", "run", "--accept-hooks"])
+        .env("PATH", &new_path)
+        .current_dir(&workspace_root)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to start hermes: {}", e))?;
 
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     *guard = Some(child);
+    log::info!("Hermes Agent restarted (cwd: {})", workspace_root);
     Ok("Hermes Agent restarted".to_string())
 }
 
@@ -424,7 +459,8 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
     });
 
     let python = find_unix_python()
-        .ok_or("Python 3.11+ not found, please install Python first")?;
+        .or_else(|| try_install_python_via_uv(&app))
+        .ok_or("Python 3.11+ not found, and auto-install failed. Please install Python 3.11+ manually.")?;
 
     let _ = app.emit("install-progress", InstallProgress {
         line: format!("Using Python: {}", python), done: false, success: false,
@@ -471,6 +507,18 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
         let stderr = String::from_utf8_lossy(&install.stderr);
         return Err(format!("pip install failed: {}", stderr.trim()));
     }
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: "Installing gateway dependencies...".to_string(), done: false, success: false,
+    });
+
+    let _ = command(&python_exe)
+        .args(["-m", "pip", "install", "aiohttp",
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
+               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
 
     let _ = app.emit("install-progress", InstallProgress {
         line: "Dependencies installed, verifying...".to_string(), done: false, success: false,
@@ -642,6 +690,18 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
         let stderr = String::from_utf8_lossy(&install.stderr);
         return Err(format!("pip install failed: {}", stderr.trim()));
     }
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: "Installing gateway dependencies...".to_string(), done: false, success: false,
+    });
+
+    let _ = command(&python_exe)
+        .args(["-m", "pip", "install", "aiohttp",
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
+               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
 
     let _ = app.emit("install-progress", InstallProgress {
         line: "Dependencies installed, verifying...".to_string(), done: false, success: false,

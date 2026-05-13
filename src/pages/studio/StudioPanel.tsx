@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import {
+  sendNotification,
+  isPermissionGranted,
+  requestPermission,
+} from "@tauri-apps/plugin-notification";
 import { useI18n } from "../../contexts/I18nContext";
 import type {
   ProjectItem,
@@ -40,6 +46,47 @@ function StudioPanel() {
   const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
   const [projectMessages, setProjectMessages] = useState<ProjectMessage[]>([]);
   const [projectTasks, setProjectTasks] = useState<ProjectTask[]>([]);
+
+  useEffect(() => {
+    let permissionGranted = false;
+    const setupNotification = async () => {
+      try {
+        permissionGranted = await isPermissionGranted();
+        if (!permissionGranted) {
+          const permission = await requestPermission();
+          permissionGranted = permission === "granted";
+        }
+      } catch {}
+    };
+    setupNotification();
+
+    const unlisten = listen<{
+      projectId: string;
+      action: string;
+      roleId: string;
+      detail: string;
+    }>("project_activity", async (event) => {
+      if (selectedProject && event.payload.projectId === selectedProject.id) return;
+      const importantActions = [
+        "artifact_approved",
+        "artifact_rejected",
+        "task_claimed",
+        "workflow_completed",
+      ];
+      if (importantActions.includes(event.payload.action) && permissionGranted) {
+        try {
+          sendNotification({
+            title: "Hermes Studio",
+            body: event.payload.detail || `${event.payload.action}`,
+          });
+        } catch {}
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [selectedProject]);
 
   const loadProjects = async () => {
     try {
@@ -266,7 +313,6 @@ function StudioPanel() {
 
       <NewProjectModal
         visible={showNewProject}
-        allRoles={allRoles}
         onClose={() => setShowNewProject(false)}
         onCreated={() => {
           loadProjects();

@@ -5,7 +5,7 @@ mod services;
 use commands::helpers::{
     hermes_command, ensure_gateway_config, kill_hermes_process,
     show_error_dialog, sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
-    AppState, AgentProcess,
+    AppState, AgentProcess, home_dir, path_with_local_bin,
 };
 use sqlx::SqlitePool;
 use std::process::Stdio;
@@ -21,6 +21,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(AgentProcess(Mutex::new(None)))
         .setup(|app| {
             log::info!("Hermes Desktop started");
@@ -138,13 +139,34 @@ pub fn run() {
                 kill_hermes_process();
                 std::thread::sleep(std::time::Duration::from_millis(300));
 
-                match hermes_command()
+                let workspace_root = {
+                    let state = app.handle().state::<AppState>();
+                    let pool = state.db_pool.clone();
+                    tauri::async_runtime::block_on(async {
+                        sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'workspace_root'")
+                            .fetch_optional(&pool)
+                            .await
+                            .ok()
+                            .flatten()
+                            .filter(|v| !v.is_empty())
+                            .unwrap_or_else(|| {
+                                format!("{}/hermes-workspace", home_dir())
+                            })
+                    })
+                };
+                let _ = std::fs::create_dir_all(&workspace_root);
+
+                let new_path = path_with_local_bin();
+                let mut gateway_cmd = hermes_command();
+                gateway_cmd
                     .args(["gateway", "run", "--accept-hooks"])
+                    .env("PATH", &new_path)
+                    .current_dir(&workspace_root)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-                {
+                    .stderr(Stdio::null());
+
+                match gateway_cmd.spawn() {
                     Ok(child) => {
                         log::info!("Hermes Gateway started (+API Server)");
                         app.manage(AgentProcess(Mutex::new(Some(child))));
@@ -252,6 +274,50 @@ pub fn run() {
             commands::project::create_project_task,
             commands::project::update_project_task,
             commands::project::delete_project_task,
+            commands::project::claim_project_task,
+            commands::project::heartbeat_task_claim,
+            commands::project::release_task_claim,
+            commands::project::add_task_comment,
+            commands::project::list_task_comments,
+            commands::project::link_tasks,
+            commands::project::unlink_tasks,
+            commands::project::list_task_links,
+            commands::project::list_task_events,
+            commands::project::start_workflow_run,
+            commands::project::pause_workflow_run,
+            commands::project::resume_workflow_run,
+            commands::project::confirm_workflow_step,
+            commands::project::list_workflow_runs,
+            commands::project::get_workflow_run_status,
+            commands::project::create_artifact_version,
+            commands::project::list_artifact_versions,
+            commands::project::get_artifact_version,
+            commands::project::diff_artifact_versions,
+            commands::project::bind_role_skill,
+            commands::project::unbind_role_skill,
+            commands::project::list_role_skills,
+            commands::project::list_project_activities,
+            commands::project::get_project_stats,
+            commands::project::create_project_memory,
+            commands::project::list_project_memories,
+            commands::project::delete_project_memory,
+            commands::project::list_project_file_records,
+            commands::project::create_project_file_record,
+            commands::project::delete_project_file_record,
+            commands::project::scan_project_files,
+            commands::project::record_chat_files,
+            commands::project::list_project_boards,
+            commands::project::create_project_board,
+            commands::project::update_project_board,
+            commands::project::delete_project_board,
+            commands::project::archive_project_task,
+            commands::project::update_message_tokens,
+            commands::project::preprocess_skill_template,
+            commands::project::list_project_templates,
+            commands::project::create_project_from_template,
+            commands::project::dispatch_task_to_role,
+            commands::project::list_task_dispatches,
+            commands::project::auto_dispatch_ready_tasks,
             commands::project::sync_workflow_to_file,
             commands::project::load_workflow_from_file,
             commands::knowledge::list_knowledge_bases,

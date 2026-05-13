@@ -138,6 +138,238 @@ fn all_migrations() -> Vec<Migration> {
             description: "add knowledge_bases.auto_retrieve",
             sql: "ALTER TABLE knowledge_bases ADD COLUMN auto_retrieve INTEGER NOT NULL DEFAULT 0",
         },
+        Migration {
+            version: 27,
+            description: "add project_tasks claim and time fields",
+            sql: "ALTER TABLE project_tasks ADD COLUMN claim_lock TEXT NOT NULL DEFAULT ''",
+        },
+        Migration {
+            version: 28,
+            description: "add project_tasks.claim_expire_at",
+            sql: "ALTER TABLE project_tasks ADD COLUMN claim_expire_at INTEGER NOT NULL DEFAULT 0",
+        },
+        Migration {
+            version: 29,
+            description: "add project_tasks.started_at",
+            sql: "ALTER TABLE project_tasks ADD COLUMN started_at INTEGER",
+        },
+        Migration {
+            version: 30,
+            description: "add project_tasks.completed_at",
+            sql: "ALTER TABLE project_tasks ADD COLUMN completed_at INTEGER",
+        },
+        Migration {
+            version: 31,
+            description: "add project_tasks.skills",
+            sql: "ALTER TABLE project_tasks ADD COLUMN skills TEXT NOT NULL DEFAULT '[]'",
+        },
+        Migration {
+            version: 32,
+            description: "add project_tasks.max_retries",
+            sql: "ALTER TABLE project_tasks ADD COLUMN max_retries INTEGER NOT NULL DEFAULT 0",
+        },
+        Migration {
+            version: 33,
+            description: "add project_tasks.retry_count",
+            sql: "ALTER TABLE project_tasks ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0",
+        },
+        Migration {
+            version: 34,
+            description: "add project_tasks.workspace_kind",
+            sql: "ALTER TABLE project_tasks ADD COLUMN workspace_kind TEXT NOT NULL DEFAULT ''",
+        },
+        Migration {
+            version: 35,
+            description: "add project_tasks.workspace_path",
+            sql: "ALTER TABLE project_tasks ADD COLUMN workspace_path TEXT NOT NULL DEFAULT ''",
+        },
+        Migration {
+            version: 36,
+            description: "add project_memories table",
+            sql: "CREATE TABLE IF NOT EXISTS project_memories (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, role_id TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'general', content TEXT NOT NULL, importance INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE)",
+        },
+        Migration {
+            version: 37,
+            description: "add idx_project_memories_project",
+            sql: "CREATE INDEX IF NOT EXISTS idx_project_memories_project ON project_memories(project_id)",
+        },
+        Migration {
+            version: 38,
+            description: "add idx_project_memories_role_category",
+            sql: "CREATE INDEX IF NOT EXISTS idx_project_memories_role_category ON project_memories(role_id, category)",
+        },
+        Migration {
+            version: 39,
+            description: "create project_file_records table",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS project_file_records (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    role_id TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    file_ext TEXT NOT NULL DEFAULT '',
+                    file_size INTEGER NOT NULL DEFAULT 0,
+                    description TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_file_records_project ON project_file_records(project_id);
+                CREATE INDEX IF NOT EXISTS idx_file_records_role ON project_file_records(project_id, role_id);
+            "#,
+        },
+        Migration {
+            version: 40,
+            description: "create task_dispatches table",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS task_dispatches (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    role_id TEXT NOT NULL,
+                    dispatch_type TEXT NOT NULL DEFAULT 'manual',
+                    message TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_task_dispatches_task ON task_dispatches(task_id);
+            "#,
+        },
+        Migration {
+            version: 41,
+            description: "add task_id to project_workflows",
+            sql: "ALTER TABLE project_workflows ADD COLUMN task_id TEXT NOT NULL DEFAULT ''",
+        },
+        Migration {
+            version: 42,
+            description: "add condition_expr and branch_label to project_workflows",
+            sql: "ALTER TABLE project_workflows ADD COLUMN condition_expr TEXT NOT NULL DEFAULT ''",
+        },
+        Migration {
+            version: 43,
+            description: "add branch_label to project_workflows",
+            sql: "ALTER TABLE project_workflows ADD COLUMN branch_label TEXT NOT NULL DEFAULT ''",
+        },
+        Migration {
+            version: 44,
+            description: "add parallel_group to project_workflows",
+            sql: "ALTER TABLE project_workflows ADD COLUMN parallel_group TEXT NOT NULL DEFAULT ''",
+        },
+        Migration {
+            version: 45,
+            description: "add token tracking fields to project_messages",
+            sql: "ALTER TABLE project_messages ADD COLUMN prompt_tokens INTEGER NOT NULL DEFAULT 0",
+        },
+        Migration {
+            version: 46,
+            description: "add completion_tokens to project_messages",
+            sql: "ALTER TABLE project_messages ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0",
+        },
+        Migration {
+            version: 47,
+            description: "create project_boards table for multi-board support",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS project_boards (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    is_default INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_project_boards_project ON project_boards(project_id);
+            "#,
+        },
+        Migration {
+            version: 48,
+            description: "add board_id to project_tasks",
+            sql: "ALTER TABLE project_tasks ADD COLUMN board_id TEXT NOT NULL DEFAULT ''",
+        },
+        Migration {
+            version: 49,
+            description: "create project_templates table",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS project_templates (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    icon TEXT NOT NULL DEFAULT '',
+                    description TEXT NOT NULL DEFAULT '',
+                    project_rule TEXT NOT NULL DEFAULT '',
+                    project_guidelines TEXT NOT NULL DEFAULT '',
+                    is_builtin INTEGER NOT NULL DEFAULT 0,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );
+            "#,
+        },
+        Migration {
+            version: 50,
+            description: "create template_roles table",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS template_roles (
+                    id TEXT PRIMARY KEY,
+                    template_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    icon TEXT NOT NULL DEFAULT '',
+                    nickname TEXT NOT NULL DEFAULT '',
+                    description TEXT NOT NULL DEFAULT '',
+                    responsibilities TEXT NOT NULL DEFAULT '',
+                    soul_content TEXT NOT NULL DEFAULT '',
+                    avatar_preset TEXT NOT NULL DEFAULT '',
+                    avatar_color TEXT NOT NULL DEFAULT '',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_template_roles_template ON template_roles(template_id);
+            "#,
+        },
+        Migration {
+            version: 51,
+            description: "create template_workflows table",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS template_workflows (
+                    id TEXT PRIMARY KEY,
+                    template_id TEXT NOT NULL,
+                    from_role_index INTEGER,
+                    to_role_index INTEGER NOT NULL,
+                    artifact_type TEXT NOT NULL DEFAULT '',
+                    transition_type TEXT NOT NULL DEFAULT 'auto_push',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_template_workflows_template ON template_workflows(template_id);
+            "#,
+        },
+        Migration {
+            version: 52,
+            description: "remove template_roles, rebuild template_workflows with role_id",
+            sql: r#"
+                DROP TABLE IF EXISTS template_roles;
+                DROP TABLE IF EXISTS template_workflows;
+
+                CREATE TABLE template_workflows (
+                    id TEXT PRIMARY KEY,
+                    template_id TEXT NOT NULL,
+                    from_role_id TEXT,
+                    to_role_id TEXT NOT NULL,
+                    artifact_type TEXT NOT NULL DEFAULT '',
+                    transition_type TEXT NOT NULL DEFAULT 'auto_push',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE CASCADE,
+                    FOREIGN KEY (from_role_id) REFERENCES ai_roles(id) ON DELETE SET NULL,
+                    FOREIGN KEY (to_role_id) REFERENCES ai_roles(id) ON DELETE CASCADE
+                );
+                CREATE INDEX idx_template_workflows_template ON template_workflows(template_id);
+
+                DELETE FROM ai_roles WHERE is_builtin = 1;
+            "#,
+        },
     ]
 }
 

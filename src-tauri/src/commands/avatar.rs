@@ -1,4 +1,5 @@
 use crate::database::models as db;
+use crate::commands::project::seed_builtin_templates;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
 
@@ -218,6 +219,9 @@ pub async fn delete_avatar_gesture(app: AppHandle, id: String) -> Result<(), Str
 #[tauri::command]
 pub async fn list_ai_roles(app: AppHandle) -> Result<Vec<db::AiRole>, String> {
     let pool = get_pool(&app)?;
+
+    let _ = seed_builtin_templates(&pool).await;
+
     let rows = sqlx::query_as::<_, db::AiRole>(
         "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles ORDER BY sort_order ASC, created_at ASC"
     )

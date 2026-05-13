@@ -356,6 +356,61 @@ pub(crate) fn tool_label(tool_name: &str) -> &str {
     }
 }
 
+pub(crate) fn sync_single_env_key(app: &tauri::AppHandle, env_key: &str, env_value: &str) {
+    let env_path_output = match hermes_command()
+        .args(&["config", "env-path"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("[sync_env] Failed to get .env path: {}", e);
+            return;
+        }
+    };
+    let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
+    if env_path.is_empty() {
+        log::warn!("[sync_env] .env path is empty");
+        return;
+    }
+
+    if let Some(parent) = std::path::Path::new(&env_path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut found = false;
+    if std::path::Path::new(&env_path).exists() {
+        if let Ok(content) = std::fs::read_to_string(&env_path) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    lines.push(line.to_string());
+                    continue;
+                }
+                if let Some((k, _)) = trimmed.split_once('=') {
+                    if k.trim().to_uppercase() == env_key.to_uppercase() {
+                        lines.push(format!("{}={}", env_key, env_value));
+                        found = true;
+                        continue;
+                    }
+                }
+                lines.push(line.to_string());
+            }
+        }
+    }
+
+    if !found {
+        lines.push(format!("{}={}", env_key, env_value));
+    }
+
+    match std::fs::write(&env_path, lines.join("\n")) {
+        Ok(_) => log::info!("[sync_env] Written {} to .env", env_key),
+        Err(e) => log::warn!("[sync_env] Failed to write .env: {}", e),
+    }
+}
+
 pub(crate) async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
     let pool = match app.try_state::<AppState>() {
         Some(s) => s.db_pool.clone(),
@@ -925,6 +980,44 @@ pub(crate) fn try_install_python_via_uv(app: &AppHandle) -> Option<String> {
 
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn find_unix_python() -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let local_bin = format!("{}/.local/bin", home);
+    let current_path = std::env::var("PATH").unwrap_or_default();
+    let extended_path = if !current_path.contains(&local_bin) {
+        format!("{}:{}", local_bin, current_path)
+    } else {
+        current_path
+    };
+
+    for cmd in &["python3.13", "python3.12", "python3.11", "python3", "python"] {
+        if let Ok(output) = command(cmd)
+            .arg("--version")
+            .env("PATH", &extended_path)
+            .output()
+        {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout);
+                let stderr_version = String::from_utf8_lossy(&output.stderr);
+                let combined = format!("{}{}", version, stderr_version);
+                if combined.contains("Python 3.") {
+                    let major_minor: Vec<&str> = combined.split("Python ")
+                        .nth(1).unwrap_or("0.0")
+                        .split('.').collect();
+                    if major_minor.len() >= 2 {
+                        if let (Ok(major), Ok(minor)) = (major_minor[0].parse::<u32>(), major_minor[1].parse::<u32>()) {
+                            if major == 3 && minor >= 11 {
+                                if let Some(full) = unix_which_with_path(cmd, &extended_path) {
+                                    log::info!("[install] Found Python via PATH: {} -> {}", full, combined.trim());
+                                    return Some(full);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let brew_prefixes = if std::path::Path::new("/opt/homebrew/bin/brew").exists() {
         vec!["/opt/homebrew"]
     } else if std::path::Path::new("/usr/local/bin/brew").exists() {
@@ -948,46 +1041,6 @@ pub(crate) fn find_unix_python() -> Option<String> {
             if verify_python_version(&default_brew) {
                 log::info!("[install] Found Python via brew default: {}", default_brew);
                 return Some(default_brew);
-            }
-        }
-    }
-
-    let explicit_paths = [
-        "/usr/local/bin/python3.13", "/usr/local/bin/python3.12", "/usr/local/bin/python3.11",
-        "/usr/bin/python3.13", "/usr/bin/python3.12", "/usr/bin/python3.11",
-        "/usr/local/bin/python3",
-        "/usr/bin/python3",
-    ];
-    for path in &explicit_paths {
-        if std::path::Path::new(path).exists() {
-            if verify_python_version(path) {
-                log::info!("[install] Found Python at: {}", path);
-                return Some(path.to_string());
-            }
-        }
-    }
-
-    for cmd in &["python3.13", "python3.12", "python3.11", "python3", "python"] {
-        if let Ok(output) = command(cmd).arg("--version").output() {
-            if output.status.success() {
-                let version = String::from_utf8_lossy(&output.stdout);
-                let stderr_version = String::from_utf8_lossy(&output.stderr);
-                let combined = format!("{}{}", version, stderr_version);
-                if combined.contains("Python 3.") {
-                    let major_minor: Vec<&str> = combined.split("Python ")
-                        .nth(1).unwrap_or("0.0")
-                        .split('.').collect();
-                    if major_minor.len() >= 2 {
-                        if let (Ok(major), Ok(minor)) = (major_minor[0].parse::<u32>(), major_minor[1].parse::<u32>()) {
-                            if major == 3 && minor >= 11 {
-                                let full = unix_which(cmd);
-                                let exe_path = full.as_deref().unwrap_or(cmd);
-                                log::info!("[install] Found Python via PATH: {} -> {}", exe_path, version.trim());
-                                return Some(exe_path.to_string());
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -1019,7 +1072,17 @@ pub(crate) fn verify_python_version(path: &str) -> bool {
 
 #[cfg(not(target_os = "windows"))]
 pub(crate) fn unix_which(cmd: &str) -> Option<String> {
-    if let Ok(output) = command("which").arg(cmd).output() {
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    unix_which_with_path(cmd, &path_env)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn unix_which_with_path(cmd: &str, path_env: &str) -> Option<String> {
+    if let Ok(output) = command("which")
+        .arg(cmd)
+        .env("PATH", path_env)
+        .output()
+    {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() && std::path::Path::new(&path).exists() {
@@ -1027,6 +1090,111 @@ pub(crate) fn unix_which(cmd: &str) -> Option<String> {
             }
         }
     }
+    None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn try_install_python_via_uv(app: &AppHandle) -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let uv_exe = {
+        let candidates = [
+            format!("{}/.local/bin/uv", home),
+            format!("{}/.cargo/bin/uv", home),
+        ];
+        let mut found = None;
+        for p in &candidates {
+            if std::path::Path::new(p).exists() {
+                found = Some(p.clone());
+                break;
+            }
+        }
+        if found.is_none() {
+            if let Ok(output) = command("uv").arg("--version").output() {
+                if output.status.success() {
+                    found = Some("uv".to_string());
+                }
+            }
+        }
+        found
+    };
+
+    let uv_exe = match uv_exe {
+        Some(e) => e,
+        None => {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Installing uv package manager...".to_string(), done: false, success: false,
+            });
+            let uv_target = format!("{}/.local/bin/uv", home);
+            if !std::path::Path::new(&uv_target).exists() {
+                let install_cmd = command("sh")
+                    .args(["-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .output();
+                match install_cmd {
+                    Ok(output) => {
+                        if !output.status.success() {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            log::warn!("[install] uv install failed: {}", stderr.trim());
+                            return None;
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("[install] uv install error: {}", e);
+                        return None;
+                    }
+                }
+            }
+            if std::path::Path::new(&uv_target).exists() {
+                uv_target
+            } else {
+                let cargo_target = format!("{}/.cargo/bin/uv", home);
+                if std::path::Path::new(&cargo_target).exists() {
+                    cargo_target
+                } else {
+                    log::warn!("[install] uv installed but executable not found");
+                    return None;
+                }
+            }
+        }
+    };
+
+    let _ = app.emit("install-progress", InstallProgress {
+        line: "Installing Python 3.12 via uv...".to_string(), done: false, success: false,
+    });
+    let install_312 = command(&uv_exe).args(["python", "install", "3.12"]).output();
+    if let Ok(ref output) = install_312 {
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            log::warn!("[install] uv python install 3.12 failed: {}", stderr.trim());
+        }
+    }
+    let install_311 = command(&uv_exe).args(["python", "install", "3.11"]).output();
+    if let Ok(ref output) = install_311 {
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            log::warn!("[install] uv python install 3.11 failed: {}", stderr.trim());
+        }
+    }
+
+    for ver in &["3.12", "3.11"] {
+        if let Ok(output) = command(&uv_exe).args(["python", "find", ver]).output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() && std::path::Path::new(&path).exists() {
+                    if verify_python_version(&path) {
+                        log::info!("[install] Found Python via uv python find: {}", path);
+                        return Some(path);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(py) = find_unix_python() {
+        return Some(py);
+    }
+
     None
 }
 

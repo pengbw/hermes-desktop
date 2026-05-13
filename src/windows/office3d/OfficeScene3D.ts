@@ -173,7 +173,6 @@ export interface GameMember {
   id: string;
   name: string;
   color: string;
-  isUser: boolean;
   isWorking: boolean;
   roleId?: string;
   status?: MemberStatus;
@@ -1956,11 +1955,8 @@ export class OfficeScene3D {
     this.members.forEach((m, i) => {
       let sc: number, sr: number;
       const seated = false;
-      if (m.isUser) {
-        sc = 7;
-        sr = 7;
-      } else if (i < desks.length) {
-        const d = desks[i - (m.isUser ? 0 : 0)];
+      if (i < desks.length) {
+        const d = desks[i];
         const deskCx = d.col * CELL + (d.cols * CELL) / 2;
         const deskCz = d.row * CELL + (d.rows * CELL) / 2;
         sc = -1;
@@ -1992,10 +1988,6 @@ export class OfficeScene3D {
           transform:translate(-50%,-100%);
           box-shadow:0 1px 4px rgba(0,0,0,0.15);
         `;
-        if (m.isUser) {
-          label.style.background = "rgba(231,76,60,0.9)";
-          label.style.color = "#fff";
-        }
         this.labelContainer.appendChild(label);
         this.charLabelEls.set(m.id, label);
 
@@ -2029,10 +2021,6 @@ export class OfficeScene3D {
         transform:translate(-50%,-100%);
         box-shadow:0 1px 4px rgba(0,0,0,0.15);
       `;
-      if (m.isUser) {
-        label.style.background = "rgba(231,76,60,0.9)";
-        label.style.color = "#fff";
-      }
       this.labelContainer.appendChild(label);
       this.charLabelEls.set(m.id, label);
     });
@@ -2186,17 +2174,6 @@ export class OfficeScene3D {
       group.add(thigh);
       group.add(shin);
       group.add(shoe);
-    }
-
-    if (m.isUser) {
-      const badgeMat = new THREE.MeshStandardMaterial({
-        color: 0xe74c3c,
-        emissive: 0xe74c3c,
-        emissiveIntensity: 0.3,
-      });
-      const badge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.02), badgeMat);
-      badge.position.set(0, baseY + 1.18, 0.12);
-      group.add(badge);
     }
 
     return group;
@@ -2386,7 +2363,7 @@ export class OfficeScene3D {
         break;
       }
       case "chat": {
-        const otherMembers = this.members.filter((m) => m.id !== memberId && !m.isUser);
+        const otherMembers = this.members.filter((m) => m.id !== memberId);
         if (otherMembers.length > 0) {
           const other = otherMembers[Math.floor(Math.random() * otherMembers.length)];
           const otherCg = this.charGroups.get(other.id);
@@ -2513,7 +2490,7 @@ export class OfficeScene3D {
   deliverByRoles(fromRoleId: string | null, toRoleId: string, artifactType: string) {
     const fromMember = fromRoleId
       ? this.members.find((m) => m.roleId === fromRoleId)
-      : this.members.find((m) => m.isUser);
+      : this.members[0];
     const toMember = this.members.find((m) => m.roleId === toRoleId);
     if (!fromMember || !toMember) return;
     this.deliverArtifact(fromMember.id, toMember.id, artifactType);
@@ -3016,7 +2993,7 @@ export class OfficeScene3D {
 
   aiTick() {
     const delivering = new Set(this.deliveryAnims.map((d) => d.fromMemberId));
-    const ai = this.members.filter((m) => !m.isUser && !delivering.has(m.id));
+    const ai = this.members.filter((m) => !delivering.has(m.id));
     if (!ai.length) return;
     const m = ai[Math.floor(Math.random() * ai.length)];
     const walkable: { c: number; r: number }[] = [];

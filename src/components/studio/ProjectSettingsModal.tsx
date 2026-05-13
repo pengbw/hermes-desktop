@@ -3,14 +3,22 @@ import type {
   AiRoleItem,
   ProjectMember,
   ProjectArtifact,
-  ProjectMessage,
+  ProjectStats,
+  ProjectMemory,
 } from "@core/types";
 import styles from "@pages/studio/StudioPanel.module.css";
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import WorkflowDesigner from "../../windows/WorkflowDesigner";
 
-type SettingsTab = "members" | "artifacts" | "workflows" | "guidelines" | "theme" | "stats";
+type SettingsTab =
+  | "members"
+  | "artifacts"
+  | "workflows"
+  | "guidelines"
+  | "theme"
+  | "memories"
+  | "stats";
 
 interface ProjectSettingsModalProps {
   visible: boolean;
@@ -37,7 +45,6 @@ export default function ProjectSettingsModal({
   const [settingsMaximized, setSettingsMaximized] = useState(false);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [projectArtifacts, setProjectArtifacts] = useState<ProjectArtifact[]>([]);
-  const [projectMessages] = useState<ProjectMessage[]>([]);
   const [projectGuidelines, setProjectGuidelines] = useState("");
 
   const loadSettingsData = async () => {
@@ -175,19 +182,27 @@ export default function ProjectSettingsModal({
           </div>
         </div>
         <div className={styles.studioSettingsTabs}>
-          {(["members", "artifacts", "workflows", "guidelines", "theme", "stats"] as const).map(
-            (tab) => (
-              <button
-                key={tab}
-                className={
-                  styles.studioSettingsTab + " " + (settingsTab === tab ? styles.active : "")
-                }
-                onClick={() => setSettingsTab(tab)}
-              >
-                {t(`studio.projectTab.${tab}`)}
-              </button>
-            )
-          )}
+          {(
+            [
+              "members",
+              "artifacts",
+              "workflows",
+              "guidelines",
+              "theme",
+              "memories",
+              "stats",
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab}
+              className={
+                styles.studioSettingsTab + " " + (settingsTab === tab ? styles.active : "")
+              }
+              onClick={() => setSettingsTab(tab)}
+            >
+              {t(`studio.projectTab.${tab}`)}
+            </button>
+          ))}
         </div>
         <div className={styles.studioSettingsContent}>
           {settingsTab === "members" && (
@@ -217,17 +232,10 @@ export default function ProjectSettingsModal({
               </div>
               <div className={styles.studioMemberList}>
                 {projectMembers.map((member) => {
-                  const isUser = member.roleId === "builtin_user";
                   const eqLevel = member.equipmentLevel || 1;
                   return (
-                    <div
-                      key={member.id}
-                      className={
-                        styles.studioMemberCard + " " + (isUser ? styles.studioMemberUser : "")
-                      }
-                    >
+                    <div key={member.id} className={styles.studioMemberCard}>
                       <span className={styles.studioMemberRole}>{getRoleName(member.roleId)}</span>
-                      {isUser && <span className={styles.studioMemberYouBadge}>YOU</span>}
                       <div className={styles.studioEquipmentControl}>
                         <span className={styles.studioEquipmentLabel}>设备</span>
                         {[1, 2, 3, 4, 5].map((lv) => (
@@ -239,20 +247,17 @@ export default function ProjectSettingsModal({
                               (lv <= eqLevel ? styles.active : "")
                             }
                             onClick={() => handleUpdateEquipment(member.id, lv)}
-                            disabled={isUser}
                           >
                             ⭐
                           </button>
                         ))}
                       </div>
-                      {!isUser && (
-                        <button
-                          className={styles.studioRemoveBtn}
-                          onClick={() => handleRemoveMember(member.id)}
-                        >
-                          ✕
-                        </button>
-                      )}
+                      <button
+                        className={styles.studioRemoveBtn}
+                        onClick={() => handleRemoveMember(member.id)}
+                      >
+                        ✕
+                      </button>
                     </div>
                   );
                 })}
@@ -504,89 +509,333 @@ export default function ProjectSettingsModal({
               </div>
             </div>
           )}
-          {settingsTab === "stats" &&
-            (() => {
-              const totalArtifacts = projectArtifacts.length;
-              const completedArtifacts = projectArtifacts.filter(
-                (a) => a.status === "approved" || a.status === "completed"
-              ).length;
-              const inProgressArtifacts = projectArtifacts.filter(
-                (a) => a.status === "in_progress"
-              ).length;
-              const pendingArtifacts = projectArtifacts.filter(
-                (a) => a.status === "pending"
-              ).length;
-              const progressPercent =
-                totalArtifacts > 0 ? Math.round((completedArtifacts / totalArtifacts) * 100) : 0;
-              const memberStats = projectMembers.map((m) => {
-                const memberArtifacts = projectArtifacts.filter((a) => a.roleId === m.roleId);
-                const memberCompleted = memberArtifacts.filter(
-                  (a) => a.status === "approved" || a.status === "completed"
-                ).length;
-                const memberMessages = projectMessages.filter(
-                  (msg) => msg.roleId === m.roleId
-                ).length;
-                return {
-                  ...m,
-                  artifactCount: memberArtifacts.length,
-                  completedCount: memberCompleted,
-                  messageCount: memberMessages,
-                };
-              });
+          {settingsTab === "memories" && <MemoriesTab projectId={projectId} t={t} />}
+          {settingsTab === "stats" && <StatsTab projectId={projectId} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatsTab({ projectId }: { projectId: string | null }) {
+  const [stats, setStats] = useState<ProjectStats | null>(null);
+  useEffect(() => {
+    if (projectId) {
+      invoke<ProjectStats>("get_project_stats", { projectId }).then(setStats).catch(console.error);
+    }
+  }, [projectId]);
+
+  if (!stats) {
+    return <div className={styles.studioEmpty}>加载统计数据...</div>;
+  }
+
+  const taskByStatus = stats.taskStats.byStatus;
+  const taskTotal = stats.taskStats.total;
+  const taskDone = taskByStatus["done"] || 0;
+  const taskRunning = taskByStatus["running"] || 0;
+  const taskTodo =
+    (taskByStatus["triage"] || 0) + (taskByStatus["todo"] || 0) + (taskByStatus["ready"] || 0);
+  const taskBlocked = taskByStatus["blocked"] || 0;
+
+  const artifactByStatus = stats.artifactStats.byStatus;
+  const artifactTotal = stats.artifactStats.total;
+  const artifactApproved = artifactByStatus["approved"] || 0;
+  const artifactInProgress = artifactByStatus["in_progress"] || 0;
+  const artifactPending = artifactByStatus["pending"] || 0;
+  const artifactRejected = artifactByStatus["rejected"] || 0;
+
+  const healthColor =
+    stats.healthScore >= 70 ? "#00b894" : stats.healthScore >= 40 ? "#fdcb6e" : "#e17055";
+
+  return (
+    <div className={styles.studioStatsSection}>
+      <div className={styles.studioStatsOverview}>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue} style={{ color: healthColor }}>
+            {stats.healthScore}
+          </div>
+          <div className={styles.studioStatsLabel}>健康度</div>
+          <div className={styles.studioStatsBar}>
+            <div
+              className={styles.studioStatsBarFill}
+              style={{ width: `${stats.healthScore}%`, background: healthColor }}
+            />
+          </div>
+        </div>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue}>
+            {Math.round(stats.taskStats.completionRate * 100)}%
+          </div>
+          <div className={styles.studioStatsLabel}>任务完成率</div>
+          <div className={styles.studioStatsBar}>
+            <div
+              className={styles.studioStatsBarFill}
+              style={{ width: `${stats.taskStats.completionRate * 100}%` }}
+            />
+          </div>
+        </div>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue}>
+            {Math.round(stats.artifactStats.approvalRate * 100)}%
+          </div>
+          <div className={styles.studioStatsLabel}>产物审批率</div>
+          <div className={styles.studioStatsBar}>
+            <div
+              className={styles.studioStatsBarFill}
+              style={{ width: `${stats.artifactStats.approvalRate * 100}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <h4 className={styles.studioStatsSubtitle}>任务分布</h4>
+      <div className={styles.studioStatsOverview}>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue}>{taskTotal}</div>
+          <div className={styles.studioStatsLabel}>总任务</div>
+        </div>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue} style={{ color: "#00b894" }}>
+            {taskDone}
+          </div>
+          <div className={styles.studioStatsLabel}>已完成</div>
+        </div>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue} style={{ color: "#fdcb6e" }}>
+            {taskRunning}
+          </div>
+          <div className={styles.studioStatsLabel}>进行中</div>
+        </div>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue} style={{ color: "#6c5ce7" }}>
+            {taskTodo}
+          </div>
+          <div className={styles.studioStatsLabel}>待办</div>
+        </div>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue} style={{ color: "#e17055" }}>
+            {taskBlocked}
+          </div>
+          <div className={styles.studioStatsLabel}>阻塞</div>
+        </div>
+      </div>
+
+      <h4 className={styles.studioStatsSubtitle}>产物分布</h4>
+      <div className={styles.studioStatsOverview}>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue}>{artifactTotal}</div>
+          <div className={styles.studioStatsLabel}>总产物</div>
+        </div>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue} style={{ color: "#00b894" }}>
+            {artifactApproved}
+          </div>
+          <div className={styles.studioStatsLabel}>已审批</div>
+        </div>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue} style={{ color: "#fdcb6e" }}>
+            {artifactInProgress}
+          </div>
+          <div className={styles.studioStatsLabel}>进行中</div>
+        </div>
+        <div className={styles.studioStatsCard}>
+          <div className={styles.studioStatsValue} style={{ color: "#6c5ce7" }}>
+            {artifactPending}
+          </div>
+          <div className={styles.studioStatsLabel}>待审核</div>
+        </div>
+        {artifactRejected > 0 && (
+          <div className={styles.studioStatsCard}>
+            <div className={styles.studioStatsValue} style={{ color: "#e17055" }}>
+              {artifactRejected}
+            </div>
+            <div className={styles.studioStatsLabel}>已打回</div>
+          </div>
+        )}
+      </div>
+
+      {stats.roleWorkload.length > 0 && (
+        <>
+          <h4 className={styles.studioStatsSubtitle}>角色工作量</h4>
+          <div className={styles.studioStatsMembers}>
+            {stats.roleWorkload.map((rw) => {
+              const maxTasks = Math.max(...stats.roleWorkload.map((r) => r.taskCount), 1);
+              const barWidth = Math.round((rw.taskCount / maxTasks) * 100);
               return (
-                <div className={styles.studioStatsSection}>
-                  <div className={styles.studioStatsOverview}>
-                    <div className={styles.studioStatsCard}>
-                      <div className={styles.studioStatsValue}>{progressPercent}%</div>
-                      <div className={styles.studioStatsLabel}>{t("studio.statsProgress")}</div>
-                      <div className={styles.studioStatsBar}>
-                        <div
-                          className={styles.studioStatsBarFill}
-                          style={{ width: `${progressPercent}%` }}
-                        />
-                      </div>
-                    </div>
-                    <div className={styles.studioStatsCard}>
-                      <div className={styles.studioStatsValue}>{completedArtifacts}</div>
-                      <div className={styles.studioStatsLabel}>{t("studio.statsCompleted")}</div>
-                    </div>
-                    <div className={styles.studioStatsCard}>
-                      <div className={styles.studioStatsValue}>{inProgressArtifacts}</div>
-                      <div className={styles.studioStatsLabel}>{t("studio.statsInProgress")}</div>
-                    </div>
-                    <div className={styles.studioStatsCard}>
-                      <div className={styles.studioStatsValue}>{pendingArtifacts}</div>
-                      <div className={styles.studioStatsLabel}>{t("studio.statsPending")}</div>
-                    </div>
+                <div key={rw.roleId} className={styles.studioStatsMemberRow}>
+                  <span className={styles.studioStatsMemberName}>{rw.name}</span>
+                  <div className={styles.studioStatsMemberBar}>
+                    <div
+                      className={styles.studioStatsMemberBarFill}
+                      style={{ width: `${barWidth}%` }}
+                    />
                   </div>
-                  <h4 className={styles.studioStatsSubtitle}>{t("studio.statsMemberContrib")}</h4>
-                  <div className={styles.studioStatsMembers}>
-                    {memberStats.map((ms) => {
-                      const maxArtifacts = Math.max(...memberStats.map((m) => m.artifactCount), 1);
-                      const barWidth = Math.round((ms.artifactCount / maxArtifacts) * 100);
-                      return (
-                        <div key={ms.id} className={styles.studioStatsMemberRow}>
-                          <span className={styles.studioStatsMemberName}>
-                            {getRoleName(ms.roleId)}
-                          </span>
-                          <div className={styles.studioStatsMemberBar}>
-                            <div
-                              className={styles.studioStatsMemberBarFill}
-                              style={{ width: `${barWidth}%` }}
-                            />
-                          </div>
-                          <span className={styles.studioStatsMemberDetail}>
-                            {ms.completedCount}/{ms.artifactCount} 产物 · {ms.messageCount} 消息
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {memberStats.length === 0 && <p className={styles.studioEmpty}>暂无成员数据</p>}
-                  </div>
+                  <span className={styles.studioStatsMemberDetail}>
+                    {rw.completedCount}/{rw.taskCount} 任务
+                  </span>
                 </div>
               );
-            })()}
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MemoriesTab({
+  projectId,
+}: {
+  projectId: string | null;
+  t?: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  const [memories, setMemories] = useState<ProjectMemory[]>([]);
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [newMemory, setNewMemory] = useState({ category: "general", content: "" });
+
+  const loadMemories = async () => {
+    if (!projectId) return;
+    try {
+      const data = await invoke<ProjectMemory[]>("list_project_memories", {
+        projectId,
+        roleId: filterCategory === "all" ? undefined : undefined,
+        category: filterCategory === "all" ? undefined : filterCategory,
+      });
+      setMemories(data);
+    } catch (err) {
+      console.error("Failed to load memories:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadMemories();
+  }, [projectId, filterCategory]);
+
+  const handleAddMemory = async () => {
+    if (!projectId || !newMemory.content.trim()) return;
+    try {
+      await invoke("create_project_memory", {
+        req: {
+          projectId,
+          roleId: "shared",
+          category: newMemory.category,
+          content: newMemory.content.trim(),
+          importance:
+            newMemory.category === "decision" || newMemory.category === "constraint" ? 3 : 1,
+        },
+      });
+      setNewMemory({ category: "general", content: "" });
+      loadMemories();
+    } catch (err) {
+      console.error("Failed to add memory:", err);
+    }
+  };
+
+  const handleDeleteMemory = async (id: string) => {
+    try {
+      await invoke("delete_project_memory", { id });
+      loadMemories();
+    } catch (err) {
+      console.error("Failed to delete memory:", err);
+    }
+  };
+
+  const categoryLabel: Record<string, string> = {
+    decision: "决策",
+    tech: "技术",
+    constraint: "约束",
+    fact: "事实",
+    general: "通用",
+  };
+
+  const categoryColor: Record<string, string> = {
+    decision: "#6c5ce7",
+    tech: "#0984e3",
+    constraint: "#e17055",
+    fact: "#00b894",
+    general: "#636e72",
+  };
+
+  return (
+    <div className={styles.studioMembers}>
+      <div className={styles.studioAddMember} style={{ flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, width: "100%" }}>
+          <select
+            value={newMemory.category}
+            onChange={(e) => setNewMemory({ ...newMemory, category: e.target.value })}
+            className={styles.studioInput}
+            style={{ width: 120 }}
+          >
+            <option value="general">通用</option>
+            <option value="decision">决策</option>
+            <option value="tech">技术</option>
+            <option value="constraint">约束</option>
+            <option value="fact">事实</option>
+          </select>
+          <input
+            type="text"
+            value={newMemory.content}
+            onChange={(e) => setNewMemory({ ...newMemory, content: e.target.value })}
+            placeholder="添加项目记忆..."
+            className={styles.studioInput}
+            style={{ flex: 1 }}
+            onKeyDown={(e) => e.key === "Enter" && handleAddMemory()}
+          />
+          <button className={styles.studioBtnPrimary} onClick={handleAddMemory}>
+            添加
+          </button>
         </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {["all", "decision", "tech", "constraint", "fact", "general"].map((cat) => (
+            <button
+              key={cat}
+              className={
+                styles.studioSettingsTab + " " + (filterCategory === cat ? styles.active : "")
+              }
+              onClick={() => setFilterCategory(cat)}
+              style={{ fontSize: 12, padding: "2px 8px" }}
+            >
+              {cat === "all" ? "全部" : categoryLabel[cat] || cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className={styles.studioMemberList} style={{ marginTop: 8 }}>
+        {memories.length === 0 ? (
+          <div className={styles.studioEmpty}>暂无项目记忆</div>
+        ) : (
+          memories.map((mem) => (
+            <div
+              key={mem.id}
+              className={styles.studioMemberItem}
+              style={{ alignItems: "flex-start" }}
+            >
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                  fontSize: 11,
+                  color: "#fff",
+                  background: categoryColor[mem.category] || categoryColor.general,
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {categoryLabel[mem.category] || mem.category}
+              </span>
+              <span style={{ flex: 1, fontSize: 13, lineHeight: 1.5 }}>{mem.content}</span>
+              <button
+                className={styles.studioBtnDanger}
+                style={{ padding: "2px 6px", fontSize: 11 }}
+                onClick={() => handleDeleteMemory(mem.id)}
+              >
+                ✕
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

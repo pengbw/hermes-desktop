@@ -1,30 +1,59 @@
-import type { AiRoleItem } from "@core/types";
+import type { ProjectTemplateDetail } from "@core/tauri/types";
 import styles from "@pages/studio/StudioPanel.module.css";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { projectIcons, PROJECT_TEMPLATES } from "../../constants/projectTemplates";
+import { projectIcons } from "../../constants/projectTemplates";
 
 interface NewProjectModalProps {
   visible: boolean;
-  allRoles: AiRoleItem[];
   onClose: () => void;
   onCreated: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }
 
-export default function NewProjectModal({
-  visible,
-  allRoles,
-  onClose,
-  onCreated,
-  t,
-}: NewProjectModalProps) {
+const TRANSITION_TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  auto_push: { label: "→", color: "#3498db" },
+  need_confirm: { label: "🔒", color: "#e67e22" },
+  condition: { label: "◆", color: "#f39c12" },
+  parallel: { label: "⊕", color: "#00b894" },
+};
+
+export default function NewProjectModal({ visible, onClose, onCreated, t }: NewProjectModalProps) {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
   const [newProjectIcon, setNewProjectIcon] = useState("💼");
   const [newProjectRule, setNewProjectRule] = useState("");
   const [newProjectTemplate, setNewProjectTemplate] = useState<string>("");
   const [newProjectTheme, setNewProjectTheme] = useState("cozy");
+  const [templates, setTemplates] = useState<ProjectTemplateDetail[]>([]);
+  const [previewTab, setPreviewTab] = useState<"roles" | "workflows">("roles");
+  const [hoverTip, setHoverTip] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  const handleHelpEnter = useCallback((id: string, e: React.MouseEvent) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setHoverTip({ id, x: rect.left, y: rect.bottom + 6 });
+  }, []);
+
+  const handleHelpLeave = useCallback(() => {
+    setHoverTip(null);
+  }, []);
+
+  useEffect(() => {
+    if (visible) {
+      invoke<ProjectTemplateDetail[]>("list_project_templates")
+        .then((list) => {
+          setTemplates(list);
+          if (list.length > 0 && !newProjectTemplate) {
+            setNewProjectTemplate(list[0].id);
+            setNewProjectIcon(list[0].icon);
+            setNewProjectRule(list[0].projectRule || "");
+          }
+        })
+        .catch((e) => console.error("Failed to load templates:", e));
+    }
+  }, [visible]);
+
+  const selectedTmpl = templates.find((tmpl) => tmpl.id === newProjectTemplate) || null;
 
   const handleClose = () => {
     setNewProjectName("");
@@ -33,81 +62,33 @@ export default function NewProjectModal({
     setNewProjectRule("");
     setNewProjectTemplate("");
     setNewProjectTheme("cozy");
+    setPreviewTab("roles");
     onClose();
   };
 
   const handleCreate = async () => {
     if (!newProjectName.trim()) return;
     try {
-      const tmpl =
-        newProjectTemplate && PROJECT_TEMPLATES[newProjectTemplate]
-          ? PROJECT_TEMPLATES[newProjectTemplate]
-          : null;
-
-      const project = await invoke<any>("create_project", {
-        req: {
-          name: newProjectName.trim(),
-          description: newProjectDesc.trim() || undefined,
-          icon: newProjectIcon,
-          projectRule: newProjectRule.trim() || tmpl?.projectRule || undefined,
-          projectGuidelines: tmpl?.projectGuidelines || undefined,
-          officeTheme: newProjectTheme,
-        },
-      });
-
-      if (tmpl) {
-        const createdRoleIds: string[] = [];
-
-        for (const roleDef of tmpl.roles) {
-          try {
-            const existingRole = allRoles.find((r) => r.name === roleDef.name);
-            if (existingRole) {
-              createdRoleIds.push(existingRole.id);
-            } else {
-              const newRole = await invoke<any>("create_ai_role", {
-                req: {
-                  name: roleDef.name,
-                  icon: roleDef.icon,
-                  nickname: roleDef.nickname,
-                  description: roleDef.description,
-                  responsibilities: roleDef.responsibilities,
-                  soulContent: roleDef.soulContent,
-                  avatarPreset: roleDef.avatarPreset,
-                  avatarColor: roleDef.avatarColor,
-                },
-              });
-              createdRoleIds.push(newRole.id);
-            }
-          } catch (e) {
-            console.error("Failed to create role for template:", e);
-          }
-        }
-
-        for (const roleId of createdRoleIds) {
-          try {
-            await invoke("add_project_member", {
-              req: { projectId: project.id, roleId },
-            });
-          } catch (e) {
-            console.error("Failed to add member:", e);
-          }
-        }
-
-        for (const wf of tmpl.workflows) {
-          try {
-            await invoke("add_project_workflow", {
-              req: {
-                projectId: project.id,
-                fromRoleId: wf.fromIdx !== null ? createdRoleIds[wf.fromIdx] : null,
-                toRoleId: createdRoleIds[wf.toIdx],
-                artifactType: wf.artifactType,
-                transitionType: wf.transitionType,
-              },
-            });
-          } catch (e) {
-            console.error("Failed to add workflow:", e);
-          }
-        }
+      if (selectedTmpl) {
+        await invoke("create_project_from_template", {
+          req: {
+            name: newProjectName.trim(),
+            description: newProjectDesc.trim() || undefined,
+            icon: newProjectIcon,
+            templateId: selectedTmpl.id,
+            officeTheme: newProjectTheme,
+          },
+        });
+      } else {
+        await invoke("create_project", {
+          req: {
+            name: newProjectName.trim(),
+            description: newProjectDesc.trim() || undefined,
+            icon: newProjectIcon,
+            projectRule: newProjectRule.trim() || undefined,
+            officeTheme: newProjectTheme,
+          },
+        });
       }
 
       handleClose();
@@ -120,17 +101,43 @@ export default function NewProjectModal({
 
   if (!visible) return null;
 
+  const hoverTmpl = hoverTip ? templates.find((t) => t.id === hoverTip.id) : null;
+
   return (
     <div className={styles.studioModalOverlay} onClick={handleClose}>
-      <div className={styles.studioModal} onClick={(e) => e.stopPropagation()}>
+      {hoverTmpl && hoverTip && (
+        <div
+          className={styles.studioTemplateHelpTip}
+          style={{ position: "fixed", left: hoverTip.x, top: hoverTip.y, zIndex: 9999 }}
+          onMouseEnter={() => {
+            setHoverTip({ id: hoverTmpl.id, x: hoverTip.x, y: hoverTip.y });
+          }}
+          onMouseLeave={handleHelpLeave}
+        >
+          <span className={styles.studioTemplateHelpTipDesc}>{hoverTmpl.description}</span>
+          <span className={styles.studioTemplateHelpTipRoles}>
+            {hoverTmpl.roles.map((role) => (
+              <span
+                key={role.id}
+                className={styles.studioTemplateRoleTag}
+                style={{ borderColor: role.avatarColor }}
+              >
+                <span className={styles.studioTemplateRoleIcon}>{role.icon}</span>
+                {role.name}
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+      <div className={styles.studioNewProjectModal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.studioModalHeader}>
           <h3>{t("studio.newProject")}</h3>
           <button className={styles.studioModalClose} onClick={handleClose}>
             ✕
           </button>
         </div>
-        <div className={styles.studioModalBody}>
-          <div className={styles.studioFormLeft}>
+        <div className={styles.studioNewProjectBody}>
+          <div className={styles.studioNewProjectForm}>
             <div className={styles.studioFormGroup}>
               <label className={styles.studioFormLabel}>
                 {t("studio.projectName")} <span className={styles.studioRequired}>*</span>
@@ -141,7 +148,6 @@ export default function NewProjectModal({
                 value={newProjectName}
                 onChange={(e) => setNewProjectName(e.target.value)}
               />
-              <span className={styles.studioFormHint}>{t("studio.projectNameHint")}</span>
             </div>
 
             <div className={styles.studioFormGroup}>
@@ -151,7 +157,7 @@ export default function NewProjectModal({
                 placeholder={t("studio.projectDescPlaceholder")}
                 value={newProjectDesc}
                 onChange={(e) => setNewProjectDesc(e.target.value)}
-                rows={4}
+                rows={2}
               />
             </div>
 
@@ -159,90 +165,195 @@ export default function NewProjectModal({
               <label className={styles.studioFormLabel}>{t("studio.projectRule")}</label>
               <textarea
                 className={styles.studioFormTextarea}
-                placeholder={t("studio.projectRulePlaceholder")}
+                placeholder={
+                  selectedTmpl ? selectedTmpl.projectRule : t("studio.projectRulePlaceholder")
+                }
                 value={newProjectRule}
                 onChange={(e) => setNewProjectRule(e.target.value)}
-                rows={4}
+                rows={2}
+                disabled={!!selectedTmpl}
               />
-              <span className={styles.studioFormHint}>{t("studio.projectRuleHint")}</span>
             </div>
 
             <div className={styles.studioFormGroup}>
-              <label className={styles.studioFormLabel}>项目模板</label>
-              <div className={styles.studioTemplateGrid}>
-                {Object.entries(PROJECT_TEMPLATES).map(([key, tmpl]) => (
-                  <button
-                    key={key}
-                    className={
-                      styles.studioTemplateCard +
-                      " " +
-                      (newProjectTemplate === key ? styles.selected : "")
-                    }
-                    onClick={() => {
-                      setNewProjectTemplate(newProjectTemplate === key ? "" : key);
-                      if (newProjectTemplate !== key) {
-                        setNewProjectIcon(tmpl.icon);
-                        setNewProjectRule(tmpl.projectRule || "");
+              <label className={styles.studioFormLabel}>
+                {t("studio.projectIcon")}
+                <span className={styles.studioFormLabelSub}> & 主题</span>
+              </label>
+              <div className={styles.studioNewProjectRow}>
+                <div className={styles.studioIconList}>
+                  {projectIcons.map((icon) => (
+                    <button
+                      key={icon}
+                      className={
+                        styles.studioIconOption +
+                        " " +
+                        (newProjectIcon === icon ? styles.selected : "")
                       }
-                    }}
-                  >
+                      onClick={() => setNewProjectIcon(icon)}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+                <div className={styles.studioNewThemeRow}>
+                  {[
+                    { key: "cozy", name: "温馨", icon: "🏠" },
+                    { key: "tech", name: "科技", icon: "🚀" },
+                    { key: "minimal", name: "极简", icon: "⬜" },
+                  ].map((theme) => (
+                    <button
+                      key={theme.key}
+                      className={
+                        styles.studioNewThemeBtn +
+                        " " +
+                        (newProjectTheme === theme.key ? styles.selected : "")
+                      }
+                      onClick={() => setNewProjectTheme(theme.key)}
+                    >
+                      <span className={styles.studioNewThemeIcon}>{theme.icon}</span>
+                      <span className={styles.studioNewThemeName}>{theme.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.studioNewProjectTemplate}>
+            <div className={styles.studioNewProjectTemplateHeader}>
+              <label className={styles.studioFormLabel}>项目模板</label>
+              <span className={styles.studioNewProjectTemplateHint}>
+                选择模板可自动创建角色和工作流
+              </span>
+            </div>
+            <div className={styles.studioTemplateGrid}>
+              {templates.map((tmpl) => (
+                <button
+                  key={tmpl.id}
+                  className={
+                    styles.studioTemplateCard +
+                    " " +
+                    (newProjectTemplate === tmpl.id ? styles.selected : "")
+                  }
+                  onClick={() => {
+                    setNewProjectTemplate(newProjectTemplate === tmpl.id ? "" : tmpl.id);
+                    if (newProjectTemplate !== tmpl.id) {
+                      setNewProjectIcon(tmpl.icon);
+                      setNewProjectRule(tmpl.projectRule || "");
+                      setPreviewTab("roles");
+                    }
+                  }}
+                >
+                  <div className={styles.studioTemplateCardHeader}>
                     <span className={styles.studioTemplateIcon}>{tmpl.icon}</span>
                     <span className={styles.studioTemplateName}>{tmpl.name}</span>
-                    <span className={styles.studioTemplateDesc}>{tmpl.desc}</span>
-                  </button>
-                ))}
-              </div>
+                    <span
+                      className={styles.studioTemplateHelp}
+                      onMouseEnter={(e) => handleHelpEnter(tmpl.id, e)}
+                      onMouseLeave={handleHelpLeave}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      ?
+                    </span>
+                    {newProjectTemplate === tmpl.id && (
+                      <span className={styles.studioTemplateCheck}>✓</span>
+                    )}
+                  </div>
+                </button>
+              ))}
             </div>
 
-            <div className={styles.studioFormGroup}>
-              <label className={styles.studioFormLabel}>{t("studio.projectIcon")}</label>
-              <div className={styles.studioIconList}>
-                {projectIcons.map((icon) => (
+            {selectedTmpl && (
+              <div className={styles.studioTemplatePreview}>
+                <div className={styles.studioTemplatePreviewTabs}>
                   <button
-                    key={icon}
                     className={
-                      styles.studioIconOption +
-                      " " +
-                      (newProjectIcon === icon ? styles.selected : "")
+                      styles.studioTemplatePreviewTab +
+                      (previewTab === "roles" ? " " + styles.active : "")
                     }
-                    onClick={() => setNewProjectIcon(icon)}
+                    onClick={() => setPreviewTab("roles")}
                   >
-                    {icon}
+                    🎭 角色阵容
                   </button>
-                ))}
-              </div>
-            </div>
+                  <button
+                    className={
+                      styles.studioTemplatePreviewTab +
+                      (previewTab === "workflows" ? " " + styles.active : "")
+                    }
+                    onClick={() => setPreviewTab("workflows")}
+                  >
+                    🔄 工作流
+                  </button>
+                </div>
 
-            <div className={styles.studioFormGroup}>
-              <label className={styles.studioFormLabel}>办公室主题</label>
-              <div className={styles.studioNewThemeRow}>
-                {[
-                  { key: "cozy", name: "温馨风", icon: "🏠" },
-                  { key: "tech", name: "科技风", icon: "🚀" },
-                  { key: "minimal", name: "极简风", icon: "⬜" },
-                ].map((theme) => (
-                  <button
-                    key={theme.key}
-                    className={
-                      styles.studioNewThemeBtn +
-                      " " +
-                      (newProjectTheme === theme.key ? styles.selected : "")
-                    }
-                    onClick={() => setNewProjectTheme(theme.key)}
-                  >
-                    <span>{theme.icon}</span>
-                    <span>{theme.name}</span>
-                  </button>
-                ))}
+                {previewTab === "roles" && (
+                  <div className={styles.studioTemplatePreviewContent}>
+                    {selectedTmpl.roles.map((role) => (
+                      <div key={role.id} className={styles.studioTemplatePreviewRole}>
+                        <div
+                          className={styles.studioTemplatePreviewRoleIcon}
+                          style={{ background: role.avatarColor + "20", color: role.avatarColor }}
+                        >
+                          {role.icon}
+                        </div>
+                        <div className={styles.studioTemplatePreviewRoleInfo}>
+                          <strong>{role.name}</strong>
+                          <span>{role.responsibilities.split("、").slice(0, 3).join("、")}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {previewTab === "workflows" && (
+                  <div className={styles.studioTemplatePreviewContent}>
+                    {selectedTmpl.workflows.map((wf) => {
+                      const fromName =
+                        wf.fromRoleId !== null
+                          ? (() => {
+                              const r = selectedTmpl.roles.find((r) => r.id === wf.fromRoleId);
+                              return r ? r.name : "?";
+                            })()
+                          : "启动";
+                      const toName = (() => {
+                        const r = selectedTmpl.roles.find((r) => r.id === wf.toRoleId);
+                        return r ? r.name : "?";
+                      })();
+                      const tType =
+                        TRANSITION_TYPE_LABELS[wf.transitionType] ||
+                        TRANSITION_TYPE_LABELS.auto_push;
+                      return (
+                        <div key={wf.id} className={styles.studioTemplatePreviewWf}>
+                          <span className={styles.studioTemplatePreviewWfFrom}>{fromName}</span>
+                          <span
+                            className={styles.studioTemplatePreviewWfArrow}
+                            style={{ color: tType.color }}
+                          >
+                            {tType.label}
+                          </span>
+                          <span className={styles.studioTemplatePreviewWfTo}>{toName}</span>
+                          <span className={styles.studioTemplatePreviewWfArtifact}>
+                            {wf.artifactType}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </div>
         </div>
         <div className={styles.studioModalFooter}>
           <button className={styles.studioBtnSecondary} onClick={handleClose}>
             {t("studio.cancel")}
           </button>
-          <button className={styles.studioBtnPrimary} onClick={handleCreate}>
+          <button
+            className={styles.studioBtnPrimary}
+            onClick={handleCreate}
+            disabled={!newProjectName.trim()}
+          >
             {t("studio.create")}
           </button>
         </div>

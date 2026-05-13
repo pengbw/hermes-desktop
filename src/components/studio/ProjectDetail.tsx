@@ -10,15 +10,102 @@ import type {
   ProjectTask,
   ProjectMessage,
   AiRoleItem,
+  ProjectActivity,
+  ProjectFileRecord,
 } from "@core/types";
 import styles from "@pages/studio/StudioPanel.module.css";
 import WorkflowDesigner from "../../windows/WorkflowDesigner";
 import MarkdownRenderer from "../../components/MarkdownRenderer";
-import ArtifactView from "./ArtifactView";
 import RoleManager from "./RoleManager";
 import TaskBoard from "./TaskBoard";
+import TaskManagement from "./TaskManagement";
+import WorkflowRunPanel from "./WorkflowRunPanel";
 
 const VirtualOffice = lazy(() => import("../../windows/VirtualOffice"));
+
+const ACTION_ICONS: Record<string, string> = {
+  task_created: "📋",
+  task_updated: "✏️",
+  task_completed: "✅",
+  task_claimed: "🤚",
+  artifact_created: "📦",
+  artifact_submitted: "📤",
+  artifact_approved: "✅",
+  artifact_rejected: "❌",
+  member_added: "👤",
+  member_removed: "👋",
+  workflow_started: "🚀",
+  workflow_completed: "🎉",
+  workflow_paused: "⏸",
+  comment_added: "💬",
+};
+
+function ActivityFeed({
+  projectId,
+  allRoles: _allRoles,
+  getRoleName,
+}: {
+  projectId: string;
+  allRoles: AiRoleItem[];
+  getRoleName: (roleId: string) => string;
+}) {
+  const [activities, setActivities] = useState<ProjectActivity[]>([]);
+  const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await invoke<ProjectActivity[]>("list_project_activities", {
+          projectId,
+          limit: 20,
+        });
+        setActivities(data);
+      } catch (err) {
+        console.error("Failed to load activities:", err);
+      }
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, [projectId]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = (ts: number) => {
+    if (!ts) return "";
+    const diff = now - ts;
+    if (diff < 60000) return "刚刚";
+    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+    return new Date(ts).toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+  };
+
+  if (activities.length === 0) return null;
+
+  return (
+    <div className={styles.studioDetailSection}>
+      <div className={styles.studioDetailSectionHeader}>
+        <h3>📊 项目动态</h3>
+      </div>
+      <div className={styles.activityFeed}>
+        {activities.map((act) => (
+          <div key={act.id} className={styles.activityItem}>
+            <span className={styles.activityIcon}>{ACTION_ICONS[act.action] || "📌"}</span>
+            <span className={styles.activityRole}>
+              {act.roleId ? getRoleName(act.roleId) : "系统"}
+            </span>
+            <span className={styles.activityAction}>{act.action.replace(/_/g, " ")}</span>
+            {act.detail && <span className={styles.activityDetail}>{act.detail.slice(0, 60)}</span>}
+            <span className={styles.activityTime}>{formatTime(act.createdAt)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface ProjectDetailProps {
   project: ProjectItem;
@@ -63,18 +150,63 @@ function ProjectDetail({
 }: ProjectDetailProps) {
   const chatMessagesRef = useRef<HTMLDivElement>(null);
   const [projectDetailTab, setProjectDetailTab] = useState<
-    "overview" | "members" | "workflows" | "chat" | "tasks"
+    "overview" | "taskmgmt" | "kanban" | "members" | "workflows" | "chat"
   >("overview");
-  const [artifactViewMode, setArtifactViewMode] = useState<"kanban" | "list">("kanban");
   const [chatInput, setChatInput] = useState("");
   const [chatTargetRole, setChatTargetRole] = useState<string>("");
   const [projectChatStreaming, setProjectChatStreaming] = useState(false);
   const [projectChatStreamed, setProjectChatStreamed] = useState("");
   const [autoDelegateRunning, setAutoDelegateRunning] = useState(false);
+  const [wfSubTab, setWfSubTab] = useState<"designer" | "runs">("designer");
+  const [overviewSubTab, setOverviewSubTab] = useState<"tasks" | "artifacts" | "members">("tasks");
   const [rejectModal, setRejectModal] = useState<{ artifactId: string; open: boolean }>({
     artifactId: "",
     open: false,
   });
+  const [chatRoleSkills, setChatRoleSkills] = useState<string[]>([]);
+  const [projectFileRecords, setProjectFileRecords] = useState<ProjectFileRecord[]>([]);
+
+  const loadFileRecordsRef = useRef(false);
+
+  const loadFileRecords = () => {
+    if (loadFileRecordsRef.current) return;
+    loadFileRecordsRef.current = true;
+    invoke("scan_project_files", { projectId: project.id })
+      .then(() => {
+        invoke<ProjectFileRecord[]>("list_project_file_records", { projectId: project.id })
+          .then((records) => {
+            setProjectFileRecords(records);
+          })
+          .catch(() => setProjectFileRecords([]))
+          .finally(() => {
+            loadFileRecordsRef.current = false;
+          });
+      })
+      .catch(() => {
+        invoke<ProjectFileRecord[]>("list_project_file_records", { projectId: project.id })
+          .then((records) => {
+            setProjectFileRecords(records);
+          })
+          .catch(() => setProjectFileRecords([]))
+          .finally(() => {
+            loadFileRecordsRef.current = false;
+          });
+      });
+  };
+
+  useEffect(() => {
+    loadFileRecords();
+  }, [project.id]);
+
+  useEffect(() => {
+    if (chatTargetRole) {
+      invoke<string[]>("list_role_skills", { roleId: chatTargetRole })
+        .then((skills) => setChatRoleSkills(skills.map((s: any) => s.skillName || s)))
+        .catch(() => setChatRoleSkills([]));
+    } else {
+      setChatRoleSkills([]);
+    }
+  }, [chatTargetRole]);
 
   useEffect(() => {
     if (chatMessagesRef.current) {
@@ -111,6 +243,7 @@ function ProjectDetail({
       console.error("Failed to update artifact:", err);
     }
   };
+  void handleArtifactApprove;
 
   const handleArtifactReject = async () => {
     if (!rejectModal.artifactId) return;
@@ -133,15 +266,13 @@ function ProjectDetail({
 
   const mentionData = useMemo(
     () =>
-      projectMembers
-        .filter((m) => m.roleId !== "builtin_user")
-        .map((m) => {
-          const role = allRoles.find((r) => r.id === m.roleId);
-          return {
-            id: m.roleId,
-            display: role?.nickname || role?.name || m.roleId,
-          };
-        }),
+      projectMembers.map((m) => {
+        const role = allRoles.find((r) => r.id === m.roleId);
+        return {
+          id: m.roleId,
+          display: role?.name || m.roleId,
+        };
+      }),
     [projectMembers, allRoles]
   );
 
@@ -247,6 +378,7 @@ function ProjectDetail({
           onMessagesUpdate(msgs);
           setProjectChatStreaming(false);
           setProjectChatStreamed("");
+          loadFileRecords();
           unlisten();
         } else {
           setProjectChatStreamed((prev) => prev + (event.payload.chunk || ""));
@@ -268,10 +400,7 @@ function ProjectDetail({
       return;
     }
 
-    const targetRole =
-      mentionedRoleIds[0] ||
-      chatTargetRole ||
-      projectMembers.find((m) => m.roleId !== "builtin_user")?.roleId;
+    const targetRole = mentionedRoleIds[0] || chatTargetRole || projectMembers[0]?.roleId;
     if (!targetRole) return;
 
     setProjectChatStreaming(true);
@@ -302,6 +431,7 @@ function ProjectDetail({
           }
           setProjectChatStreaming(false);
           setProjectChatStreamed("");
+          loadFileRecords();
           unlisten();
         } else {
           setProjectChatStreamed((prev) => prev + event.payload.chunk);
@@ -375,25 +505,38 @@ function ProjectDetail({
         </div>
 
         <div className={styles.studioDetailTabs}>
-          {(["overview", "tasks", "members", "workflows", "chat"] as const).map((tab) => (
-            <button
-              key={tab}
-              className={
-                styles.studioDetailTab + " " + (projectDetailTab === tab ? styles.active : "")
-              }
-              onClick={() => setProjectDetailTab(tab)}
-            >
-              {tab === "overview" && "🏢 概览"}
-              {tab === "tasks" && "📋 看板"}
-              {tab === "members" && "👥 成员"}
-              {tab === "workflows" && "🔄 工作流"}
-              {tab === "chat" && "💬 对话"}
-            </button>
-          ))}
+          {(["overview", "taskmgmt", "kanban", "members", "workflows", "chat"] as const).map(
+            (tab) => (
+              <button
+                key={tab}
+                className={
+                  styles.studioDetailTab + " " + (projectDetailTab === tab ? styles.active : "")
+                }
+                onClick={() => setProjectDetailTab(tab)}
+              >
+                {tab === "overview" && "🏢 概览"}
+                {tab === "taskmgmt" && "📋 任务"}
+                {tab === "kanban" && "📊 看板"}
+                {tab === "members" && "👥 成员"}
+                {tab === "workflows" && "🔄 工作流"}
+                {tab === "chat" && "💬 对话"}
+              </button>
+            )
+          )}
         </div>
 
         <div className={styles.studioDetailBody}>
-          {projectDetailTab === "tasks" && (
+          {projectDetailTab === "taskmgmt" && (
+            <TaskManagement
+              tasks={projectTasks}
+              projectId={project.id}
+              projectMembers={projectMembers}
+              allRoles={allRoles}
+              onTasksUpdate={onTasksUpdate}
+            />
+          )}
+
+          {projectDetailTab === "kanban" && (
             <TaskBoard
               tasks={projectTasks}
               projectId={project.id}
@@ -406,16 +549,336 @@ function ProjectDetail({
           {projectDetailTab === "overview" && (
             <>
               <div className={styles.studioDetailLeft}>
-                <ArtifactView
-                  artifacts={projectArtifacts}
-                  allRoles={allRoles}
-                  viewMode={artifactViewMode}
-                  onViewModeChange={setArtifactViewMode}
-                  onApprove={handleArtifactApprove}
-                  onPreviewFile={onPreviewFile}
-                  getRoleName={getRoleName}
-                  t={t}
-                />
+                <div className={styles.studioDetailSection}>
+                  <div className={styles.studioDetailSectionHeader}>
+                    <h3>📋 项目概括</h3>
+                  </div>
+                  <div className={styles.studioOverviewTabs}>
+                    <button
+                      className={
+                        styles.studioOverviewTab +
+                        " " +
+                        (overviewSubTab === "tasks" ? styles.active : "")
+                      }
+                      onClick={() => setOverviewSubTab("tasks")}
+                      onDoubleClick={() => setProjectDetailTab("taskmgmt")}
+                      title="双击进入任务管理"
+                    >
+                      📋 任务{" "}
+                      <span className={styles.studioOverviewTabCount}>{projectTasks.length}</span>
+                    </button>
+                    <button
+                      className={
+                        styles.studioOverviewTab +
+                        " " +
+                        (overviewSubTab === "artifacts" ? styles.active : "")
+                      }
+                      onClick={() => setOverviewSubTab("artifacts")}
+                    >
+                      📦 产物{" "}
+                      <span className={styles.studioOverviewTabCount}>
+                        {projectFileRecords.length}
+                      </span>
+                    </button>
+                    <button
+                      className={
+                        styles.studioOverviewTab +
+                        " " +
+                        (overviewSubTab === "members" ? styles.active : "")
+                      }
+                      onClick={() => setOverviewSubTab("members")}
+                    >
+                      👥 人员{" "}
+                      <span className={styles.studioOverviewTabCount}>{projectMembers.length}</span>
+                    </button>
+                  </div>
+
+                  <div className={styles.studioArtifactListSection}>
+                    {overviewSubTab === "tasks" && (
+                      <>
+                        {projectTasks.length === 0 ? (
+                          <p className={styles.studioEmpty}>暂无任务</p>
+                        ) : (
+                          <div className={styles.studioArtifactList}>
+                            {projectTasks.map((task) => {
+                              const taskStatusConfig: Record<
+                                string,
+                                { label: string; color: string; icon: string }
+                              > = {
+                                triage: { label: "待分类", color: "#b2bec3", icon: "📥" },
+                                todo: { label: "待办", color: "#636e72", icon: "📋" },
+                                ready: { label: "就绪", color: "#0984e3", icon: "🟢" },
+                                running: { label: "进行中", color: "#fdcb6e", icon: "🔄" },
+                                done: { label: "已完成", color: "#00b894", icon: "✅" },
+                                blocked: { label: "阻塞", color: "#e17055", icon: "🚫" },
+                              };
+                              const tsc = taskStatusConfig[task.status] || {
+                                label: task.status,
+                                color: "#999",
+                                icon: "📌",
+                              };
+                              return (
+                                <div key={task.id} className={styles.studioArtifactListItem}>
+                                  <span className={styles.studioArtifactListItemIcon}>
+                                    {tsc.icon}
+                                  </span>
+                                  <div className={styles.studioArtifactListItemInfo}>
+                                    <div className={styles.studioArtifactListItemTitle}>
+                                      {task.title}
+                                    </div>
+                                    <div className={styles.studioArtifactListItemMeta}>
+                                      {task.assignee && (
+                                        <span className={styles.studioArtifactListItemRole}>
+                                          {getRoleName(task.assignee)}
+                                        </span>
+                                      )}
+                                      {task.priority > 0 && (
+                                        <span className={styles.studioArtifactListItemRole}>
+                                          {task.priority >= 3
+                                            ? "🔴高"
+                                            : task.priority <= 1
+                                              ? "🟢低"
+                                              : "🟡中"}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={styles.studioArtifactListItemStatus}
+                                    style={{ color: tsc.color }}
+                                  >
+                                    {tsc.label}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {overviewSubTab === "artifacts" && (
+                      <>
+                        {projectFileRecords.length === 0 ? (
+                          <p className={styles.studioEmpty}>暂无产物</p>
+                        ) : (
+                          <div className={styles.studioArtifactGroupList}>
+                            {(() => {
+                              const grouped = projectFileRecords.reduce(
+                                (acc, rec) => {
+                                  const key = rec.roleId || "_unassigned";
+                                  if (!acc[key]) acc[key] = [];
+                                  acc[key].push(rec);
+                                  return acc;
+                                },
+                                {} as Record<string, ProjectFileRecord[]>
+                              );
+                              return Object.entries(grouped).map(([roleId, files]) => {
+                                const isUnassigned = roleId === "_unassigned";
+                                const role = isUnassigned
+                                  ? null
+                                  : allRoles.find((r) => r.id === roleId);
+                                const roleName = isUnassigned ? "未分配" : getRoleName(roleId);
+                                const extIcon: Record<string, string> = {
+                                  md: "📝",
+                                  txt: "📄",
+                                  json: "📋",
+                                  yaml: "📋",
+                                  yml: "📋",
+                                  ts: "💻",
+                                  tsx: "💻",
+                                  js: "💻",
+                                  jsx: "💻",
+                                  py: "🐍",
+                                  html: "🌐",
+                                  css: "🎨",
+                                  svg: "🖼️",
+                                  png: "🖼️",
+                                  jpg: "🖼️",
+                                  pdf: "📕",
+                                  doc: "📘",
+                                  docx: "📘",
+                                  xls: "📗",
+                                  xlsx: "📗",
+                                };
+                                return (
+                                  <div key={roleId} className={styles.studioArtifactGroup}>
+                                    <div className={styles.studioArtifactGroupHeader}>
+                                      <span className={styles.studioArtifactGroupIcon}>
+                                        {isUnassigned ? "📁" : role?.icon || "🤖"}
+                                      </span>
+                                      <span className={styles.studioArtifactGroupName}>
+                                        {roleName}
+                                      </span>
+                                      <span className={styles.studioArtifactGroupCount}>
+                                        {files.length} 文件
+                                      </span>
+                                    </div>
+                                    <div className={styles.studioArtifactGroupFiles}>
+                                      {files.map((file) => {
+                                        const icon = extIcon[file.fileExt] || "📄";
+                                        const sizeStr =
+                                          file.fileSize > 1024 * 1024
+                                            ? `${(file.fileSize / 1024 / 1024).toFixed(1)}MB`
+                                            : file.fileSize > 1024
+                                              ? `${(file.fileSize / 1024).toFixed(1)}KB`
+                                              : `${file.fileSize}B`;
+                                        return (
+                                          <div
+                                            key={file.id}
+                                            className={styles.studioArtifactFileItem}
+                                            onClick={() => {
+                                              if (file.filePath) {
+                                                onPreviewFile(file.filePath, file.fileName);
+                                              }
+                                            }}
+                                            style={{ cursor: "pointer" }}
+                                          >
+                                            <span className={styles.studioArtifactFileIcon}>
+                                              {icon}
+                                            </span>
+                                            <div className={styles.studioArtifactFileInfo}>
+                                              <span className={styles.studioArtifactFileName}>
+                                                {file.fileName}
+                                              </span>
+                                              <div className={styles.studioArtifactFileMeta}>
+                                                <span className={styles.studioArtifactFileSize}>
+                                                  {sizeStr}
+                                                </span>
+                                                {file.description && (
+                                                  <span className={styles.studioArtifactFileDesc}>
+                                                    {file.description}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <span className={styles.studioArtifactFileTag}>
+                                              {roleName}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {overviewSubTab === "members" && (
+                      <>
+                        {projectMembers.length === 0 ? (
+                          <p className={styles.studioEmpty}>暂无成员</p>
+                        ) : (
+                          <div className={styles.studioArtifactList}>
+                            {projectMembers.map((member) => {
+                              const role = allRoles.find((r) => r.id === member.roleId);
+                              const memberArtifact = projectArtifacts.find(
+                                (a) => a.roleId === member.roleId
+                              );
+                              const isWorking =
+                                memberArtifact?.status === "in_progress" ||
+                                memberArtifact?.status === "pending";
+                              return (
+                                <div key={member.id} className={styles.studioArtifactListItem}>
+                                  <span className={styles.studioArtifactListItemIcon}>
+                                    {role?.icon || "🤖"}
+                                  </span>
+                                  <div className={styles.studioArtifactListItemInfo}>
+                                    <div className={styles.studioArtifactListItemTitle}>
+                                      {getRoleName(member.roleId)}
+                                    </div>
+                                    <div className={styles.studioArtifactListItemMeta}>
+                                      <span className={styles.studioArtifactListItemRole}>
+                                        {role?.name || "AI角色"}
+                                      </span>
+                                      {isWorking && (
+                                        <span
+                                          className={styles.studioArtifactListItemPath}
+                                          style={{ color: "#0984e3" }}
+                                        >
+                                          工作中
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={styles.studioArtifactListItemStatus}
+                                    style={{ color: isWorking ? "#0984e3" : "#00b894" }}
+                                  >
+                                    {isWorking ? "忙碌" : "空闲"}
+                                  </span>
+                                  {memberArtifact?.status === "submitted" && (
+                                    <div style={{ display: "flex", gap: 6, marginLeft: 8 }}>
+                                      <button
+                                        style={{
+                                          padding: "2px 10px",
+                                          fontSize: 12,
+                                          borderRadius: 4,
+                                          border: "none",
+                                          background: "#00b894",
+                                          color: "#fff",
+                                          cursor: "pointer",
+                                        }}
+                                        onClick={async () => {
+                                          try {
+                                            await invoke("approve_project_artifact", {
+                                              id: memberArtifact.id,
+                                            });
+                                            const artifacts = await invoke<ProjectArtifact[]>(
+                                              "list_project_artifacts",
+                                              { projectId: project.id }
+                                            );
+                                            onArtifactsUpdate(artifacts);
+                                          } catch (err) {
+                                            console.error("Failed to approve:", err);
+                                          }
+                                        }}
+                                      >
+                                        ✓ 通过
+                                      </button>
+                                      <button
+                                        style={{
+                                          padding: "2px 10px",
+                                          fontSize: 12,
+                                          borderRadius: 4,
+                                          border: "none",
+                                          background: "#d63031",
+                                          color: "#fff",
+                                          cursor: "pointer",
+                                        }}
+                                        onClick={async () => {
+                                          try {
+                                            await invoke("reject_project_artifact", {
+                                              id: memberArtifact.id,
+                                              reason: "需要修改",
+                                            });
+                                            const artifacts = await invoke<ProjectArtifact[]>(
+                                              "list_project_artifacts",
+                                              { projectId: project.id }
+                                            );
+                                            onArtifactsUpdate(artifacts);
+                                          } catch (err) {
+                                            console.error("Failed to reject:", err);
+                                          }
+                                        }}
+                                      >
+                                        ✗ 驳回
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className={styles.studioDetailCenter}>
@@ -434,7 +897,6 @@ function ProjectDetail({
                       <VirtualOffice
                         members={projectMembers.map((member) => {
                           const role = allRoles.find((r) => r.id === member.roleId);
-                          const isUser = member.roleId === "builtin_user";
                           const memberArtifact = projectArtifacts.find(
                             (a) => a.roleId === member.roleId
                           );
@@ -446,7 +908,6 @@ function ProjectDetail({
                             name: getRoleName(member.roleId),
                             icon: role?.icon || "🤖",
                             color: role?.avatarColor || "#6c5ce7",
-                            isUser,
                             isWorking,
                             preset: role?.avatarPreset,
                             roleId: member.roleId,
@@ -495,6 +956,11 @@ function ProjectDetail({
                     </Suspense>
                   </div>
                 </div>
+                <ActivityFeed
+                  projectId={project.id}
+                  allRoles={allRoles}
+                  getRoleName={getRoleName}
+                />
               </div>
             </>
           )}
@@ -516,15 +982,36 @@ function ProjectDetail({
               <div className={styles.studioDetailSection + " " + styles.studioWorkflowSection}>
                 <div className={styles.studioDetailSectionHeader}>
                   <h3>🔄 {t("studio.projectTab.workflows")}</h3>
+                  <div className={styles.wfSubTabs}>
+                    <button
+                      className={`${styles.wfSubTab} ${wfSubTab === "designer" ? styles.wfSubTabActive : ""}`}
+                      onClick={() => setWfSubTab("designer")}
+                    >
+                      📐 设计器
+                    </button>
+                    <button
+                      className={`${styles.wfSubTab} ${wfSubTab === "runs" ? styles.wfSubTabActive : ""}`}
+                      onClick={() => setWfSubTab("runs")}
+                    >
+                      🚀 运行
+                    </button>
+                  </div>
                 </div>
-                <div className={styles.studioWorkflowDesigner}>
-                  <WorkflowDesigner
-                    projectId={project.id}
-                    roles={allRoles}
-                    projectMembers={projectMembers}
-                    t={t}
-                  />
-                </div>
+                {wfSubTab === "designer" && (
+                  <div className={styles.studioWorkflowDesigner}>
+                    <WorkflowDesigner
+                      projectId={project.id}
+                      roles={allRoles}
+                      projectMembers={projectMembers}
+                      t={t}
+                    />
+                  </div>
+                )}
+                {wfSubTab === "runs" && (
+                  <div className={styles.studioWorkflowDesigner}>
+                    <WorkflowRunPanel projectId={project.id} allRoles={allRoles} />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -542,16 +1029,14 @@ function ProjectDetail({
                       onChange={(e) => setChatTargetRole(e.target.value)}
                     >
                       <option value="">全部角色</option>
-                      {projectMembers
-                        .filter((m) => m.roleId !== "builtin_user")
-                        .map((member) => {
-                          const role = allRoles.find((r) => r.id === member.roleId);
-                          return (
-                            <option key={member.id} value={member.roleId}>
-                              {role?.icon || "🤖"} {role?.name || "未知"}
-                            </option>
-                          );
-                        })}
+                      {projectMembers.map((member) => {
+                        const role = allRoles.find((r) => r.id === member.roleId);
+                        return (
+                          <option key={member.id} value={member.roleId}>
+                            {role?.icon || "🤖"} {role?.name || "未知"}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                 </div>
@@ -575,7 +1060,7 @@ function ProjectDetail({
                         </div>
                         <div className={styles.studioChatBubble}>
                           <span className={styles.studioChatName} style={{ color: avatarColor }}>
-                            {isUser ? "用户" : role?.nickname || role?.name || "未知"}
+                            {isUser ? "用户" : role?.name || "未知"}
                           </span>
                           <div className={styles.studioChatText}>
                             <MarkdownRenderer content={renderMentionContent(msg.content)} />
@@ -594,18 +1079,12 @@ function ProjectDetail({
                         style={{
                           background:
                             allRoles.find(
-                              (r) =>
-                                r.id ===
-                                (chatTargetRole ||
-                                  projectMembers.find((m) => m.roleId !== "builtin_user")?.roleId)
+                              (r) => r.id === (chatTargetRole || projectMembers[0]?.roleId)
                             )?.avatarColor || "#6c5ce7",
                         }}
                       >
                         {allRoles.find(
-                          (r) =>
-                            r.id ===
-                            (chatTargetRole ||
-                              projectMembers.find((m) => m.roleId !== "builtin_user")?.roleId)
+                          (r) => r.id === (chatTargetRole || projectMembers[0]?.roleId)
                         )?.icon || "🤖"}
                       </div>
                       <div className={styles.studioChatBubble}>
@@ -614,21 +1093,15 @@ function ProjectDetail({
                           style={{
                             color:
                               allRoles.find(
-                                (r) =>
-                                  r.id ===
-                                  (chatTargetRole ||
-                                    projectMembers.find((m) => m.roleId !== "builtin_user")?.roleId)
+                                (r) => r.id === (chatTargetRole || projectMembers[0]?.roleId)
                               )?.avatarColor || "#6c5ce7",
                           }}
                         >
                           {(() => {
                             const r = allRoles.find(
-                              (r) =>
-                                r.id ===
-                                (chatTargetRole ||
-                                  projectMembers.find((m) => m.roleId !== "builtin_user")?.roleId)
+                              (r) => r.id === (chatTargetRole || projectMembers[0]?.roleId)
                             );
-                            return r?.nickname || r?.name || "AI";
+                            return r?.name || "AI";
                           })()}
                         </span>
                         <div className={styles.studioChatText}>
@@ -643,121 +1116,134 @@ function ProjectDetail({
                   )}
                 </div>
                 <div className={styles.studioChatInputArea}>
-                  <MentionsInput
-                    className={`${styles.studioChatMentions} chatMentions`}
-                    value={chatInput}
-                    onChange={(_e, newValue: string) => setChatInput(newValue)}
-                    placeholder={
-                      projectChatStreaming ? "AI 正在回复..." : "输入消息，@ 提及角色..."
-                    }
-                    disabled={projectChatStreaming}
-                    onKeyDown={(e: React.KeyboardEvent) => {
-                      if (
-                        e.key === "Enter" &&
-                        !e.shiftKey &&
-                        chatInput.trim() &&
-                        !projectChatStreaming
-                      ) {
-                        e.preventDefault();
-                        handleProjectChatSend(chatInput.trim());
-                        setChatInput("");
+                  {chatRoleSkills.length > 0 && (
+                    <div className={styles.studioChatSkillHints}>
+                      <span className={styles.studioChatSkillLabel}>可用技能：</span>
+                      {chatRoleSkills.map((s) => (
+                        <span
+                          key={s}
+                          className={styles.studioChatSkillTag}
+                          onClick={() => setChatInput((prev) => prev + `[技能:${s}] `)}
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className={styles.studioChatInputRow}>
+                    <MentionsInput
+                      className={`${styles.studioChatMentions} chatMentions`}
+                      value={chatInput}
+                      onChange={(_e, newValue: string) => setChatInput(newValue)}
+                      placeholder={
+                        projectChatStreaming ? "AI 正在回复..." : "输入消息，@ 提及角色..."
                       }
-                    }}
-                    style={{
-                      control: {
-                        backgroundColor: "var(--bg-secondary)",
-                        fontSize: 13,
-                        minHeight: 36,
-                        border: "1px solid var(--border-color)",
-                        borderRadius: 8,
-                        padding: "6px 10px",
-                        color: "var(--text-primary)",
-                      },
-                      highlighter: {
-                        padding: "6px 10px",
-                        border: "1px solid transparent",
-                      },
-                      input: {
-                        padding: "6px 10px",
-                        border: "1px solid transparent",
-                        outline: "none",
-                      },
-                      suggestions: {
-                        list: {
-                          backgroundColor: "var(--bg-primary)",
-                          border: "1px solid var(--border-color)",
-                          borderRadius: 6,
+                      disabled={projectChatStreaming}
+                      onKeyDown={(e: React.KeyboardEvent) => {
+                        if (
+                          e.key === "Enter" &&
+                          !e.shiftKey &&
+                          chatInput.trim() &&
+                          !projectChatStreaming
+                        ) {
+                          e.preventDefault();
+                          handleProjectChatSend(chatInput.trim());
+                          setChatInput("");
+                        }
+                      }}
+                      style={{
+                        control: {
+                          backgroundColor: "var(--bg-secondary)",
                           fontSize: 13,
-                          zIndex: 9999,
+                          minHeight: 36,
+                          border: "1px solid var(--border-color)",
+                          borderRadius: 8,
+                          padding: "6px 10px",
+                          color: "var(--text-primary)",
                         },
-                        item: {
-                          padding: "6px 12px",
-                          borderBottom: "1px solid var(--border-color)",
-                          "&focused": {
-                            backgroundColor: "var(--bg-hover)",
+                        highlighter: {
+                          padding: "6px 10px",
+                          border: "1px solid transparent",
+                        },
+                        input: {
+                          padding: "6px 10px",
+                          border: "1px solid transparent",
+                          outline: "none",
+                        },
+                        suggestions: {
+                          list: {
+                            backgroundColor: "var(--bg-primary)",
+                            border: "1px solid var(--border-color)",
+                            borderRadius: 6,
+                            fontSize: 13,
+                            zIndex: 9999,
+                          },
+                          item: {
+                            padding: "6px 12px",
+                            borderBottom: "1px solid var(--border-color)",
+                            "&focused": {
+                              backgroundColor: "var(--bg-hover)",
+                            },
                           },
                         },
-                      },
-                    }}
-                  >
-                    <Mention
-                      trigger="@"
-                      data={mentionData}
-                      markup="@[__id__](__display__)"
-                      displayTransform={(_id: string, display: string) => `@${display}`}
-                      renderSuggestion={renderSuggestion}
-                    />
-                  </MentionsInput>
-                  <button
-                    className={styles.studioChatSendBtn}
-                    disabled={projectChatStreaming || !chatInput.trim()}
-                    onClick={() => {
-                      if (chatInput.trim() && !projectChatStreaming) {
-                        handleProjectChatSend(chatInput.trim());
-                        setChatInput("");
-                      }
-                    }}
-                  >
-                    {projectChatStreaming ? "..." : "发送"}
-                  </button>
-                  {projectWorkflows.length > 0 &&
-                    projectMembers.filter((m) => m.roleId !== "builtin_user").length > 1 && (
-                      <button
-                        className={styles.studioChatAutoBtn}
-                        disabled={autoDelegateRunning || projectChatStreaming}
-                        onClick={async () => {
-                          if (autoDelegateRunning) return;
-                          setAutoDelegateRunning(true);
-                          try {
-                            const firstMember = projectMembers.find(
-                              (m) => m.roleId !== "builtin_user"
-                            );
-                            if (!firstMember) return;
-                            const startRoleId = chatTargetRole || firstMember.roleId;
-                            const message =
-                              chatInput.trim() ||
-                              "请开始执行你的工作任务，完成后将产出传递给下游角色。";
-                            await invoke("run_workflow_auto_chat", {
-                              projectId: project.id,
-                              startRoleId,
-                              initialMessage: message,
-                              eventId: `auto-chat-${Date.now()}`,
-                            });
-                            const msgs = await invoke<ProjectMessage[]>("list_project_messages", {
-                              projectId: project.id,
-                            });
-                            onMessagesUpdate(msgs);
-                            setChatInput("");
-                          } catch (err) {
-                            console.error("Auto delegate failed:", err);
-                          } finally {
-                            setAutoDelegateRunning(false);
-                          }
-                        }}
-                      >
-                        {autoDelegateRunning ? "🔄 协作中..." : "🤝 自动协作"}
-                      </button>
-                    )}
+                      }}
+                    >
+                      <Mention
+                        trigger="@"
+                        data={mentionData}
+                        markup="@[__id__](__display__)"
+                        displayTransform={(_id: string, display: string) => `@${display}`}
+                        renderSuggestion={renderSuggestion}
+                      />
+                    </MentionsInput>
+                    <button
+                      className={styles.studioChatSendBtn}
+                      disabled={projectChatStreaming || !chatInput.trim()}
+                      onClick={() => {
+                        if (chatInput.trim() && !projectChatStreaming) {
+                          handleProjectChatSend(chatInput.trim());
+                          setChatInput("");
+                        }
+                      }}
+                    >
+                      {projectChatStreaming ? "..." : "发送"}
+                    </button>
+                  </div>
+                  {projectWorkflows.length > 0 && projectMembers.length > 1 && (
+                    <button
+                      className={styles.studioChatAutoBtn}
+                      disabled={autoDelegateRunning || projectChatStreaming}
+                      onClick={async () => {
+                        if (autoDelegateRunning) return;
+                        setAutoDelegateRunning(true);
+                        try {
+                          const firstMember = projectMembers[0];
+                          if (!firstMember) return;
+                          const startRoleId = chatTargetRole || firstMember.roleId;
+                          const message =
+                            chatInput.trim() ||
+                            "请开始执行你的工作任务，完成后将产出传递给下游角色。";
+                          await invoke("run_workflow_auto_chat", {
+                            projectId: project.id,
+                            startRoleId,
+                            initialMessage: message,
+                            eventId: `auto-chat-${Date.now()}`,
+                          });
+                          const msgs = await invoke<ProjectMessage[]>("list_project_messages", {
+                            projectId: project.id,
+                          });
+                          onMessagesUpdate(msgs);
+                          setChatInput("");
+                        } catch (err) {
+                          console.error("Auto delegate failed:", err);
+                        } finally {
+                          setAutoDelegateRunning(false);
+                        }
+                      }}
+                    >
+                      {autoDelegateRunning ? "🔄 协作中..." : "🤝 自动协作"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

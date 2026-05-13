@@ -27,6 +27,8 @@ import type {
   CreateProjectTaskRequest,
   UpdateProjectTaskRequest,
   KnowledgeConfig,
+  ProjectTemplateDetail,
+  CreateProjectFromTemplateRequest,
 } from "@core/tauri/types";
 
 export const TauriCommands = {
@@ -213,8 +215,8 @@ export const TauriCommands = {
     return invoke<ProjectItem>("import_project", { data });
   },
 
-  async addProjectMember(projectId: string, name: string, role: string): Promise<void> {
-    return invoke("add_project_member", { projectId, name, role });
+  async addProjectMember(projectId: string, roleId: string): Promise<void> {
+    return invoke("add_project_member", { req: { projectId, roleId } });
   },
 
   async removeProjectMember(id: string): Promise<void> {
@@ -228,10 +230,16 @@ export const TauriCommands = {
   async createProjectMessage(
     projectId: string,
     content: string,
-    senderName?: string,
-    senderRole?: string
+    _senderName?: string,
+    _senderRole?: string
   ): Promise<void> {
-    return invoke("create_project_message", { projectId, content, senderName, senderRole });
+    return invoke("create_project_message", {
+      req: {
+        projectId,
+        content,
+        messageType: "text",
+      },
+    });
   },
 
   async chatWithProjectRoles(projectId: string, message: string): Promise<string> {
@@ -242,8 +250,8 @@ export const TauriCommands = {
     return invoke<string>("chat_with_project_role", { projectId, roleId, message });
   },
 
-  async approveProjectArtifact(id: string): Promise<void> {
-    return invoke("approve_project_artifact", { id });
+  async approveProjectArtifact(id: string, comment?: string): Promise<void> {
+    return invoke("approve_project_artifact", { id, comment });
   },
 
   async rejectProjectArtifact(id: string, reason: string): Promise<void> {
@@ -280,10 +288,17 @@ export const TauriCommands = {
   },
 
   async triggerWorkflowExecution(
-    workflowId: string,
-    params?: Record<string, string>
+    projectId: string,
+    fromRoleId: string,
+    artifactType?: string,
+    conditionResult?: string
   ): Promise<void> {
-    return invoke("trigger_workflow_execution", { workflowId, params });
+    return invoke("trigger_workflow_execution", {
+      projectId,
+      fromRoleId,
+      artifactType,
+      conditionResult,
+    });
   },
 
   async runWorkflowAutoChat(projectId: string, workflowId: string, input: string): Promise<void> {
@@ -291,7 +306,7 @@ export const TauriCommands = {
   },
 
   async listSkills(): Promise<SkillsResult> {
-    return invoke<SkillsResult>("list_skills");
+    return invoke<SkillsResult>("list_hermes_skills");
   },
 
   async installSkill(identifier: string): Promise<void> {
@@ -308,5 +323,200 @@ export const TauriCommands = {
 
   async toggleSkill(name: string, enabled: boolean): Promise<void> {
     return invoke("toggle_skill", { name, enabled });
+  },
+
+  async claimProjectTask(taskId: string, roleId: string): Promise<void> {
+    return invoke("claim_project_task", { taskId, roleId });
+  },
+
+  async heartbeatTaskClaim(taskId: string): Promise<void> {
+    return invoke("heartbeat_task_claim", { taskId });
+  },
+
+  async releaseTaskClaim(taskId: string): Promise<void> {
+    return invoke("release_task_claim", { taskId });
+  },
+
+  async addTaskComment(taskId: string, roleId: string, content: string): Promise<void> {
+    return invoke("add_task_comment", { req: { taskId, roleId, content } });
+  },
+
+  async listTaskComments(taskId: string): Promise<void> {
+    return invoke("list_task_comments", { taskId });
+  },
+
+  async linkTasks(fromTaskId: string, toTaskId: string, linkType: string): Promise<void> {
+    return invoke("link_tasks", { fromTaskId, toTaskId, linkType });
+  },
+
+  async unlinkTasks(linkId: string): Promise<void> {
+    return invoke("unlink_tasks", { linkId });
+  },
+
+  async listTaskLinks(taskId: string): Promise<void> {
+    return invoke("list_task_links", { taskId });
+  },
+
+  async listTaskEvents(taskId: string): Promise<void> {
+    return invoke("list_task_events", { taskId });
+  },
+
+  async startWorkflowRun(projectId: string, initialMessage: string): Promise<void> {
+    return invoke("start_workflow_run", { projectId, initialMessage });
+  },
+
+  async pauseWorkflowRun(runId: string): Promise<void> {
+    return invoke("pause_workflow_run", { runId });
+  },
+
+  async resumeWorkflowRun(runId: string): Promise<void> {
+    return invoke("resume_workflow_run", { runId });
+  },
+
+  async confirmWorkflowStep(runId: string, approved: boolean, comment?: string): Promise<void> {
+    return invoke("confirm_workflow_step", { runId, approved, comment });
+  },
+
+  async listWorkflowRuns(projectId: string): Promise<void> {
+    return invoke("list_workflow_runs", { projectId });
+  },
+
+  async getWorkflowRunStatus(runId: string): Promise<void> {
+    return invoke("get_workflow_run_status", { runId });
+  },
+
+  async createArtifactVersion(artifactId: string): Promise<void> {
+    return invoke("create_artifact_version", { artifactId });
+  },
+
+  async listArtifactVersions(artifactId: string): Promise<void> {
+    return invoke("list_artifact_versions", { artifactId });
+  },
+
+  async diffArtifactVersions(fromId: string, toId: string): Promise<void> {
+    return invoke("diff_artifact_versions", { fromId, toId });
+  },
+
+  async bindRoleSkill(roleId: string, skillName: string): Promise<void> {
+    return invoke("bind_role_skill", { roleId, skillName });
+  },
+
+  async unbindRoleSkill(id: string): Promise<void> {
+    return invoke("unbind_role_skill", { id });
+  },
+
+  async listRoleSkills(roleId: string): Promise<void> {
+    return invoke("list_role_skills", { roleId });
+  },
+
+  async listProjectActivities(projectId: string, limit?: number): Promise<void> {
+    return invoke("list_project_activities", { projectId, limit });
+  },
+
+  async getProjectStats(projectId: string): Promise<void> {
+    return invoke("get_project_stats", { projectId });
+  },
+
+  async createProjectMemory(
+    projectId: string,
+    roleId: string,
+    content: string,
+    category?: string,
+    importance?: number
+  ): Promise<void> {
+    return invoke("create_project_memory", {
+      req: { projectId, roleId, content, category, importance },
+    });
+  },
+
+  async listProjectMemories(projectId: string, roleId?: string, category?: string): Promise<void> {
+    return invoke("list_project_memories", { projectId, roleId, category });
+  },
+
+  async deleteProjectMemory(id: string): Promise<void> {
+    return invoke("delete_project_memory", { id });
+  },
+
+  async listProjectFileRecords(projectId: string): Promise<any[]> {
+    return invoke("list_project_file_records", { projectId });
+  },
+
+  async createProjectFileRecord(req: {
+    projectId: string;
+    roleId: string;
+    filePath: string;
+    fileName: string;
+    fileExt?: string;
+    fileSize?: number;
+    description?: string;
+  }): Promise<any> {
+    return invoke("create_project_file_record", { req });
+  },
+
+  async deleteProjectFileRecord(id: string): Promise<void> {
+    return invoke("delete_project_file_record", { id });
+  },
+
+  async scanProjectFiles(projectId: string, roleId?: string): Promise<any[]> {
+    return invoke("scan_project_files", { projectId, roleId });
+  },
+
+  async recordChatFiles(projectId: string, roleId: string): Promise<void> {
+    return invoke("record_chat_files", { projectId, roleId });
+  },
+
+  async listProjectBoards(projectId: string): Promise<any[]> {
+    return invoke("list_project_boards", { projectId });
+  },
+
+  async createProjectBoard(req: {
+    projectId: string;
+    name: string;
+    description?: string;
+  }): Promise<any> {
+    return invoke("create_project_board", { req });
+  },
+
+  async updateProjectBoard(
+    id: string,
+    req: {
+      name?: string;
+      description?: string;
+      sortOrder?: number;
+    }
+  ): Promise<void> {
+    return invoke("update_project_board", { id, req });
+  },
+
+  async deleteProjectBoard(id: string): Promise<void> {
+    return invoke("delete_project_board", { id });
+  },
+
+  async archiveProjectTask(id: string): Promise<void> {
+    return invoke("archive_project_task", { id });
+  },
+
+  async updateMessageTokens(
+    messageId: string,
+    promptTokens: number,
+    completionTokens: number
+  ): Promise<void> {
+    return invoke("update_message_tokens", { messageId, promptTokens, completionTokens });
+  },
+
+  async preprocessSkillTemplate(
+    projectId: string,
+    roleId: string,
+    template: string
+  ): Promise<string> {
+    return invoke("preprocess_skill_template", { projectId, roleId, template });
+  },
+
+  async listProjectTemplates(): Promise<ProjectTemplateDetail[]> {
+    return invoke<ProjectTemplateDetail[]>("list_project_templates");
+  },
+
+  async createProjectFromTemplate(req: CreateProjectFromTemplateRequest): Promise<ProjectItem> {
+    return invoke<ProjectItem>("create_project_from_template", { req });
   },
 };

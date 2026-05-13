@@ -141,7 +141,12 @@ export function useStreamingChat() {
       } else if (event_type === "tool_progress") {
         updateChatState(convId, { toolProgress: tool_label || chunk, isThinking: true });
       } else if (event_type === "error") {
-        updateChatState(convId, { toolProgress: "", isThinking: false });
+        fullContent += chunk;
+        updateChatState(convId, {
+          streamedContent: fullContent,
+          isThinking: false,
+          toolProgress: "",
+        });
       } else {
         fullContent += chunk;
         updateChatState(convId, {
@@ -156,8 +161,17 @@ export function useStreamingChat() {
       await invoke("chat_with_hermes_api", invokeParams);
     } catch (err) {
       console.error("Chat API error:", err);
+      const errorContent = fullContent || `⚠️ 请求失败：${err}`;
+      const assistantMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: errorContent,
+        timestamp: Date.now(),
+      };
+      onMessage(assistantMsg);
       updateChatState(convId, { isStreaming: false, isThinking: false, toolProgress: "" });
       unlisten();
+      onDone();
     }
   };
 

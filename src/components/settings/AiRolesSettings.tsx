@@ -1,7 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import settingsStyles from "@pages/settings/SettingsPanel.module.css";
 import studioStyles from "@pages/studio/StudioPanel.module.css";
+import type { SkillItem } from "@core/types";
+
+interface RoleSkill {
+  id: string;
+  roleId: string;
+  skillName: string;
+  enabled: boolean;
+  createdAt: number;
+}
 
 interface AiRoleItem {
   id: string;
@@ -53,6 +62,11 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
   const [editingRole, setEditingRole] = useState<AiRoleItem | null>(null);
   const [showNewRole, setShowNewRole] = useState(false);
   const [editForm, setEditForm] = useState({ ...EMPTY_FORM });
+  const [editRoleSkills, setEditRoleSkills] = useState<RoleSkill[]>([]);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [availableSkills, setAvailableSkills] = useState<SkillItem[]>([]);
+  const [showSkillPicker, setShowSkillPicker] = useState(false);
+  const [skillSearch, setSkillSearch] = useState("");
 
   const loadRoles = async () => {
     try {
@@ -65,9 +79,29 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
     }
   };
 
+  const loadRoleSkills = useCallback(async (roleId: string) => {
+    try {
+      const data = await invoke<RoleSkill[]>("list_role_skills", { roleId });
+      setEditRoleSkills(data);
+    } catch {
+      setEditRoleSkills([]);
+    }
+  }, []);
+
+  const showToast = (msg: string) => {
+    setSaveToast(msg);
+    setTimeout(() => setSaveToast(null), 2000);
+  };
+
   useEffect(() => {
     loadRoles();
   }, [loadRoles]);
+
+  useEffect(() => {
+    invoke<{ skills: SkillItem[] }>("list_hermes_skills")
+      .then((res) => setAvailableSkills(res.skills.filter((s) => s.enabled)))
+      .catch(() => setAvailableSkills([]));
+  }, []);
 
   const handleCreate = async () => {
     if (!editForm.name.trim()) return;
@@ -89,8 +123,10 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       setEditForm({ ...EMPTY_FORM });
       setShowNewRole(false);
       loadRoles();
+      showToast("✅ 角色创建成功");
     } catch (err) {
       console.error("Failed to create role:", err);
+      showToast("❌ 创建失败：" + String(err));
     }
   };
 
@@ -114,9 +150,12 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       });
       setEditingRole(null);
       setEditForm({ ...EMPTY_FORM });
+      setEditRoleSkills([]);
       loadRoles();
+      showToast("✅ 角色保存成功");
     } catch (err) {
       console.error("Failed to update role:", err);
+      showToast("❌ 保存失败：" + String(err));
     }
   };
 
@@ -143,12 +182,16 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       avatarPreset: role.avatarPreset || "",
       avatarColor: role.avatarColor || "",
     });
+    loadRoleSkills(role.id);
   };
 
   const cancelEdit = () => {
     setEditingRole(null);
     setShowNewRole(false);
     setEditForm({ ...EMPTY_FORM });
+    setEditRoleSkills([]);
+    setShowSkillPicker(false);
+    setSkillSearch("");
   };
 
   if (loading) {
@@ -342,74 +385,160 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   </div>
                 </div>
                 <div className={studioStyles.aiRoleFormRow}>
-                  <label>{t("aiRoles.avatarUrl")}</label>
-                  <input
-                    className={studioStyles.studioInput}
-                    value={editForm.avatarUrl}
-                    onChange={(e) => setEditForm({ ...editForm, avatarUrl: e.target.value })}
-                    placeholder={t("aiRoles.avatarUrlPlaceholder")}
-                  />
-                  <button
-                    className={studioStyles.studioBtnSecondary}
-                    style={{
-                      marginLeft: 8,
-                      whiteSpace: "nowrap",
-                      fontSize: 12,
-                      padding: "4px 10px",
-                    }}
-                    onClick={() => {
-                      const input = document.createElement("input");
-                      input.type = "file";
-                      input.accept = ".vrm,.glb,.gltf";
-                      input.onchange = async (e: Event) => {
-                        const file = (e.target as HTMLInputElement).files?.[0];
-                        if (!file || !editingRole) return;
-                        try {
-                          const path = await (window as any).__TAURI__.dialog?.open?.({
-                            filters: [{ name: "VRM", extensions: ["vrm", "glb", "gltf"] }],
-                            multiple: false,
-                          });
-                          if (!path) return;
-                          const result = await invoke<string>("upload_vrm_avatar", {
-                            roleId: editingRole,
-                            filePath: path,
-                          });
-                          setEditForm({ ...editForm, avatarUrl: result, avatarType: "vrm" });
-                          loadRoles();
-                        } catch (err) {
-                          console.error("VRM upload failed:", err);
-                        }
-                      };
-                      input.click();
-                    }}
-                  >
-                    {t("studio.uploadVrm")}
-                  </button>
-                </div>
-                <div className={studioStyles.aiRoleFormRow}>
                   <label>{t("studio.avatarType")}</label>
                   <div className={studioStyles.aiRoleAvatarPresets}>
-                    {[
-                      { value: "default", label: t("studio.avatarTypeDefault") },
-                      { value: "vrm", label: t("studio.avatarTypeVrm") },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        className={
-                          studioStyles.aiRoleAvatarPresetBtn +
-                          " " +
-                          (editForm.avatarType === opt.value ||
-                          (!editForm.avatarUrl && opt.value === "default")
-                            ? studioStyles.active
-                            : "")
-                        }
-                        onClick={() => setEditForm({ ...editForm, avatarType: opt.value })}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                    <button
+                      className={
+                        studioStyles.aiRoleAvatarPresetBtn +
+                        " " +
+                        (editForm.avatarType === "default" || !editForm.avatarUrl
+                          ? studioStyles.active
+                          : "")
+                      }
+                      onClick={() => setEditForm({ ...editForm, avatarType: "default" })}
+                    >
+                      {t("studio.avatarTypeDefault")}
+                    </button>
+                    <button
+                      className={studioStyles.aiRoleAvatarPresetBtn}
+                      style={{ opacity: 0.5, cursor: "not-allowed" }}
+                      onClick={() => showToast("🚧 VRM 功能开发中，敬请期待")}
+                    >
+                      {t("studio.avatarTypeVrm")} (开发中)
+                    </button>
                   </div>
                 </div>
+                {editingRole && (
+                  <>
+                    <div className={studioStyles.aiRoleFormDivider} />
+                    <div className={studioStyles.aiRoleFormSectionTitle}>🛠️ 技能绑定</div>
+                    <div className={studioStyles.aiRoleFormRow}>
+                      <label>已绑定技能</label>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                        {editRoleSkills.length === 0 && (
+                          <span style={{ color: "#999", fontSize: 12 }}>暂无绑定技能</span>
+                        )}
+                        {editRoleSkills.map((skill) => (
+                          <span
+                            key={skill.id}
+                            className={studioStyles.roleSkillTag}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                          >
+                            {skill.skillName}
+                            <button
+                              style={{
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                color: "#999",
+                                fontSize: 12,
+                                padding: 0,
+                                lineHeight: 1,
+                              }}
+                              onClick={async () => {
+                                try {
+                                  await invoke("unbind_role_skill", { id: skill.id });
+                                  loadRoleSkills(editingRole.id);
+                                } catch (err) {
+                                  console.error("Failed to unbind skill:", err);
+                                }
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                        <button
+                          className={studioStyles.roleSkillAddBtn}
+                          onClick={() => setShowSkillPicker(true)}
+                        >
+                          + 添加技能
+                        </button>
+                      </div>
+                    </div>
+                    {showSkillPicker && (
+                      <div
+                        className={studioStyles.skillPickerOverlay}
+                        onClick={() => setShowSkillPicker(false)}
+                      >
+                        <div
+                          className={studioStyles.skillPickerPanel}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className={studioStyles.skillPickerHeader}>
+                            <h4>技能库</h4>
+                            <button
+                              className={studioStyles.taskDetailClose}
+                              onClick={() => setShowSkillPicker(false)}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <input
+                            className={studioStyles.skillPickerSearch}
+                            value={skillSearch}
+                            onChange={(e) => setSkillSearch(e.target.value)}
+                            placeholder="搜索技能名称..."
+                            autoFocus
+                          />
+                          <div className={studioStyles.skillPickerList}>
+                            {availableSkills
+                              .filter((s) => !editRoleSkills.some((rs) => rs.skillName === s.name))
+                              .filter(
+                                (s) =>
+                                  !skillSearch.trim() ||
+                                  s.name.toLowerCase().includes(skillSearch.toLowerCase()) ||
+                                  (s.description &&
+                                    s.description.toLowerCase().includes(skillSearch.toLowerCase()))
+                              ).length === 0 && (
+                              <div className={studioStyles.skillPickerEmpty}>无匹配技能</div>
+                            )}
+                            {availableSkills
+                              .filter((s) => !editRoleSkills.some((rs) => rs.skillName === s.name))
+                              .filter(
+                                (s) =>
+                                  !skillSearch.trim() ||
+                                  s.name.toLowerCase().includes(skillSearch.toLowerCase()) ||
+                                  (s.description &&
+                                    s.description.toLowerCase().includes(skillSearch.toLowerCase()))
+                              )
+                              .map((s) => (
+                                <div
+                                  key={s.name}
+                                  className={studioStyles.skillPickerItem}
+                                  onClick={async () => {
+                                    try {
+                                      await invoke("bind_role_skill", {
+                                        roleId: editingRole.id,
+                                        skillName: s.name,
+                                      });
+                                      loadRoleSkills(editingRole.id);
+                                    } catch (err) {
+                                      console.error("Failed to bind skill:", err);
+                                    }
+                                  }}
+                                >
+                                  <div className={studioStyles.skillPickerItemName}>
+                                    {s.name}
+                                    {s.category && (
+                                      <span className={studioStyles.skillPickerItemCat}>
+                                        {s.category}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {s.description && (
+                                    <div className={studioStyles.skillPickerItemDesc}>
+                                      {s.description}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
                 <div className={studioStyles.aiRoleFormActions}>
                   <button
                     className={studioStyles.studioBtnPrimary}
@@ -424,6 +553,26 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {saveToast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "var(--bg-primary, #fff)",
+            border: "1px solid var(--border-color, #e0e0e0)",
+            borderRadius: 8,
+            padding: "8px 20px",
+            fontSize: 13,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            zIndex: 99999,
+            transition: "opacity 0.3s",
+          }}
+        >
+          {saveToast}
         </div>
       )}
     </div>

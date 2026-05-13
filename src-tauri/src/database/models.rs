@@ -22,17 +22,21 @@ pub fn db_path() -> std::path::PathBuf {
 
     let _ = std::fs::create_dir_all(&data_dir);
 
+    let db_file = data_dir.join("hermes.db");
     let test_file = data_dir.join(".write_test");
     if std::fs::write(&test_file, b"test").is_ok() {
         let _ = std::fs::remove_file(&test_file);
-        return data_dir.join("hermes.db");
+        log::info!("Database path (primary): {}", db_file.display());
+        return db_file;
     }
+
+    log::warn!("Data directory not writable: {}, trying fallback", data_dir.display());
 
     let fallback = std::env::current_dir()
         .unwrap_or_else(|_| std::path::PathBuf::from("."))
         .join(".hermes-data");
     let _ = std::fs::create_dir_all(&fallback);
-    log::warn!("Data directory not writable, using fallback: {}", fallback.display());
+    log::warn!("Using fallback database: {}", fallback.join("hermes.db").display());
     fallback.join("hermes.db")
 }
 
@@ -448,49 +452,6 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    let builtin_roles = [
-        ("pm", "项目经理", "老李", "📋", "项目管理、进度把控、资料流转中枢", "负责项目整体进度管理，审阅各角色产出物，把控流转节奏，协调角色间协作", "你是项目经理，负责项目整体管理和进度把控。你的核心职责是：\n1. 审阅各角色的产出物，确保质量\n2. 把控任务流转节奏，决定是否推进到下一阶段\n3. 协调角色间的协作和沟通\n4. 对重要决策节点进行把关\n\n工作方式：收到角色提交的产出物后，进行审阅并决定是否流转到下一角色。"),
-        ("researcher", "需求调研员", "小赵", "🔍", "搜集资料、调研报告", "负责项目前期的资料搜集和调研工作，产出调研报告", "你是需求调研员，负责项目前期的资料搜集和调研工作。你的核心职责是：\n1. 根据项目需求，搜集相关资料和行业信息\n2. 分析竞品和市场需求\n3. 产出结构化的调研报告\n\n产出格式：调研报告，包含背景分析、竞品对比、市场趋势、关键发现和建议。"),
-        ("analyst", "需求分析师", "小周", "📊", "拆解整理需求", "负责将调研结果拆解整理为结构化的需求文档", "你是需求分析师，负责将调研结果拆解整理为结构化的需求文档。你的核心职责是：\n1. 分析调研报告，提取核心需求\n2. 拆解功能需求和非功能需求\n3. 产出结构化的需求文档\n\n产出格式：需求文档，包含功能需求列表、非功能需求、优先级排序、验收标准。"),
-        ("product", "产品经理", "小陈", "📝", "PRD和原型设计", "负责根据需求文档编写PRD和设计产品原型", "你是产品经理，负责根据需求文档编写PRD和设计产品原型。你的核心职责是：\n1. 将需求转化为产品方案\n2. 编写详细的PRD文档\n3. 设计产品原型和交互流程\n\n产出格式：PRD文档（包含产品概述、用户故事、功能规格、交互流程）+ 原型设计。"),
-        ("ui", "UI设计师", "小刘", "🎨", "视觉设计和交互设计", "负责根据PRD和原型进行视觉设计和交互设计", "你是UI设计师，负责根据PRD和原型进行视觉设计和交互设计。你的核心职责是：\n1. 根据PRD和原型设计视觉方案\n2. 制定设计规范和组件库\n3. 产出完整的UI设计稿\n\n产出格式：UI设计稿，包含设计规范、页面设计、组件设计、标注说明。"),
-        ("architect", "系统架构师", "老王", "🏗️", "架构设计和技术文档", "负责系统架构设计、技术选型和框架搭建", "你是系统架构师，负责系统架构设计、技术选型和框架搭建。你的核心职责分三个阶段：\n1. 技术调研：分析技术方案，产出调研报告\n2. 架构设计：设计系统架构，产出技术文档\n3. 框架搭建：搭建项目框架骨架\n\n每个阶段完成后需等待项目经理确认。产出格式：技术调研报告、架构文档（含架构图、模块划分、接口设计、数据模型）、框架代码。"),
-        ("frontend", "前端高级开发工程师", "小张", "💻", "前端业务开发", "负责前端业务功能开发", "你是前端高级开发工程师，负责前端业务功能开发。你的核心职责是：\n1. 根据UI设计稿和接口文档开发前端页面\n2. 与后端工程师进行接口对接\n3. 自测功能完整性\n\n工作方式：与后端并行开发，接口对接后进行联调自测，完成后提交测试。"),
-        ("backend", "后端高级开发工程师", "小孙", "⚙️", "后端业务开发", "负责后端业务功能开发和API设计", "你是后端高级开发工程师，负责后端业务功能开发和API设计。你的核心职责是：\n1. 根据架构文档和需求开发后端服务\n2. 设计和实现API接口\n3. 与前端工程师进行接口对接\n\n工作方式：与前端并行开发，提供接口文档，接口对接后进行联调自测，完成后提交测试。"),
-        ("tester", "测试工程师", "小吴", "🧪", "功能测试、安全测试、缺陷管理", "负责功能测试、安全测试和缺陷管理", "你是测试工程师，负责功能测试、安全测试和缺陷管理。你的核心职责是：\n1. 根据需求文档编写测试用例\n2. 执行功能测试和安全测试\n3. 发现Bug后打回给开发修复\n4. 复测修复结果\n5. 产出测试报告\n\n工作方式：收到开发提交后进行测试，发现Bug打回修复，修复后复测，全部通过后产出测试报告，等待确认上线。"),
-        ("user", "用户", "用户", "👤", "项目决策者、审批确认", "负责项目关键节点的审批和确认，是最终决策者", "你是用户，项目的决策者和最终确认人。你的核心职责是：\n1. 在关键决策节点进行审批确认\n2. 审阅重要产出物并给出反馈\n3. 决定是否推进到下一阶段\n4. 对不满意的产出物打回修改\n\n工作方式：在需要确认的流程节点，你会收到审批请求，可以选择通过或打回。通过则流程继续，打回则退回上一角色修改。"),
-    ];
-
-    for (i, (role_id, name, nickname, icon, desc, resp, soul)) in builtin_roles.iter().enumerate() {
-        let id = format!("builtin_{}", role_id);
-        let now = chrono::Utc::now().timestamp_millis();
-        let exists: bool = sqlx::query_scalar("SELECT COUNT(*) FROM ai_roles WHERE id = ?")
-            .bind(&id)
-            .fetch_one(pool)
-            .await
-            .map(|count: i64| count > 0)
-            .unwrap_or(false);
-        if exists {
-            continue;
-        }
-        sqlx::query(
-            "INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, sort_order, is_builtin, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)"
-        )
-        .bind(&id)
-        .bind(name)
-        .bind(nickname)
-        .bind(icon)
-        .bind(desc)
-        .bind(resp)
-        .bind(soul)
-        .bind(i as i64)
-        .bind(now)
-        .bind(now)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string()).ok();
-    }
-
     let builtin_gestures = [
         (
             "silent",
@@ -558,6 +519,220 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         .await
         .map_err(|e| e.to_string()).ok();
     }
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS task_comments (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            role_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS task_links (
+            id TEXT PRIMARY KEY,
+            from_task_id TEXT NOT NULL,
+            to_task_id TEXT NOT NULL,
+            link_type TEXT NOT NULL DEFAULT 'depends_on',
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (from_task_id) REFERENCES project_tasks(id) ON DELETE CASCADE,
+            FOREIGN KEY (to_task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_task_links_from ON task_links(from_task_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_task_links_to ON task_links(to_task_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS task_events (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            role_id TEXT,
+            detail TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS workflow_runs (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            workflow_id TEXT,
+            current_step INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'running',
+            context TEXT NOT NULL DEFAULT '{}',
+            started_at INTEGER NOT NULL,
+            completed_at INTEGER,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_workflow_runs_project ON workflow_runs(project_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS workflow_run_steps (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            step_index INTEGER NOT NULL,
+            role_id TEXT,
+            action TEXT NOT NULL DEFAULT 'auto_push',
+            status TEXT NOT NULL DEFAULT 'pending',
+            input TEXT NOT NULL DEFAULT '',
+            output TEXT NOT NULL DEFAULT '',
+            started_at INTEGER,
+            completed_at INTEGER,
+            FOREIGN KEY (run_id) REFERENCES workflow_runs(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_workflow_run_steps_run ON workflow_run_steps(run_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS artifact_versions (
+            id TEXT PRIMARY KEY,
+            artifact_id TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            content TEXT NOT NULL DEFAULT '',
+            file_path TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (artifact_id) REFERENCES project_artifacts(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_artifact_versions_artifact ON artifact_versions(artifact_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS role_skills (
+            id TEXT PRIMARY KEY,
+            role_id TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (role_id) REFERENCES ai_roles(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_role_skills_role ON role_skills(role_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS project_activities (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            role_id TEXT,
+            action TEXT NOT NULL,
+            target_type TEXT,
+            target_id TEXT,
+            detail TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_project_activities_project ON project_activities(project_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_project_activities_created ON project_activities(created_at)
+        "#,
+    )
+    .execute(pool)
+    .await?;
 
     crate::database::migrations::run_migrations(pool).await?;
 
@@ -833,6 +1008,10 @@ pub struct ProjectWorkflow {
     pub to_role_id: String,
     pub artifact_type: String,
     pub transition_type: String,
+    pub task_id: String,
+    pub condition_expr: String,
+    pub branch_label: String,
+    pub parallel_group: String,
     pub sort_order: i64,
     pub created_at: i64,
 }
@@ -845,6 +1024,10 @@ pub struct CreateProjectWorkflowRequest {
     pub to_role_id: String,
     pub artifact_type: Option<String>,
     pub transition_type: Option<String>,
+    pub task_id: Option<String>,
+    pub condition_expr: Option<String>,
+    pub branch_label: Option<String>,
+    pub parallel_group: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -879,12 +1062,83 @@ pub struct CreateProjectArtifactRequest {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectFileRecord {
+    pub id: String,
+    pub project_id: String,
+    pub role_id: String,
+    pub file_path: String,
+    pub file_name: String,
+    pub file_ext: String,
+    pub file_size: i64,
+    pub description: String,
+    pub status: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateFileRecordRequest {
+    pub project_id: String,
+    pub role_id: String,
+    pub file_path: String,
+    pub file_name: String,
+    pub file_ext: Option<String>,
+    pub file_size: Option<i64>,
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskDispatch {
+    pub id: String,
+    pub task_id: String,
+    pub role_id: String,
+    pub dispatch_type: String,
+    pub message: String,
+    pub status: String,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectBoard {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub description: String,
+    pub sort_order: i64,
+    pub is_default: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectBoardRequest {
+    pub project_id: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProjectBoardRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub sort_order: Option<i64>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectMessage {
     pub id: String,
     pub project_id: String,
     pub role_id: String,
     pub content: String,
     pub message_type: String,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
     pub created_at: i64,
 }
 
@@ -910,6 +1164,16 @@ pub struct ProjectTask {
     pub parent_task_id: String,
     pub artifact_id: String,
     pub result: String,
+    pub claim_lock: String,
+    pub claim_expire_at: i64,
+    pub started_at: Option<i64>,
+    pub completed_at: Option<i64>,
+    pub skills: String,
+    pub max_retries: i32,
+    pub retry_count: i32,
+    pub workspace_kind: String,
+    pub workspace_path: String,
+    pub board_id: String,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -924,6 +1188,10 @@ pub struct CreateProjectTaskRequest {
     pub status: Option<String>,
     pub priority: Option<i32>,
     pub parent_task_id: Option<String>,
+    pub skills: Option<String>,
+    pub max_retries: Option<i32>,
+    pub workspace_kind: Option<String>,
+    pub workspace_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -935,6 +1203,193 @@ pub struct UpdateProjectTaskRequest {
     pub status: Option<String>,
     pub priority: Option<i32>,
     pub result: Option<String>,
+    pub skills: Option<String>,
+    pub max_retries: Option<i32>,
+    pub workspace_kind: Option<String>,
+    pub workspace_path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskComment {
+    pub id: String,
+    pub task_id: String,
+    pub role_id: String,
+    pub content: String,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateTaskCommentRequest {
+    pub task_id: String,
+    pub role_id: String,
+    pub content: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskLink {
+    pub id: String,
+    pub from_task_id: String,
+    pub to_task_id: String,
+    pub link_type: String,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskEvent {
+    pub id: String,
+    pub task_id: String,
+    pub event_type: String,
+    pub role_id: Option<String>,
+    pub detail: String,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRun {
+    pub id: String,
+    pub project_id: String,
+    pub workflow_id: Option<String>,
+    pub current_step: i64,
+    pub status: String,
+    pub context: String,
+    pub started_at: i64,
+    pub completed_at: Option<i64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRunStep {
+    pub id: String,
+    pub run_id: String,
+    pub step_index: i64,
+    pub role_id: Option<String>,
+    pub action: String,
+    pub status: String,
+    pub input: String,
+    pub output: String,
+    pub started_at: Option<i64>,
+    pub completed_at: Option<i64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRunStatus {
+    pub run: WorkflowRun,
+    pub steps: Vec<WorkflowRunStep>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct StartWorkflowRunRequest {
+    pub project_id: String,
+    pub initial_message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactVersion {
+    pub id: String,
+    pub artifact_id: String,
+    pub version: i64,
+    pub content: String,
+    pub file_path: String,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactDiff {
+    pub from_version: ArtifactVersion,
+    pub to_version: ArtifactVersion,
+    pub additions: i64,
+    pub deletions: i64,
+    pub diff_text: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleSkill {
+    pub id: String,
+    pub role_id: String,
+    pub skill_name: String,
+    pub enabled: bool,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectActivity {
+    pub id: String,
+    pub project_id: String,
+    pub role_id: Option<String>,
+    pub action: String,
+    pub target_type: Option<String>,
+    pub target_id: Option<String>,
+    pub detail: String,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMemory {
+    pub id: String,
+    pub project_id: String,
+    pub role_id: String,
+    pub category: String,
+    pub content: String,
+    pub importance: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectMemoryRequest {
+    pub project_id: String,
+    pub role_id: String,
+    pub category: Option<String>,
+    pub content: String,
+    pub importance: Option<i64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectStats {
+    pub task_stats: TaskStats,
+    pub artifact_stats: ArtifactStats,
+    pub role_workload: Vec<RoleWorkload>,
+    pub health_score: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskStats {
+    pub total: i64,
+    pub by_status: std::collections::HashMap<String, i64>,
+    pub completion_rate: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactStats {
+    pub total: i64,
+    pub by_status: std::collections::HashMap<String, i64>,
+    pub approval_rate: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleWorkload {
+    pub role_id: String,
+    pub name: String,
+    pub task_count: i64,
+    pub completed_count: i64,
+    pub avg_duration: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -997,4 +1452,50 @@ pub struct KnowledgeFile {
     pub modified_at: i64,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTemplate {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub description: String,
+    pub project_rule: String,
+    pub project_guidelines: String,
+    pub is_builtin: bool,
+    pub sort_order: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateWorkflow {
+    pub id: String,
+    pub template_id: String,
+    pub from_role_id: Option<String>,
+    pub to_role_id: String,
+    pub artifact_type: String,
+    pub transition_type: String,
+    pub sort_order: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTemplateDetail {
+    #[serde(flatten)]
+    pub template: ProjectTemplate,
+    pub roles: Vec<AiRole>,
+    pub workflows: Vec<TemplateWorkflow>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectFromTemplateRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub template_id: String,
+    pub office_theme: Option<String>,
 }

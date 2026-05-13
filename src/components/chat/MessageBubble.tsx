@@ -68,7 +68,7 @@ function MessageBubbleInner({ message }: MessageBubbleProps) {
             ))}
           </div>
         )}
-        {message.content && (
+        {message.content ? (
           <div className={styles.messageText}>
             {message.role === "assistant" ? (
               <MarkdownRenderer content={message.content} />
@@ -76,6 +76,8 @@ function MessageBubbleInner({ message }: MessageBubbleProps) {
               message.content
             )}
           </div>
+        ) : (
+          message.role === "assistant" && <div className={styles.messageEmpty}>未收到回复</div>
         )}
         {message.knowledgeSources && message.knowledgeSources.length > 0 && (
           <div className={styles.knowledgeSources}>

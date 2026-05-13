@@ -34,6 +34,11 @@ pub async fn set_config(
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
+
+    if key == "hermes_api_key" {
+        crate::commands::helpers::sync_single_env_key(&app, "API_SERVER_KEY", &value);
+    }
+
     Ok(())
 }
 
