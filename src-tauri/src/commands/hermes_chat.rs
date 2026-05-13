@@ -1,5 +1,5 @@
 use crate::commands::helpers::{
-    command, default_shell, hermes_bin, path_with_local_bin, tool_label,
+    command, default_shell, hermes_api_base_from_pool, hermes_api_key_from_pool, hermes_bin, path_with_local_bin, tool_label,
     ChatStreamEvent,
 };
 use tauri::{AppHandle, Emitter, Manager};
@@ -198,15 +198,17 @@ pub async fn chat_with_hermes_api(
     let event_id = event_id.unwrap_or_else(|| format!("chat-stream-{}", uuid::Uuid::new_v4()));
     log::info!("[chat_api] start event_id={}, message={}, session_id={:?}, model={:?}, provider={:?}, image={:?}, force_kb_retrieve={:?}, conversation_id={:?}", event_id, message, session_id, model, provider, image, force_kb_retrieve, conversation_id);
 
-    let api_base = "http://127.0.0.1:8642/v1";
-    let api_key = "hermes-desktop-local-dev-key";
-
     let mut messages: Vec<serde_json::Value> = Vec::new();
 
     let mut kb_context_parts: Vec<String> = Vec::new();
+    let api_base: String;
+    let api_key: String;
     {
         let state = app.state::<AppState>();
         let pool = state.db_pool.clone();
+
+        api_base = hermes_api_base_from_pool(&pool).await;
+        api_key = hermes_api_key_from_pool(&pool).await;
 
         let kb_config: serde_json::Value = {
             let config_val: Option<String> = sqlx::query_scalar("SELECT value FROM app_config WHERE key = 'knowledge_settings'")

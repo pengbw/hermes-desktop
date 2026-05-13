@@ -1,10 +1,11 @@
+use crate::commands::helpers::{self, AppState};
 use crate::database::models as db;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter, Manager};
 
 fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
-    let state = app.state::<crate::commands::helpers::AppState>();
+    let state = app.state::<AppState>();
     Ok(state.db_pool.clone())
 }
 
@@ -130,11 +131,45 @@ pub async fn update_project(app: AppHandle, req: db::UpdateProjectRequest) -> Re
 #[tauri::command]
 pub async fn delete_project(app: AppHandle, id: String) -> Result<(), String> {
     let pool = get_pool(&app)?;
-    sqlx::query("DELETE FROM projects WHERE id = ?")
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_tasks WHERE project_id = ?")
         .bind(&id)
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_messages WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_artifacts WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_workflows WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_members WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM projects WHERE id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -219,11 +254,48 @@ pub async fn add_project_member(app: AppHandle, req: db::CreateProjectMemberRequ
 #[tauri::command]
 pub async fn remove_project_member(app: AppHandle, id: String) -> Result<(), String> {
     let pool = get_pool(&app)?;
-    sqlx::query("DELETE FROM project_members WHERE id = ?")
-        .bind(&id)
-        .execute(&pool)
+
+    let member: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT id, project_id, role_id FROM project_members WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (member_id, project_id, role_id) = member.ok_or("Member not found")?;
+
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_artifacts WHERE project_id = ? AND role_id = ?")
+        .bind(&project_id)
+        .bind(&role_id)
+        .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_workflows WHERE project_id = ? AND (from_role_id = ? OR to_role_id = ?)")
+        .bind(&project_id)
+        .bind(&role_id)
+        .bind(&role_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_messages WHERE project_id = ? AND role_id = ?")
+        .bind(&project_id)
+        .bind(&role_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_members WHERE id = ?")
+        .bind(&member_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -974,7 +1046,7 @@ pub async fn execute_workflow_step(app: AppHandle, project_id: String, from_role
 pub async fn get_project_role_context(app: AppHandle, project_id: String, role_id: String) -> Result<serde_json::Value, String> {
     let pool = get_pool(&app)?;
 
-    let role: Option<(String, String, String, String, String, String, String, String, i64, String)> = sqlx::query_as(
+    let role: Option<(String, String, String, String, String, String, String, i64, i64, String)> = sqlx::query_as(
         "SELECT id, name, nickname, icon, description, responsibilities, soul_content, is_builtin, energy, mood FROM ai_roles WHERE id = ?"
     )
     .bind(&role_id)
@@ -1135,8 +1207,8 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
 
     system_prompt.push_str(&format!("\n\n请以「{}」的身份回答问题，保持角色一致性。回答要专业、有针对性。", display_name));
 
-    let api_base = "http://127.0.0.1:8642/v1";
-    let api_key = "hermes-desktop-local-dev-key";
+    let api_base = helpers::hermes_api_base_from_pool(&pool).await;
+    let api_key = helpers::hermes_api_key_from_pool(&pool).await;
 
     let client = reqwest::Client::new();
     let mut messages = vec![
@@ -1151,7 +1223,7 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
     ];
 
     let recent_msgs: Vec<(String, String, String)> = sqlx::query_as(
-        "SELECT role_id, content, message_type FROM project_messages WHERE project_id = ? ORDER BY created_at DESC LIMIT 10"
+        "SELECT pm.role_id, pm.content, COALESCE(r.nickname, r.name, pm.role_id) FROM project_messages pm LEFT JOIN ai_roles r ON pm.role_id = r.id WHERE pm.project_id = ? ORDER BY pm.created_at DESC LIMIT 20"
     )
     .bind(&project_id)
     .fetch_all(&pool)
@@ -1162,16 +1234,21 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
     .collect();
 
     let mut context_messages: Vec<serde_json::Value> = Vec::new();
-    for (msg_role_id, msg_content, _msg_type) in &recent_msgs {
+    for (msg_role_id, msg_content, msg_role_name) in &recent_msgs {
         if *msg_role_id == role_id {
             context_messages.push(serde_json::json!({
                 "role": "assistant",
                 "content": msg_content
             }));
-        } else {
+        } else if *msg_role_id == "builtin_user" {
             context_messages.push(serde_json::json!({
                 "role": "user",
                 "content": msg_content
+            }));
+        } else {
+            context_messages.push(serde_json::json!({
+                "role": "user",
+                "content": format!("[{}]: {}", msg_role_name, msg_content)
             }));
         }
     }
@@ -1270,8 +1347,8 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
 #[tauri::command]
 pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_ids: Vec<String>, message: String, event_id: String) -> Result<(), String> {
     let pool = get_pool(&app)?;
-    let api_base = "http://127.0.0.1:8642/v1";
-    let api_key = "hermes-desktop-local-dev-key";
+    let api_base = helpers::hermes_api_base_from_pool(&pool).await;
+    let api_key = helpers::hermes_api_key_from_pool(&pool).await;
     let client = reqwest::Client::new();
 
     let mut all_replies: Vec<(String, String, String)> = Vec::new();
@@ -1291,19 +1368,19 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
 
         let display_name = if role_nickname.is_empty() { role_name.to_string() } else { role_nickname.to_string() };
 
-        let other_mentioned: Vec<String> = role_ids.iter()
-            .filter(|id| *id != role_id)
-            .filter_map(|id| {
-                let ctx = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(
-                        get_project_role_context(app.clone(), project_id.clone(), id.clone())
-                    )
-                });
-                ctx.ok().and_then(|c| {
-                    let n = c["role"]["nickname"].as_str().unwrap_or("");
-                    let rn = c["role"]["name"].as_str().unwrap_or("");
-                    Some(if n.is_empty() { rn.to_string() } else { n.to_string() })
-                })
+        let mut other_role_contexts: Vec<(String, serde_json::Value)> = Vec::new();
+        for other_id in role_ids.iter() {
+            if other_id == role_id { continue; }
+            if let Ok(ctx) = get_project_role_context(app.clone(), project_id.clone(), other_id.clone()).await {
+                other_role_contexts.push((other_id.clone(), ctx));
+            }
+        }
+
+        let other_mentioned: Vec<String> = other_role_contexts.iter()
+            .filter_map(|(_, c)| {
+                let n = c["role"]["nickname"].as_str().unwrap_or("");
+                let rn = c["role"]["name"].as_str().unwrap_or("");
+                Some(if n.is_empty() { rn.to_string() } else { n.to_string() })
             })
             .collect();
 
@@ -1342,7 +1419,7 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
         ];
 
         let recent_msgs: Vec<(String, String, String)> = sqlx::query_as(
-            "SELECT role_id, content, message_type FROM project_messages WHERE project_id = ? ORDER BY created_at DESC LIMIT 10"
+            "SELECT pm.role_id, pm.content, COALESCE(r.nickname, r.name, pm.role_id) FROM project_messages pm LEFT JOIN ai_roles r ON pm.role_id = r.id WHERE pm.project_id = ? ORDER BY pm.created_at DESC LIMIT 20"
         )
         .bind(&project_id)
         .fetch_all(&pool)
@@ -1353,16 +1430,21 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
         .collect();
 
         let mut context_messages: Vec<serde_json::Value> = Vec::new();
-        for (msg_role_id, msg_content, _msg_type) in &recent_msgs {
+        for (msg_role_id, msg_content, msg_role_name) in &recent_msgs {
             if *msg_role_id == *role_id {
                 context_messages.push(serde_json::json!({
                     "role": "assistant",
                     "content": msg_content
                 }));
-            } else {
+            } else if *msg_role_id == "builtin_user" {
                 context_messages.push(serde_json::json!({
                     "role": "user",
                     "content": msg_content
+                }));
+            } else {
+                context_messages.push(serde_json::json!({
+                    "role": "user",
+                    "content": format!("[{}]: {}", msg_role_name, msg_content)
                 }));
             }
         }
@@ -1484,8 +1566,8 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
         .await
         .map_err(|e| e.to_string())?;
 
-    let api_base = "http://127.0.0.1:8642/v1";
-    let api_key = "hermes-desktop-local-dev-key";
+    let api_base = helpers::hermes_api_base_from_pool(&pool).await;
+    let api_key = helpers::hermes_api_key_from_pool(&pool).await;
     let client = reqwest::Client::new();
 
     let project = &to_context["project"];
@@ -1578,7 +1660,7 @@ pub async fn run_workflow_auto_chat(app: AppHandle, project_id: String, start_ro
     visited.insert(start_role_id.clone());
 
     let max_steps = 5;
-    for _step in 0..max_steps {
+    for step in 0..max_steps {
         let workflows: Vec<(String, String, String, String)> = sqlx::query_as(
             "SELECT id, from_role_id, to_role_id, transition_type FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'auto_push' ORDER BY sort_order ASC"
         )
@@ -1598,6 +1680,14 @@ pub async fn run_workflow_auto_chat(app: AppHandle, project_id: String, start_ro
             }
             visited.insert(to_role_id.clone());
 
+            let _ = app.emit(&event_id, serde_json::json!({
+                "step": step,
+                "stepIndex": results.len(),
+                "fromRoleId": current_role_id,
+                "toRoleId": to_role_id,
+                "done": false,
+            }));
+
             let step_event_id = format!("{}-{}", event_id, results.len());
             let result = auto_delegate_chat(
                 app.clone(),
@@ -1610,6 +1700,19 @@ pub async fn run_workflow_auto_chat(app: AppHandle, project_id: String, start_ro
             .await?;
 
             current_message = result.reply.clone();
+
+            let _ = app.emit(&event_id, serde_json::json!({
+                "step": step,
+                "stepIndex": results.len(),
+                "fromRoleId": result.from_role_id,
+                "fromRoleName": result.from_role_name,
+                "toRoleId": result.to_role_id,
+                "toRoleName": result.to_role_name,
+                "reply": result.reply,
+                "stepDone": true,
+                "done": false,
+            }));
+
             results.push(result);
             current_role_id = to_role_id.clone();
         }

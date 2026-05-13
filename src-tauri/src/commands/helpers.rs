@@ -7,6 +7,44 @@ use tauri::{AppHandle, Emitter, Manager};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+pub(crate) fn hermes_api_base() -> String {
+    std::env::var("HERMES_API_BASE")
+        .unwrap_or_else(|_| "http://127.0.0.1:8642/v1".to_string())
+}
+
+pub(crate) fn hermes_api_key() -> String {
+    std::env::var("HERMES_API_KEY")
+        .unwrap_or_else(|_| "94ea2475d7544b6e8020a530c9c7bdb58d456803f3409ba3a5458b22999e6c40".to_string())
+}
+
+pub(crate) async fn hermes_api_base_from_pool(pool: &SqlitePool) -> String {
+    if let Ok(Some(val)) = sqlx::query_scalar::<_, String>(
+        "SELECT value FROM app_config WHERE key = 'hermes_api_base'"
+    )
+    .fetch_optional(pool)
+    .await
+    {
+        if !val.is_empty() {
+            return val;
+        }
+    }
+    hermes_api_base()
+}
+
+pub(crate) async fn hermes_api_key_from_pool(pool: &SqlitePool) -> String {
+    if let Ok(Some(val)) = sqlx::query_scalar::<_, String>(
+        "SELECT value FROM app_config WHERE key = 'hermes_api_key'"
+    )
+    .fetch_optional(pool)
+    .await
+    {
+        if !val.is_empty() {
+            return val;
+        }
+    }
+    hermes_api_key()
+}
+
 pub(crate) fn command(program: &str) -> Command {
     #[allow(unused_mut)]
     let mut cmd = Command::new(program);
