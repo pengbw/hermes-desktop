@@ -29,6 +29,7 @@ export default function ConversationList({
   const [renameValue, setRenameValue] = useState("");
   const renameInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
+  const lastCompositionEndRef = useRef(0);
   const [convSearch, setConvSearch] = useState("");
   const [convPage, setConvPage] = useState(1);
   const PAGE_SIZE = 10;
@@ -101,12 +102,22 @@ export default function ConversationList({
               isComposingRef.current = true;
             }}
             onCompositionEnd={() => {
+              lastCompositionEndRef.current = performance.now();
               queueMicrotask(() => {
                 isComposingRef.current = false;
               });
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !isComposingRef.current) commitRename();
+              if (e.key === "Enter") {
+                const timeSinceComposition = performance.now() - lastCompositionEndRef.current;
+                if (timeSinceComposition < 100) {
+                  return;
+                }
+                if (e.nativeEvent.isComposing || isComposingRef.current) {
+                  return;
+                }
+                commitRename();
+              }
               if (e.key === "Escape") setRenamingId(null);
             }}
             onClick={(e) => e.stopPropagation()}

@@ -21,6 +21,7 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, t }: HomeChatInp
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
+  const lastCompositionEndRef = useRef(0);
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [showKbSelector, setShowKbSelector] = useState(false);
@@ -125,7 +126,14 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, t }: HomeChatInp
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      const timeSinceComposition = performance.now() - lastCompositionEndRef.current;
+      if (timeSinceComposition < 100) {
+        return;
+      }
+      if (e.nativeEvent.isComposing || isComposingRef.current) {
+        return;
+      }
       e.preventDefault();
       handleSend();
     }
@@ -195,6 +203,7 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, t }: HomeChatInp
             isComposingRef.current = true;
           }}
           onCompositionEnd={() => {
+            lastCompositionEndRef.current = performance.now();
             queueMicrotask(() => {
               isComposingRef.current = false;
             });

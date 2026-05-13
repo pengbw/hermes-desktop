@@ -48,6 +48,7 @@ export default function MessageInput({
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isComposingRef = useRef(false);
+  const lastCompositionEndRef = useRef(0);
 
   useEffect(() => {
     const loadProviders = async () => {
@@ -184,7 +185,14 @@ export default function MessageInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      const timeSinceComposition = performance.now() - lastCompositionEndRef.current;
+      if (timeSinceComposition < 100) {
+        return;
+      }
+      if (e.nativeEvent.isComposing || isComposingRef.current) {
+        return;
+      }
       e.preventDefault();
       handleSend();
     }
@@ -264,6 +272,7 @@ export default function MessageInput({
             isComposingRef.current = true;
           }}
           onCompositionEnd={() => {
+            lastCompositionEndRef.current = performance.now();
             queueMicrotask(() => {
               isComposingRef.current = false;
             });

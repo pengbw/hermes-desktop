@@ -38,6 +38,7 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const sceneRef = useRef<OfficeScene3D | null>(null);
     const isComposingRef = useRef(false);
+    const lastCompositionEndRef = useRef(0);
     const [speakingMember, setSpeakingMember] = useState<string | null>(null);
     const [speakText, setSpeakText] = useState("");
     const [zoneInfo, setZoneInfo] = useState<string | null>(null);
@@ -191,12 +192,20 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
                   isComposingRef.current = true;
                 }}
                 onCompositionEnd={() => {
+                  lastCompositionEndRef.current = performance.now();
                   queueMicrotask(() => {
                     isComposingRef.current = false;
                   });
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    const timeSinceComposition = performance.now() - lastCompositionEndRef.current;
+                    if (timeSinceComposition < 100) {
+                      return;
+                    }
+                    if (e.nativeEvent.isComposing || isComposingRef.current) {
+                      return;
+                    }
                     e.preventDefault();
                     handleSpeak();
                   }

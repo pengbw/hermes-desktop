@@ -233,6 +233,7 @@ export default function AvatarWindow() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
+  const lastCompositionEndRef = useRef(0);
 
   const handleSendMessage = useCallback(async () => {
     const text = inputText.trim();
@@ -247,7 +248,14 @@ export default function AvatarWindow() {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
+      const timeSinceComposition = performance.now() - lastCompositionEndRef.current;
+      if (e.key === "Enter" && !e.shiftKey) {
+        if (timeSinceComposition < 100) {
+          return;
+        }
+        if (e.nativeEvent.isComposing || isComposingRef.current) {
+          return;
+        }
         e.preventDefault();
         handleSendMessage();
       }
@@ -819,6 +827,7 @@ export default function AvatarWindow() {
                 isComposingRef.current = true;
               }}
               onCompositionEnd={() => {
+                lastCompositionEndRef.current = performance.now();
                 queueMicrotask(() => {
                   isComposingRef.current = false;
                 });
