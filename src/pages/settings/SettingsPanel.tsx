@@ -37,6 +37,10 @@ function SettingsPanel() {
   const [compressionEnabled, setCompressionEnabled] = useState(true);
   const [memoryEnabled, setMemoryEnabled] = useState(true);
   const [ttsProvider, setTtsProvider] = useState("edge");
+  const [hermesApiBase, setHermesApiBase] = useState("http://127.0.0.1:8642/v1");
+  const [hermesApiKey, setHermesApiKey] = useState(
+    "94ea2475d7544b6e8020a530c9c7bdb58d456803f3409ba3a5458b22999e6c40"
+  );
 
   const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set());
   const [activeSection, setActiveSection] = useState("agent");
@@ -238,6 +242,14 @@ function SettingsPanel() {
           await invoke("set_config", { key: "workspace_root", value: cfg?.workspaceRoot || "" });
           continue;
         }
+        if (field === "hermesApiBase") {
+          await invoke("set_config", { key: "hermes_api_base", value: hermesApiBase });
+          continue;
+        }
+        if (field === "hermesApiKey") {
+          await invoke("set_config", { key: "hermes_api_key", value: hermesApiKey });
+          continue;
+        }
         const configKey = configKeyMap[field];
         const value = fieldValueMap[field];
         if (configKey && value !== undefined) {
@@ -301,6 +313,14 @@ function SettingsPanel() {
         setConfig(cfg);
       } catch (err) {
         console.warn("Failed to parse config:", err);
+      }
+      try {
+        const savedApiBase = await invoke<string>("get_config", { key: "hermes_api_base" });
+        const savedApiKey = await invoke<string>("get_config", { key: "hermes_api_key" });
+        if (savedApiBase) setHermesApiBase(savedApiBase);
+        if (savedApiKey) setHermesApiKey(savedApiKey);
+      } catch (err) {
+        console.warn("Failed to load API config:", err);
       }
       setDirtyFields(new Set());
       if (result.provider) {
@@ -383,6 +403,8 @@ function SettingsPanel() {
               provider={provider}
               baseUrl={baseUrl}
               maxTurns={maxTurns}
+              hermesApiBase={hermesApiBase}
+              hermesApiKey={hermesApiKey}
               providers={providers}
               modelList={modelList}
               modelListLoading={modelListLoading}
@@ -404,6 +426,14 @@ function SettingsPanel() {
                 cfg.workspaceRoot = v;
                 setConfig(cfg);
                 markDirty("workspaceRoot");
+              }}
+              onHermesApiBaseChange={(v) => {
+                setHermesApiBase(v);
+                markDirty("hermesApiBase");
+              }}
+              onHermesApiKeyChange={(v) => {
+                setHermesApiKey(v);
+                markDirty("hermesApiKey");
               }}
               onRefreshModels={fetchModelList}
               onSave={() => saveSectionConfig("model")}

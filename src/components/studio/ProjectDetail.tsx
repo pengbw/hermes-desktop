@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, useMemo, useRef, useEffect, lazy, Suspense } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { MentionsInput, Mention } from "react-mentions";
@@ -61,6 +61,7 @@ function ProjectDetail({
   getTagClass,
   t,
 }: ProjectDetailProps) {
+  const chatMessagesRef = useRef<HTMLDivElement>(null);
   const [projectDetailTab, setProjectDetailTab] = useState<
     "overview" | "members" | "workflows" | "chat" | "tasks"
   >("overview");
@@ -74,6 +75,12 @@ function ProjectDetail({
     artifactId: "",
     open: false,
   });
+
+  useEffect(() => {
+    if (chatMessagesRef.current) {
+      chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+    }
+  }, [projectMessages, projectChatStreamed]);
   const [rejectReason, setRejectReason] = useState("");
 
   const handleArtifactApprove = async (artifactId: string, approved: boolean) => {
@@ -122,6 +129,64 @@ function ProjectDetail({
       setRejectModal({ artifactId: "", open: false });
       setRejectReason("");
     }
+  };
+
+  const mentionData = useMemo(
+    () =>
+      projectMembers
+        .filter((m) => m.roleId !== "builtin_user")
+        .map((m) => {
+          const role = allRoles.find((r) => r.id === m.roleId);
+          return {
+            id: m.roleId,
+            display: role?.nickname || role?.name || m.roleId,
+          };
+        }),
+    [projectMembers, allRoles]
+  );
+
+  const renderSuggestion = (
+    suggestion: { id: string | number; display?: string },
+    _search: string,
+    _highlightedDisplay: React.ReactNode
+  ) => {
+    const roleId = String(suggestion.id);
+    const role = allRoles.find((r) => r.id === roleId);
+    const icon = role?.icon || "🤖";
+    const avatarColor = role?.avatarColor || "#6c5ce7";
+    const displayName = suggestion.display || roleId;
+    const name = role?.name || "";
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: "50%",
+            background: avatarColor,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 14,
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>
+            {displayName}
+          </span>
+          {name && name !== displayName && (
+            <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{name}</span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderMentionContent = (text: string) => {
+    return text.replace(/@\[([^\]]+)\]\(([^)]+)\)/g, (_m, _id, display) => `@${display}`);
   };
 
   const handleProjectChatSend = async (content: string) => {
@@ -385,8 +450,6 @@ function ProjectDetail({
                             isWorking,
                             preset: role?.avatarPreset,
                             roleId: member.roleId,
-                            avatarUrl: role?.avatarUrl,
-                            avatarType: role?.avatarType,
                           };
                         })}
                         workflows={projectWorkflows.map((wf) => ({
@@ -399,6 +462,34 @@ function ProjectDetail({
                         officeLayout={project?.officeLayout || "standard"}
                         onSpeak={(_memberId, text) => {
                           onSendMessage(text);
+                        }}
+                        onDeliverComplete={(fromRoleId, toRoleId, artifactType) => {
+                          if (fromRoleId && toRoleId) {
+                            invoke("auto_delegate_chat", {
+                              projectId: project.id,
+                              fromRoleId,
+                              toRoleId,
+                              contextMessage: `产物「${artifactType || "工作产出"}」已交付，请基于上游产出继续工作。`,
+                              eventId: `deliver-${Date.now()}`,
+                            })
+                              .then(async () => {
+                                const msgs = await invoke<ProjectMessage[]>(
+                                  "list_project_messages",
+                                  {
+                                    projectId: project.id,
+                                  }
+                                );
+                                onMessagesUpdate(msgs);
+                                const artifacts = await invoke<ProjectArtifact[]>(
+                                  "list_project_artifacts",
+                                  {
+                                    projectId: project.id,
+                                  }
+                                );
+                                onArtifactsUpdate(artifacts);
+                              })
+                              .catch(console.error);
+                          }
                         }}
                       />
                     </Suspense>
@@ -464,7 +555,7 @@ function ProjectDetail({
                     </select>
                   </div>
                 </div>
-                <div className={styles.studioChatMessages}>
+                <div className={styles.studioChatMessages} ref={chatMessagesRef}>
                   {projectMessages.map((msg) => {
                     const role = allRoles.find((r) => r.id === msg.roleId);
                     const isUser = msg.roleId === "builtin_user";
@@ -487,7 +578,7 @@ function ProjectDetail({
                             {isUser ? "用户" : role?.nickname || role?.name || "未知"}
                           </span>
                           <div className={styles.studioChatText}>
-                            <MarkdownRenderer content={msg.content} />
+                            <MarkdownRenderer content={renderMentionContent(msg.content)} />
                           </div>
                           <span className={styles.studioChatTime}>
                             {msg.createdAt ? new Date(msg.createdAt).toLocaleString() : ""}
@@ -553,7 +644,7 @@ function ProjectDetail({
                 </div>
                 <div className={styles.studioChatInputArea}>
                   <MentionsInput
-                    className={styles.studioChatMentions}
+                    className={`${styles.studioChatMentions} chatMentions`}
                     value={chatInput}
                     onChange={(_e, newValue: string) => setChatInput(newValue)}
                     placeholder={
@@ -597,6 +688,7 @@ function ProjectDetail({
                           border: "1px solid var(--border-color)",
                           borderRadius: 6,
                           fontSize: 13,
+                          zIndex: 9999,
                         },
                         item: {
                           padding: "6px 12px",
@@ -610,17 +702,10 @@ function ProjectDetail({
                   >
                     <Mention
                       trigger="@"
-                      data={projectMembers
-                        .filter((m) => m.roleId !== "builtin_user")
-                        .map((m) => {
-                          const role = allRoles.find((r) => r.id === m.roleId);
-                          return {
-                            id: m.roleId,
-                            display: role?.nickname || role?.name || m.roleId,
-                          };
-                        })}
+                      data={mentionData}
                       markup="@[__id__](__display__)"
                       displayTransform={(_id: string, display: string) => `@${display}`}
+                      renderSuggestion={renderSuggestion}
                     />
                   </MentionsInput>
                   <button

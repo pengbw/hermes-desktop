@@ -133,6 +133,7 @@ function StudioPanel() {
       setProjectMessages(messages);
       setProjectWorkflows(workflows);
       setProjectTasks(tasks);
+      invoke("recover_role_energy").catch(console.error);
     } catch (err) {
       console.error("Failed to load project data:", err);
     }

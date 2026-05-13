@@ -73,6 +73,8 @@ export interface HermesConfigData {
   memory_enabled: boolean;
   tts_provider: string;
   workspaceRoot?: string;
+  hermesApiBase?: string;
+  hermesApiKey?: string;
   config_path: string;
   env_path: string;
 }

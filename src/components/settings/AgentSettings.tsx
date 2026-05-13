@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { HermesConfigData } from "@core/types";
 import styles from "@pages/settings/SettingsPanel.module.css";
 
@@ -7,6 +8,8 @@ interface AgentSettingsProps {
   provider: string;
   baseUrl: string;
   maxTurns: number;
+  hermesApiBase: string;
+  hermesApiKey: string;
   providers: { id: string; name: string; value: string }[];
   modelList: { id: string; ownedBy?: string }[];
   modelListLoading: boolean;
@@ -18,6 +21,8 @@ interface AgentSettingsProps {
   onProviderChange: (provider: string) => void;
   onMaxTurnsChange: (turns: number) => void;
   onWorkspaceRootChange: (root: string) => void;
+  onHermesApiBaseChange: (base: string) => void;
+  onHermesApiKeyChange: (key: string) => void;
   onRefreshModels: (provider: string) => void;
   onSave: () => void;
   onRefresh: () => void;
@@ -30,6 +35,8 @@ export default function AgentSettings({
   provider,
   baseUrl,
   maxTurns,
+  hermesApiBase,
+  hermesApiKey,
   providers,
   modelList,
   modelListLoading,
@@ -41,11 +48,14 @@ export default function AgentSettings({
   onProviderChange,
   onMaxTurnsChange,
   onWorkspaceRootChange,
+  onHermesApiBaseChange,
+  onHermesApiKeyChange,
   onRefreshModels,
   onSave,
   onRefresh,
   t,
 }: AgentSettingsProps) {
+  const [showApiKey, setShowApiKey] = useState(false);
   return (
     <div className={styles.settingsSectionCard}>
       <div className={styles.settingsHeader}>
@@ -196,6 +206,80 @@ export default function AgentSettings({
             {dirtyFields.has("maxTurns") && (
               <span className={styles.dirtyBadge}>{t("common.modified")}</span>
             )}
+          </div>
+          <div className={styles.formGroup}>
+            <label>
+              {t("agent.hermesApiBase") || "Hermes 网关地址"}
+              {dirtyFields.has("hermesApiBase") && (
+                <span className={styles.dirtyBadge}>{t("common.modified")}</span>
+              )}
+            </label>
+            <input
+              type="text"
+              value={hermesApiBase}
+              onChange={(e) => onHermesApiBaseChange(e.target.value)}
+              placeholder="http://127.0.0.1:8642/v1"
+            />
+            <p className="settings-hint">
+              {t("agent.hermesApiBaseHint") ||
+                "Hermes Agent 本地网关的 API 地址，工作室角色对话通过此网关路由"}
+            </p>
+          </div>
+          <div className={styles.formGroup}>
+            <label>
+              {t("agent.hermesApiKey") || "Hermes 网关密钥"}
+              {dirtyFields.has("hermesApiKey") && (
+                <span className={styles.dirtyBadge}>{t("common.modified")}</span>
+              )}
+            </label>
+            <div className={styles.inputWithIcon}>
+              <input
+                type={showApiKey ? "text" : "password"}
+                value={hermesApiKey}
+                onChange={(e) => onHermesApiKeyChange(e.target.value)}
+                placeholder="94ea2...6c40"
+              />
+              <button
+                type="button"
+                className={styles.inputIconBtn}
+                onClick={() => setShowApiKey((v) => !v)}
+                tabIndex={-1}
+              >
+                {showApiKey ? (
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                ) : (
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                )}
+              </button>
+            </div>
+            <p className="settings-hint">
+              {t("agent.hermesApiKeyHint") || "Hermes Agent 本地网关的访问密钥"}
+            </p>
           </div>
           <div className={styles.formGroup}>
             <label>{t("system.workspace.rootDir")}</label>

@@ -265,6 +265,35 @@
   cursor: pointer;
 }
 
+.inputWithIcon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.inputWithIcon input {
+  padding-right: 40px;
+}
+
+.inputIconBtn {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.inputIconBtn:hover {
+  color: var(--color-text);
+}
+
 .formGroup input:focus,
 .formGroup select:focus {
   border-color: var(--color-primary);

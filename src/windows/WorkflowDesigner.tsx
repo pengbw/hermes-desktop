@@ -935,9 +935,45 @@ function WorkflowDesignerInner({
               className={styles.wfToolbarBtn}
               onClick={async () => {
                 try {
+                  const roleEdges = edges.filter((e) => {
+                    const src = nodes.find((n) => n.id === e.source);
+                    const tgt = nodes.find((n) => n.id === e.target);
+                    return src?.type === "roleNode" && tgt?.type === "roleNode";
+                  });
+                  for (const edge of roleEdges) {
+                    const srcNode = nodes.find((n) => n.id === edge.source) as
+                      | RoleNodeType
+                      | undefined;
+                    const tgtNode = nodes.find((n) => n.id === edge.target) as
+                      | RoleNodeType
+                      | undefined;
+                    if (!srcNode || !tgtNode) continue;
+                    const existing = workflows.find(
+                      (w) =>
+                        w.fromRoleId ===
+                          (srcNode.data.roleId === "start" ? null : srcNode.data.roleId) &&
+                        w.toRoleId === tgtNode.data.roleId
+                    );
+                    if (existing) continue;
+                    await invoke("add_project_workflow", {
+                      req: {
+                        projectId,
+                        fromRoleId:
+                          srcNode.data.roleId === "start" ? null : srcNode.data.roleId || null,
+                        toRoleId: tgtNode.data.roleId,
+                        artifactType:
+                          (edge.data as { artifactType?: string })?.artifactType || undefined,
+                        transitionType:
+                          (edge.data as { transitionType?: string })?.transitionType || undefined,
+                      },
+                    });
+                  }
                   await invoke("sync_workflow_to_file", { projectId });
+                  await loadWorkflows();
+                  alert("同步成功");
                 } catch (err) {
                   console.error("Failed to sync workflow:", err);
+                  alert("同步失败: " + err);
                 }
               }}
               title="同步工作流到配置文件"

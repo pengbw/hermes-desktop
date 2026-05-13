@@ -1,7 +1,5 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { VRMLoaderPlugin, VRM } from "@pixiv/three-vrm";
 
 export interface OfficeTheme {
   name: string;
@@ -179,8 +177,6 @@ export interface GameMember {
   isWorking: boolean;
   roleId?: string;
   status?: MemberStatus;
-  avatarUrl?: string;
-  avatarType?: string;
 }
 
 export type MemberStatus =
@@ -278,8 +274,6 @@ export class OfficeScene3D {
   clock: THREE.Clock;
   animId = 0;
   disposed = false;
-  vrmCache: Map<string, VRM> = new Map();
-  vrmLoading: Set<string> = new Set();
   theme: OfficeTheme;
   layout: OfficeLayout;
 
@@ -890,8 +884,7 @@ export class OfficeScene3D {
   }
 
   buildWhiteboardZone(z: Zone) {
-    const cx = z.col * CELL + (z.cols * CELL) / 2;
-    const cz = z.row * CELL + 0.5;
+    const cz = z.row * CELL + (z.rows * CELL) / 2;
     const group = new THREE.Group();
 
     const frameMat = new THREE.MeshStandardMaterial({
@@ -933,7 +926,8 @@ export class OfficeScene3D {
     standR.position.set(2.2, 0.6, 0);
     group.add(standR);
 
-    group.position.set(cx, 0, cz);
+    group.rotation.y = -Math.PI / 2;
+    group.position.set(z.col * CELL + z.cols * CELL - 0.04, 0, cz + 2.0);
     this.scene.add(group);
   }
 
@@ -1334,6 +1328,7 @@ export class OfficeScene3D {
       { x: FLOOR_W + 0.05, z: 10 * CELL, rotY: 0, w: 0.4, h: 2.4, d: 1.8 },
       { x: 2 * CELL, z: -0.05, rotY: Math.PI / 2, w: 0.4, h: 2.0, d: 2.0 },
       { x: 11 * CELL, z: -0.05, rotY: Math.PI / 2, w: 0.4, h: 2.0, d: 2.0 },
+      { x: -0.05, z: 5 * CELL, rotY: Math.PI, w: 0.4, h: 2.6, d: 3.0 },
     ];
 
     const bookColors = [
@@ -1343,8 +1338,8 @@ export class OfficeScene3D {
     for (const sc of shelfConfigs) {
       const group = new THREE.Group();
 
-      const back = new THREE.Mesh(new THREE.BoxGeometry(sc.w, sc.h, sc.d), backMat);
-      back.position.y = sc.h / 2;
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.04, sc.h, sc.d), backMat);
+      back.position.set(sc.w / 2 - 0.02, sc.h / 2, 0);
       back.castShadow = true;
       group.add(back);
 
@@ -1371,13 +1366,17 @@ export class OfficeScene3D {
           let bookZ = -bookAreaZ / 2 + 0.06;
 
           for (let b = 0; b < booksPerShelf; b++) {
-            if (Math.random() < 0.15) continue;
+            if (Math.random() < 0.05) continue;
             const bookH = bookAreaH * (0.6 + Math.random() * 0.35);
             const bookW = 0.03 + Math.random() * 0.04;
             const bookColor = bookColors[Math.floor(Math.random() * bookColors.length)];
             const bookMat = new THREE.MeshStandardMaterial({ color: bookColor, roughness: 0.7 });
             const book = new THREE.Mesh(new THREE.BoxGeometry(sc.w * 0.8, bookH, bookW), bookMat);
-            book.position.set(0, shelfY + 0.03 + bookH / 2, bookZ);
+            book.position.set(
+              -sc.w / 2 + (sc.w * 0.8) / 2 + 0.02,
+              shelfY + 0.03 + bookH / 2,
+              bookZ
+            );
             group.add(book);
             bookZ += bookW + 0.01;
           }
@@ -1389,14 +1388,14 @@ export class OfficeScene3D {
               metalness: 0.8,
             });
             const trophyBase = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.12), trophyMat);
-            trophyBase.position.set(0, shelfY + 0.04, bookAreaZ / 2 - 0.15);
+            trophyBase.position.set(-sc.w / 2 + 0.08, shelfY + 0.04, bookAreaZ / 2 - 0.15);
             group.add(trophyBase);
 
             const trophyCup = new THREE.Mesh(
               new THREE.CylinderGeometry(0.04, 0.06, 0.12, 12),
               trophyMat
             );
-            trophyCup.position.set(0, shelfY + 0.12, bookAreaZ / 2 - 0.15);
+            trophyCup.position.set(-sc.w / 2 + 0.08, shelfY + 0.12, bookAreaZ / 2 - 0.15);
             group.add(trophyCup);
 
             const trophyTop = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 8), trophyMat);
@@ -1500,10 +1499,9 @@ export class OfficeScene3D {
     const wallPlants = [
       { col: 0.3, row: 0.3, type: "tall", wall: "back-left" },
       { col: 15.3, row: 0.3, type: "tall", wall: "back-right" },
-      { col: 0.3, row: 5, type: "potted", wall: "left" },
-      { col: 0.3, row: 13.3, type: "tall", wall: "left-bottom" },
-      { col: 15.3, row: 5, type: "potted", wall: "right" },
-      { col: 15.3, row: 8, type: "tall", wall: "right" },
+      { col: 0.15, row: 11.5, type: "tall", wall: "left-bottom" },
+      { col: 15.3, row: 8.5, type: "potted", wall: "right" },
+      { col: 15.3, row: 10.5, type: "tall", wall: "right" },
       { col: 15.3, row: 13.3, type: "potted", wall: "right-bottom" },
       { col: 7, row: 0.3, type: "potted", wall: "back" },
     ];
@@ -1690,10 +1688,7 @@ export class OfficeScene3D {
   }
 
   buildCabinets() {
-    const cabinetPositions = [
-      { x: 15 * CELL, z: 6 * CELL, w: 0.8, h: 1.8, d: 0.5 },
-      { x: 15 * CELL, z: 7 * CELL, w: 0.8, h: 1.2, d: 0.5 },
-    ];
+    const cabinetPositions: { x: number; z: number; w: number; h: number; d: number }[] = [];
 
     const cabinetMat = new THREE.MeshStandardMaterial({
       color: 0x8b7355,
@@ -1931,7 +1926,7 @@ export class OfficeScene3D {
     group.add(badge);
 
     group.position.set(cx + 0.5, 0.17, cz + 0.5);
-    group.rotation.y = 0;
+    group.rotation.y = Math.PI;
     this.scene.add(group);
     this.receptionistGroup = group;
 
@@ -1952,8 +1947,6 @@ export class OfficeScene3D {
     `;
     this.labelContainer.appendChild(label);
     this.receptionistLabel = label;
-
-    this.loadVrmForMember("__receptionist__", "vrm/miko.vrm");
   }
 
   createCharacters() {
@@ -2006,9 +1999,6 @@ export class OfficeScene3D {
         this.labelContainer.appendChild(label);
         this.charLabelEls.set(m.id, label);
 
-        if (m.avatarType === "vrm" && m.avatarUrl) {
-          this.loadVrmForMember(m.id, m.avatarUrl);
-        }
         return;
       } else {
         sc = 3 + i;
@@ -2045,10 +2035,6 @@ export class OfficeScene3D {
       }
       this.labelContainer.appendChild(label);
       this.charLabelEls.set(m.id, label);
-
-      if (m.avatarType === "vrm" && m.avatarUrl) {
-        this.loadVrmForMember(m.id, m.avatarUrl);
-      }
     });
   }
 
@@ -2216,130 +2202,8 @@ export class OfficeScene3D {
     return group;
   }
 
-  async loadVrmForMember(memberId: string, avatarUrl: string): Promise<void> {
-    if (this.vrmCache.has(memberId) || this.vrmLoading.has(memberId)) return;
-    this.vrmLoading.add(memberId);
-
-    try {
-      const loader = new GLTFLoader();
-      loader.register((parser) => new VRMLoaderPlugin(parser));
-      let url = avatarUrl;
-      if (!url.startsWith("http") && !url.startsWith("/")) {
-        url = new URL(url, window.location.origin).href;
-      }
-      const gltf = await loader.loadAsync(url);
-      const vrm = gltf.userData.vrm as VRM | undefined;
-      if (!vrm) {
-        this.vrmLoading.delete(memberId);
-        return;
-      }
-
-      vrm.scene.scale.setScalar(1.2);
-      vrm.scene.rotation.y = Math.PI;
-      this.vrmCache.set(memberId, vrm);
-
-      if (memberId === "__receptionist__") {
-        if (this.receptionistGroup) {
-          const pos = this.receptionistGroup.position.clone();
-          this.scene.remove(this.receptionistGroup);
-          vrm.scene.position.copy(pos);
-          vrm.scene.position.y = -0.35;
-          vrm.scene.rotation.y = 0;
-          this.scene.add(vrm.scene);
-          this.receptionistGroup = vrm.scene;
-        }
-        this.applyReceptionistSittingPose(vrm);
-        vrm.update(0);
-        this.vrmLoading.delete(memberId);
-        return;
-      }
-
-      const existing = this.charGroups.get(memberId);
-      if (existing) {
-        const pos = existing.position.clone();
-        const userData = { ...existing.userData };
-        this.scene.remove(existing);
-        this.charGroups.delete(memberId);
-        if (userData?.seated) {
-          pos.y = 0;
-        }
-        vrm.scene.position.copy(pos);
-        vrm.scene.userData = userData;
-        this.scene.add(vrm.scene);
-        this.charGroups.set(memberId, vrm.scene);
-      }
-    } catch (err) {
-      console.warn("VRM load failed for", memberId, err);
-    } finally {
-      this.vrmLoading.delete(memberId);
-    }
-  }
-
-  applyReceptionistSittingPose(vrm: VRM) {
-    const humanoid = vrm.humanoid;
-
-    const leftUpperArm = humanoid.getNormalizedBoneNode("leftUpperArm");
-    if (leftUpperArm) {
-      leftUpperArm.rotation.set(0.2, 0, 0.3);
-    }
-    const rightUpperArm = humanoid.getNormalizedBoneNode("rightUpperArm");
-    if (rightUpperArm) {
-      rightUpperArm.rotation.set(0.2, 0, -0.3);
-    }
-    const leftLowerArm = humanoid.getNormalizedBoneNode("leftLowerArm");
-    if (leftLowerArm) {
-      leftLowerArm.rotation.set(0.4, 0, 0);
-    }
-    const rightLowerArm = humanoid.getNormalizedBoneNode("rightLowerArm");
-    if (rightLowerArm) {
-      rightLowerArm.rotation.set(0.4, 0, 0);
-    }
-    const leftHand = humanoid.getNormalizedBoneNode("leftHand");
-    if (leftHand) {
-      leftHand.rotation.set(0.1, 0, 0);
-    }
-    const rightHand = humanoid.getNormalizedBoneNode("rightHand");
-    if (rightHand) {
-      rightHand.rotation.set(0.1, 0, 0);
-    }
-  }
-
-  updateReceptionistTyping(elapsed: number, dt: number) {
+  updateReceptionistTyping(elapsed: number, _dt: number) {
     if (!this.receptionistGroup) return;
-
-    const vrm = this.vrmCache.get("__receptionist__");
-    if (vrm) {
-      const humanoid = vrm.humanoid;
-
-      vrm.update(dt);
-
-      const leftUpperArm = humanoid.getNormalizedBoneNode("leftUpperArm");
-      if (leftUpperArm) {
-        leftUpperArm.rotation.set(0.2, 0, 0.3);
-      }
-      const rightUpperArm = humanoid.getNormalizedBoneNode("rightUpperArm");
-      if (rightUpperArm) {
-        rightUpperArm.rotation.set(0.2, 0, -0.3);
-      }
-      const leftLowerArm = humanoid.getNormalizedBoneNode("leftLowerArm");
-      if (leftLowerArm) {
-        leftLowerArm.rotation.set(0.4 + Math.sin(elapsed * 6) * 0.06, 0, 0);
-      }
-      const rightLowerArm = humanoid.getNormalizedBoneNode("rightLowerArm");
-      if (rightLowerArm) {
-        rightLowerArm.rotation.set(0.4 + Math.sin(elapsed * 6 + Math.PI) * 0.06, 0, 0);
-      }
-      const leftHand = humanoid.getNormalizedBoneNode("leftHand");
-      if (leftHand) {
-        leftHand.rotation.set(0.1 + Math.sin(elapsed * 8) * 0.1, 0, 0);
-      }
-      const rightHand = humanoid.getNormalizedBoneNode("rightHand");
-      if (rightHand) {
-        rightHand.rotation.set(0.1 + Math.sin(elapsed * 8 + Math.PI) * 0.1, 0, 0);
-      }
-
-      return;
-    }
 
     const leftForearm = this.receptionistGroup.getObjectByName("leftForearm") as
       | THREE.Mesh

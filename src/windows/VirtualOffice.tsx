@@ -13,8 +13,6 @@ interface OfficeMember {
   isWorking: boolean;
   preset?: string;
   roleId?: string;
-  avatarUrl?: string;
-  avatarType?: string;
 }
 
 interface VirtualOfficeProps {
@@ -53,8 +51,6 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
           isUser: m.isUser,
           isWorking: m.isWorking,
           roleId: m.roleId,
-          avatarUrl: m.avatarUrl,
-          avatarType: m.avatarType,
         })),
       []
     );
