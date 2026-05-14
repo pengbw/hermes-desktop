@@ -1022,6 +1022,8 @@ pub struct ProjectWorkflow {
     pub condition_expr: String,
     pub branch_label: String,
     pub parallel_group: String,
+    pub is_primary: bool,
+    pub group_id: Option<String>,
     pub sort_order: i64,
     pub created_at: i64,
 }
@@ -1040,6 +1042,28 @@ pub struct CreateProjectWorkflowRequest {
     pub parallel_group: Option<String>,
 }
 
+// 流程组：支持项目多流程
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowGroup {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub is_primary: bool,
+    pub parent_group_id: Option<String>,
+    pub sort_order: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateWorkflowGroupRequest {
+    pub project_id: String,
+    pub name: Option<String>,
+    pub parent_group_id: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectArtifact {
@@ -1053,6 +1077,8 @@ pub struct ProjectArtifact {
     pub content: String,
     pub status: String,
     pub review_comment: String,
+    pub workflow_run_id: Option<String>,
+    pub step_index: Option<i32>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -1096,18 +1122,6 @@ pub struct CreateFileRecordRequest {
     pub file_ext: Option<String>,
     pub file_size: Option<i64>,
     pub description: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct TaskDispatch {
-    pub id: String,
-    pub task_id: String,
-    pub role_id: String,
-    pub dispatch_type: String,
-    pub message: String,
-    pub status: String,
-    pub created_at: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1184,6 +1198,7 @@ pub struct ProjectTask {
     pub workspace_kind: String,
     pub workspace_path: String,
     pub board_id: String,
+    pub workflow_group_id: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -1202,6 +1217,24 @@ pub struct CreateProjectTaskRequest {
     pub max_retries: Option<i32>,
     pub workspace_kind: Option<String>,
     pub workspace_path: Option<String>,
+}
+
+// 任务进度查询结果
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskProgress {
+    pub task: ProjectTask,
+    pub workflow_run: Option<WorkflowRunStatus>,
+    pub artifacts: Vec<ProjectArtifact>,
+    pub activities: Vec<ProjectActivity>,
+}
+
+// 待审核任务
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingReviewTask {
+    pub task: ProjectTask,
+    pub pending_artifacts: Vec<ProjectArtifact>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1267,6 +1300,7 @@ pub struct WorkflowRun {
     pub current_step: i64,
     pub status: String,
     pub context: String,
+    pub task_id: String,
     pub started_at: i64,
     pub completed_at: Option<i64>,
 }
@@ -1507,5 +1541,14 @@ pub struct CreateProjectFromTemplateRequest {
     pub description: Option<String>,
     pub icon: Option<String>,
     pub template_id: String,
+    pub office_theme: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateEmptyProjectRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
     pub office_theme: Option<String>,
 }

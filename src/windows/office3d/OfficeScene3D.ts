@@ -184,7 +184,8 @@ export type MemberStatus =
   | "walking"
   | "resting"
   | "socializing"
-  | "delivering";
+  | "delivering"
+  | "waiting_approval";
 
 export interface MemberState {
   status: MemberStatus;
@@ -283,6 +284,7 @@ export class OfficeScene3D {
   members: GameMember[] = [];
   charGroups: Map<string, THREE.Group> = new Map();
   charLabelEls: Map<string, HTMLElement> = new Map();
+  charStatusLabelEls: Map<string, HTMLElement> = new Map();
   charHomeDesks: Map<string, { col: number; row: number }> = new Map();
   pathGrid: boolean[][] = [];
   walkAnims: WalkAnim[] = [];
@@ -1991,6 +1993,25 @@ export class OfficeScene3D {
         this.labelContainer.appendChild(label);
         this.charLabelEls.set(m.id, label);
 
+        const statusLabel = document.createElement("div");
+        statusLabel.textContent = "🟢 空闲";
+        statusLabel.style.cssText = `
+          position:absolute;
+          background:rgba(255,255,255,0.85);
+          color:#555;
+          font-size:10px;
+          padding:1px 6px;
+          border-radius:8px;
+          font-family:sans-serif;
+          white-space:nowrap;
+          pointer-events:none;
+          transform:translate(-50%,0);
+          box-shadow:0 1px 3px rgba(0,0,0,0.1);
+          margin-top:2px;
+        `;
+        this.labelContainer.appendChild(statusLabel);
+        this.charStatusLabelEls.set(m.id, statusLabel);
+
         return;
       } else {
         sc = 3 + i;
@@ -2023,6 +2044,25 @@ export class OfficeScene3D {
       `;
       this.labelContainer.appendChild(label);
       this.charLabelEls.set(m.id, label);
+
+      const statusLabel = document.createElement("div");
+      statusLabel.textContent = "🟢 空闲";
+      statusLabel.style.cssText = `
+        position:absolute;
+        background:rgba(255,255,255,0.85);
+        color:#555;
+        font-size:10px;
+        padding:1px 6px;
+        border-radius:8px;
+        font-family:sans-serif;
+        white-space:nowrap;
+        pointer-events:none;
+        transform:translate(-50%,0);
+        box-shadow:0 1px 3px rgba(0,0,0,0.1);
+        margin-top:2px;
+      `;
+      this.labelContainer.appendChild(statusLabel);
+      this.charStatusLabelEls.set(m.id, statusLabel);
     });
   }
 
@@ -2285,11 +2325,13 @@ export class OfficeScene3D {
 
   initMemberStates() {
     for (const m of this.members) {
+      const initialStatus: MemberStatus = m.status || (m.isWorking ? "working" : "idle");
       this.memberStates.set(m.id, {
-        status: m.isWorking ? "working" : "idle",
+        status: initialStatus,
         idleAction: "none",
         idleActionTimer: Math.random() * this.idleActionInterval,
       });
+      this.updateStatusLabel(m.id, initialStatus);
     }
   }
 
@@ -2303,20 +2345,46 @@ export class OfficeScene3D {
       this.returnToDesk(memberId);
     }
 
-    if (status === "idle" && prevStatus === "working") {
+    if (status === "waiting_approval" && prevStatus !== "waiting_approval") {
+      this.returnToDesk(memberId);
+    }
+
+    if (status === "idle" && (prevStatus === "working" || prevStatus === "waiting_approval")) {
       state.idleActionTimer = 2 + Math.random() * 3;
     }
 
     const member = this.members.find((m) => m.id === memberId);
     if (member) {
-      member.isWorking = status === "working";
+      member.isWorking = status === "working" || status === "waiting_approval";
       member.status = status;
     }
+
+    this.updateStatusLabel(memberId, status);
   }
 
   setMemberStatusByRoleId(roleId: string, status: MemberStatus) {
     const member = this.members.find((m) => m.roleId === roleId);
     if (member) this.setMemberStatus(member.id, status);
+  }
+
+  updateStatusLabel(memberId: string, status: MemberStatus) {
+    const label = this.charStatusLabelEls.get(memberId);
+    if (!label) return;
+
+    const STATUS_DISPLAY: Record<string, { text: string; bg: string; color: string }> = {
+      idle: { text: "🟢 空闲", bg: "rgba(212,237,218,0.9)", color: "#155724" },
+      working: { text: "🟡 忙碌", bg: "rgba(255,243,205,0.9)", color: "#856404" },
+      waiting_approval: { text: "🟠 待审批", bg: "rgba(255,226,183,0.9)", color: "#9a5b13" },
+      walking: { text: "🚶 移动中", bg: "rgba(214,224,240,0.9)", color: "#2c5282" },
+      resting: { text: "☕ 休息中", bg: "rgba(230,230,250,0.9)", color: "#555" },
+      socializing: { text: "💬 交流中", bg: "rgba(230,230,250,0.9)", color: "#555" },
+      delivering: { text: "📦 传递中", bg: "rgba(214,224,240,0.9)", color: "#2c5282" },
+    };
+
+    const display = STATUS_DISPLAY[status] || STATUS_DISPLAY["idle"];
+    label.textContent = display.text;
+    label.style.background = display.bg;
+    label.style.color = display.color;
   }
 
   returnToDesk(memberId: string) {
@@ -3062,6 +3130,27 @@ export class OfficeScene3D {
       }
     }
 
+    // 状态标签：位于名称标签下方
+    for (const [id, statusLabel] of this.charStatusLabelEls) {
+      const cg = this.charGroups.get(id);
+      if (!cg) continue;
+
+      const pos = new THREE.Vector3(0, 1.7, 0);
+      cg.localToWorld(pos);
+      pos.project(this.camera);
+
+      const x = (pos.x * 0.5 + 0.5) * w;
+      const y = (-pos.y * 0.5 + 0.5) * h;
+
+      if (pos.z > 1) {
+        statusLabel.style.display = "none";
+      } else {
+        statusLabel.style.display = "block";
+        statusLabel.style.left = `${x}px`;
+        statusLabel.style.top = `${y}px`;
+      }
+    }
+
     const bubbles = this.labelContainer.querySelectorAll("[data-member-id]");
     for (const bubble of bubbles) {
       const memberId = (bubble as HTMLElement).dataset.memberId!;
@@ -3245,6 +3334,11 @@ export class OfficeScene3D {
       label.remove();
     }
     this.charLabelEls.clear();
+
+    for (const [, label] of this.charStatusLabelEls) {
+      label.remove();
+    }
+    this.charStatusLabelEls.clear();
 
     if (this.receptionistLabel) {
       this.receptionistLabel.remove();

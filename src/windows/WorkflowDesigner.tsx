@@ -25,7 +25,7 @@ import {
 import dagre from "dagre";
 import "@xyflow/react/dist/style.css";
 import { invoke } from "@tauri-apps/api/core";
-import type { AiRoleItem, ProjectMember, ProjectWorkflow } from "@core/types";
+import type { AiRoleItem, ProjectMember, ProjectWorkflow, WorkflowGroup } from "@core/types";
 
 type WorkflowData = ProjectWorkflow;
 
@@ -643,6 +643,8 @@ function WorkflowDesignerInner({
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [workflows, setWorkflows] = useState<WorkflowData[]>([]);
+  const [workflowGroups, setWorkflowGroups] = useState<WorkflowGroup[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [sidebarSearch, setSidebarSearch] = useState("");
@@ -677,17 +679,35 @@ function WorkflowDesignerInner({
 
   const loadWorkflows = useCallback(async () => {
     try {
+      const groups = await invoke<WorkflowGroup[]>("list_workflow_groups", { projectId });
+      setWorkflowGroups(groups);
+
+      // 如果没有选中的流程组，自动选中主流程组
+      if (!activeGroupId && groups.length > 0) {
+        const primary = groups.find((g) => g.isPrimary) || groups[0];
+        setActiveGroupId(primary.id);
+      }
+
       const list = await invoke<WorkflowData[]>("list_project_workflows", {
         projectId,
       });
       setWorkflows(list);
-      const { nodes: flowNodes, edges: flowEdges } = buildFlowFromWorkflows(list, roles);
+
+      // 根据选中的流程组过滤工作流
+      const filtered = activeGroupId
+        ? list.filter(
+            (w) =>
+              w.groupId === activeGroupId ||
+              (!w.groupId && activeGroupId === groups.find((g) => g.isPrimary)?.id)
+          )
+        : list;
+      const { nodes: flowNodes, edges: flowEdges } = buildFlowFromWorkflows(filtered, roles);
       setNodes(flowNodes);
       setEdges(flowEdges);
     } catch (err) {
       console.error("Failed to load workflows:", err);
     }
-  }, [projectId, roles, setNodes, setEdges]);
+  }, [projectId, roles, setNodes, setEdges, activeGroupId]);
 
   useEffect(() => {
     loadWorkflows();
@@ -1006,7 +1026,21 @@ function WorkflowDesignerInner({
   const contextMenuItems = contextMenu
     ? contextMenu.type === "node"
       ? [{ label: "🗑️ 删除节点", action: () => handleDeleteNode(contextMenu.id), danger: true }]
-      : [{ label: "🗑️ 删除连线", action: () => handleDeleteEdge(contextMenu.id), danger: true }]
+      : (() => {
+          const edge = edges.find((e) => e.id === contextMenu.id);
+          const sourceNode = edge ? nodes.find((n) => n.id === edge.source) : null;
+          const targetNode = edge ? nodes.find((n) => n.id === edge.target) : null;
+          const fromRoleId =
+            sourceNode?.type === "startNode" ? null : (sourceNode as RoleNodeType)?.data?.roleId;
+          const toRoleId = (targetNode as RoleNodeType)?.data?.roleId;
+          const wf = workflows.find((w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId);
+          if (wf?.isPrimary) {
+            return [{ label: "🔒 主流程不可删除", action: () => {}, danger: false }];
+          }
+          return [
+            { label: "🗑️ 删除连线", action: () => handleDeleteEdge(contextMenu.id), danger: true },
+          ];
+        })()
     : [];
 
   return (
@@ -1017,6 +1051,66 @@ function WorkflowDesignerInner({
         onSearchChange={setSidebarSearch}
       />
       <div className={styles.wfDesigner} ref={reactFlowWrapper}>
+        {/* 流程组标签页 */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "6px 12px",
+            borderBottom: "1px solid #e0e0e0",
+            background: "#fafafa",
+            fontSize: 12,
+          }}
+        >
+          {workflowGroups.map((g) => (
+            <button
+              key={g.id}
+              onClick={() => {
+                setActiveGroupId(g.id);
+                setTimeout(() => loadWorkflows(), 0);
+              }}
+              style={{
+                padding: "4px 12px",
+                borderRadius: 4,
+                border: "1px solid #ddd",
+                background: activeGroupId === g.id ? "#6c5ce7" : "#fff",
+                color: activeGroupId === g.id ? "#fff" : "#333",
+                cursor: "pointer",
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              {g.name}
+              {g.isPrimary && <span style={{ fontSize: 10 }}>🔒</span>}
+            </button>
+          ))}
+          <button
+            onClick={async () => {
+              try {
+                await invoke("create_workflow_group", {
+                  req: { projectId },
+                });
+                loadWorkflows();
+              } catch (err) {
+                console.error("Failed to create workflow group:", err);
+              }
+            }}
+            style={{
+              padding: "4px 8px",
+              borderRadius: 4,
+              border: "1px dashed #bbb",
+              background: "transparent",
+              cursor: "pointer",
+              fontSize: 12,
+              color: "#999",
+            }}
+          >
+            ➕ 添加流程
+          </button>
+        </div>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -1151,14 +1245,22 @@ function WorkflowDesignerInner({
                             : t("studio.workflowStart")}
                           → [{w.artifactType || "-"}] →{roleMap.get(w.toRoleId)?.icon}{" "}
                           {roleMap.get(w.toRoleId)?.name}
+                          {w.isPrimary && (
+                            <span style={{ marginLeft: 4, fontSize: 11, color: "#e67e22" }}>
+                              🔒 主流程
+                            </span>
+                          )}
                         </span>
                         <button
                           className={styles.wfDetailDelete}
                           onClick={() => {
+                            if (w.isPrimary) return;
                             invoke("remove_project_workflow", { id: w.id })
                               .then(() => loadWorkflows())
                               .catch(console.error);
                           }}
+                          disabled={w.isPrimary}
+                          style={w.isPrimary ? { opacity: 0.3, cursor: "not-allowed" } : {}}
                         >
                           🗑️
                         </button>

@@ -1,5 +1,6 @@
 use serde::Serialize;
 use sqlx::SqlitePool;
+use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
@@ -1375,4 +1376,57 @@ mod tests {
         );
         assert!(result.is_err());
     }
+}
+
+/// Debounced event emitter: aggregates data change types per project and emits after 500ms
+pub(crate) struct DebouncedEmitter {
+    pending: Mutex<HashMap<String, Vec<String>>>,
+}
+
+impl DebouncedEmitter {
+    pub(crate) fn new() -> Self {
+        Self {
+            pending: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Add a data change type to the pending queue for a project, then schedule a flush after 500ms
+    pub(crate) fn add_change(&self, app: &AppHandle, project_id: &str, data_type: &str) {
+        let should_schedule = {
+            let mut pending = self.pending.lock().unwrap();
+            let changes = pending.entry(project_id.to_string()).or_default();
+            let is_new = !changes.contains(&data_type.to_string());
+            if is_new {
+                changes.push(data_type.to_string());
+            }
+            is_new
+        };
+        if should_schedule {
+            let app_clone = app.clone();
+            let project_id_clone = project_id.to_string();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let changes = {
+                    let emitter = DEBOUNCED_EMITTER.get_or_init(DebouncedEmitter::new);
+                    let mut pending = emitter.pending.lock().unwrap();
+                    pending.remove(&project_id_clone).unwrap_or_default()
+                };
+                if !changes.is_empty() {
+                    let _ = app_clone.emit("project_data_changed", serde_json::json!({
+                        "projectId": project_id_clone,
+                        "changes": changes,
+                    }));
+                }
+            });
+        }
+    }
+}
+
+use std::sync::OnceLock;
+pub(crate) static DEBOUNCED_EMITTER: OnceLock<DebouncedEmitter> = OnceLock::new();
+
+/// Get the global DebouncedEmitter instance
+pub(crate) fn debounced_emit(app: &AppHandle, project_id: &str, data_type: &str) {
+    let emitter = DEBOUNCED_EMITTER.get_or_init(DebouncedEmitter::new);
+    emitter.add_change(app, project_id, data_type);
 }

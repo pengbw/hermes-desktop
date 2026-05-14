@@ -10,6 +10,7 @@ interface OfficeMember {
   icon: string;
   color: string;
   isWorking: boolean;
+  status?: "working" | "idle" | "waiting_approval";
   preset?: string;
   roleId?: string;
 }
@@ -51,6 +52,7 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
           color: m.color,
           isWorking: m.isWorking,
           roleId: m.roleId,
+          status: m.status,
         })),
       []
     );

@@ -21,6 +21,23 @@ export interface ChatStreamEvent {
   content: string;
 }
 
+export interface ProjectDataChangePayload {
+  projectId: string;
+  changes: Array<"tasks" | "artifacts" | "members" | "workflow_steps">;
+}
+
+export interface ArtifactStatusChangePayload {
+  projectId: string;
+  artifactId: string;
+  newStatus: string;
+}
+
+export interface TaskStatusChangePayload {
+  projectId: string;
+  taskId: string;
+  newStatus: string;
+}
+
 export const TauriEvents = {
   onNavigateToTab(callback: (tab: string) => void): Promise<UnlistenFn> {
     return listen<NavigateToTabPayload>("navigate-to-tab", (event) => {
@@ -83,6 +100,26 @@ export const TauriEvents = {
     callback: (sources: KnowledgeSource[]) => void
   ): Promise<UnlistenFn> {
     return listen<KnowledgeSource[]>(`${eventId}_knowledge_sources`, (event) => {
+      callback(event.payload);
+    });
+  },
+
+  onProjectDataChanged(callback: (payload: ProjectDataChangePayload) => void): Promise<UnlistenFn> {
+    return listen<ProjectDataChangePayload>("project_data_changed", (event) => {
+      callback(event.payload);
+    });
+  },
+
+  onArtifactStatusChanged(
+    callback: (payload: ArtifactStatusChangePayload) => void
+  ): Promise<UnlistenFn> {
+    return listen<ArtifactStatusChangePayload>("artifact_status_changed", (event) => {
+      callback(event.payload);
+    });
+  },
+
+  onTaskStatusChanged(callback: (payload: TaskStatusChangePayload) => void): Promise<UnlistenFn> {
+    return listen<TaskStatusChangePayload>("task_status_changed", (event) => {
       callback(event.payload);
     });
   },

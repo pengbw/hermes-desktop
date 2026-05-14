@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, lazy, Suspense } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { TauriEvents } from "@services/tauri/TauriEvents";
 import { MentionsInput, Mention } from "react-mentions";
 import type {
   ProjectItem,
@@ -20,6 +21,8 @@ import RoleManager from "./RoleManager";
 import TaskBoard from "./TaskBoard";
 import TaskManagement from "./TaskManagement";
 import WorkflowRunPanel from "./WorkflowRunPanel";
+import PendingReviewPanel from "./PendingReviewPanel";
+import ArtifactReviewReminder from "./ArtifactReviewReminder";
 
 const VirtualOffice = lazy(() => import("../../windows/VirtualOffice"));
 
@@ -159,6 +162,7 @@ function ProjectDetail({
   const [autoDelegateRunning, setAutoDelegateRunning] = useState(false);
   const [wfSubTab, setWfSubTab] = useState<"designer" | "runs">("designer");
   const [overviewSubTab, setOverviewSubTab] = useState<"tasks" | "artifacts" | "members">("tasks");
+  const [taskSubTab, setTaskSubTab] = useState<"list" | "pending">("list");
   const [approvalModal, setApprovalModal] = useState<{
     open: boolean;
     artifact: ProjectArtifact | null;
@@ -220,6 +224,34 @@ function ProjectDetail({
       chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
     }
   }, [projectMessages, projectChatStreamed]);
+
+  // Debounced data change listener: refresh corresponding data when backend pushes changes
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    TauriEvents.onProjectDataChanged((payload) => {
+      if (payload.projectId !== project.id) return;
+      for (const change of payload.changes) {
+        if (change === "tasks") {
+          invoke<ProjectTask[]>("list_project_tasks", { projectId: project.id })
+            .then(onTasksUpdate)
+            .catch(console.error);
+        } else if (change === "artifacts") {
+          invoke<ProjectArtifact[]>("list_project_artifacts", { projectId: project.id })
+            .then(onArtifactsUpdate)
+            .catch(console.error);
+        } else if (change === "members") {
+          invoke<ProjectMember[]>("list_project_members", { projectId: project.id })
+            .then(onMembersUpdate)
+            .catch(console.error);
+        }
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [project.id, onTasksUpdate, onArtifactsUpdate, onMembersUpdate]);
 
   const handleArtifactApprove = async (artifactId: string, approved: boolean) => {
     try {
@@ -537,13 +569,60 @@ function ProjectDetail({
 
         <div className={styles.studioDetailBody}>
           {projectDetailTab === "taskmgmt" && (
-            <TaskManagement
-              tasks={projectTasks}
-              projectId={project.id}
-              projectMembers={projectMembers}
-              allRoles={allRoles}
-              onTasksUpdate={onTasksUpdate}
-            />
+            <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 4,
+                  padding: "8px 12px",
+                  borderBottom: "1px solid #e9ecef",
+                }}
+              >
+                <button
+                  onClick={() => setTaskSubTab("list")}
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: 4,
+                    border: "1px solid #ddd",
+                    background: taskSubTab === "list" ? "#6c5ce7" : "#fff",
+                    color: taskSubTab === "list" ? "#fff" : "#333",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  📋 任务列表
+                </button>
+                <button
+                  onClick={() => setTaskSubTab("pending")}
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: 4,
+                    border: "1px solid #ddd",
+                    background: taskSubTab === "pending" ? "#6c5ce7" : "#fff",
+                    color: taskSubTab === "pending" ? "#fff" : "#333",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  🔔 待办审核
+                </button>
+              </div>
+              {taskSubTab === "list" ? (
+                <TaskManagement
+                  tasks={projectTasks}
+                  projectId={project.id}
+                  projectMembers={projectMembers}
+                  allRoles={allRoles}
+                  onTasksUpdate={onTasksUpdate}
+                />
+              ) : (
+                <PendingReviewPanel
+                  projectId={project.id}
+                  allRoles={allRoles}
+                  onReviewComplete={() => onTasksUpdate(projectTasks)}
+                />
+              )}
+            </div>
           )}
 
           {projectDetailTab === "kanban" && (
@@ -903,16 +982,26 @@ function ProjectDetail({
                               t.assignee === member.roleId &&
                               (t.status === "ready" || t.status === "running")
                           );
+                          const hasSubmittedArtifact = projectArtifacts.some(
+                            (a) => a.roleId === member.roleId && a.status === "submitted"
+                          );
                           const isWorking =
                             memberArtifact?.status === "in_progress" ||
                             memberArtifact?.status === "pending" ||
                             hasActiveTask;
+                          const isWaitingApproval = hasSubmittedArtifact && !hasActiveTask;
+                          const memberStatus = isWorking
+                            ? ("working" as const)
+                            : isWaitingApproval
+                              ? ("waiting_approval" as const)
+                              : ("idle" as const);
                           return {
                             id: member.id,
                             name: getRoleName(member.roleId),
                             icon: role?.icon || "🤖",
                             color: role?.avatarColor || "#6c5ce7",
                             isWorking,
+                            status: memberStatus,
                             preset: role?.avatarPreset,
                             roleId: member.roleId,
                           };
@@ -1357,6 +1446,14 @@ function ProjectDetail({
           </div>
         </div>
       )}
+
+      <ArtifactReviewReminder
+        projectId={project.id}
+        onGoToReview={() => {
+          setProjectDetailTab("taskmgmt");
+          setTaskSubTab("pending");
+        }}
+      />
     </div>
   );
 }

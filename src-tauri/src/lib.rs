@@ -195,7 +195,7 @@ pub fn run() {
                             let role_trigger = role_id.clone();
                             tauri::async_runtime::spawn(async move {
                                 log::info!("workflow_auto_push_completed: triggering next step for project_id={}, from_role_id={}", project_trigger, role_trigger);
-                                match commands::project::trigger_workflow_execution(app_trigger, project_trigger, role_trigger, None, None, Some(true)).await {
+                                match commands::project::trigger_workflow_execution(app_trigger, project_trigger, role_trigger, None, None, Some(true), None, None).await {
                                     Ok(result) => log::info!("workflow_auto_push_completed: triggered={}, pending={}", result.triggered_workflows.len(), result.pending_approvals.len()),
                                     Err(e) => log::error!("workflow_auto_push_completed: error={}", e),
                                 }
@@ -272,6 +272,7 @@ pub fn run() {
             commands::provider::verify_provider_api_key,
             commands::project::list_projects,
             commands::project::create_project,
+            commands::project::create_empty_project,
             commands::project::update_project,
             commands::project::delete_project,
             commands::project::list_project_members,
@@ -283,6 +284,14 @@ pub fn run() {
             commands::project::list_project_workflows,
             commands::project::add_project_workflow,
             commands::project::remove_project_workflow,
+            commands::project::list_workflow_groups,
+            commands::project::create_workflow_group,
+            commands::project::update_workflow_group,
+            commands::project::delete_workflow_group,
+            commands::project::get_workflow_start_role,
+            commands::project::assign_task,
+            commands::project::get_task_progress,
+            commands::project::list_pending_review_tasks,
             commands::project::list_project_artifacts,
             commands::project::create_project_artifact,
             commands::project::update_project_artifact_status,
@@ -343,9 +352,6 @@ pub fn run() {
             commands::project::preprocess_skill_template,
             commands::project::list_project_templates,
             commands::project::create_project_from_template,
-            commands::project::dispatch_task_to_role,
-            commands::project::list_task_dispatches,
-            commands::project::auto_dispatch_ready_tasks,
             commands::project::sync_workflow_to_file,
             commands::project::load_workflow_from_file,
             commands::knowledge::list_knowledge_bases,

@@ -2,6 +2,8 @@ import type { ProjectTask, ProjectMember, AiRoleItem } from "@core/types";
 import styles from "@pages/studio/StudioPanel.module.css";
 import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import AssignTaskModal from "./AssignTaskModal";
+import TaskProgressModal from "./TaskProgressModal";
 
 const TASK_STATUS_OPTIONS = [
   { key: "triage", label: "待分类", color: "#b2bec3", icon: "📥" },
@@ -39,7 +41,6 @@ function TaskManagement({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newBody, setNewBody] = useState("");
-  const [newAssignee, setNewAssignee] = useState("");
   const [newPriority, setNewPriority] = useState(0);
   const [newStatus, setNewStatus] = useState("todo");
   const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
@@ -47,9 +48,8 @@ function TaskManagement({
   const [editBody, setEditBody] = useState("");
   const [editAssignee, setEditAssignee] = useState("");
   const [editPriority, setEditPriority] = useState(0);
-  const [dispatchingTask, setDispatchingTask] = useState<ProjectTask | null>(null);
-  const [dispatchMessage, setDispatchMessage] = useState("");
-  const [dispatching, setDispatching] = useState(false);
+  const [assignModal, setAssignModal] = useState<string | null>(null);
+  const [progressModal, setProgressModal] = useState<string | null>(null);
 
   const refreshTasks = useCallback(async () => {
     const updatedTasks = await invoke<ProjectTask[]>("list_project_tasks", { projectId });
@@ -64,14 +64,12 @@ function TaskManagement({
           projectId,
           title: newTitle.trim(),
           body: newBody.trim() || undefined,
-          assignee: newAssignee || undefined,
           status: newStatus,
           priority: newPriority,
         },
       });
       setNewTitle("");
       setNewBody("");
-      setNewAssignee("");
       setNewPriority(0);
       setNewStatus("todo");
       setShowCreateForm(false);
@@ -97,27 +95,6 @@ function TaskManagement({
       refreshTasks();
     } catch (err) {
       console.error("Failed to delete task:", err);
-    }
-  };
-
-  const handleDispatchTask = async () => {
-    if (!dispatchingTask) return;
-    const roleId = dispatchingTask.assignee;
-    if (!roleId) return;
-    setDispatching(true);
-    try {
-      await invoke("dispatch_task_to_role", {
-        taskId: dispatchingTask.id,
-        roleId,
-        message: dispatchMessage || undefined,
-      });
-      setDispatchingTask(null);
-      setDispatchMessage("");
-      refreshTasks();
-    } catch (err) {
-      console.error("Failed to dispatch task:", err);
-    } finally {
-      setDispatching(false);
     }
   };
 
@@ -245,21 +222,6 @@ function TaskManagement({
           <div className={styles.taskMgmtFormRow}>
             <select
               className={styles.taskMgmtFormSelect}
-              value={newAssignee}
-              onChange={(e) => setNewAssignee(e.target.value)}
-            >
-              <option value="">未分配</option>
-              {projectMembers.map((m) => {
-                const role = allRoles.find((r) => r.id === m.roleId);
-                return (
-                  <option key={m.roleId} value={m.roleId}>
-                    {role?.name || m.roleId}
-                  </option>
-                );
-              })}
-            </select>
-            <select
-              className={styles.taskMgmtFormSelect}
               value={newPriority}
               onChange={(e) => setNewPriority(Number(e.target.value))}
             >
@@ -362,59 +324,6 @@ function TaskManagement({
         </div>
       )}
 
-      {dispatchingTask && (
-        <div className={styles.taskMgmtEditOverlay} onClick={() => setDispatchingTask(null)}>
-          <div className={styles.taskMgmtEditPanel} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.taskMgmtEditHeader}>
-              <h3>🚀 派发任务</h3>
-              <button className={styles.taskMgmtEditClose} onClick={() => setDispatchingTask(null)}>
-                ✕
-              </button>
-            </div>
-            <div className={styles.taskMgmtEditBody}>
-              <div className={styles.taskMgmtDispatchInfo}>
-                <div className={styles.taskMgmtDispatchRow}>
-                  <span className={styles.taskMgmtDispatchLabel}>任务：</span>
-                  <span className={styles.taskMgmtDispatchValue}>{dispatchingTask.title}</span>
-                </div>
-                <div className={styles.taskMgmtDispatchRow}>
-                  <span className={styles.taskMgmtDispatchLabel}>派发给：</span>
-                  <span className={styles.taskMgmtDispatchValue}>
-                    {getRoleName(dispatchingTask.assignee)}
-                  </span>
-                </div>
-              </div>
-              <div className={styles.taskMgmtFormField}>
-                <label>附加说明（可选）</label>
-                <textarea
-                  className={styles.taskMgmtFormTextarea}
-                  value={dispatchMessage}
-                  onChange={(e) => setDispatchMessage(e.target.value)}
-                  placeholder="给角色的额外指示或说明..."
-                  rows={3}
-                />
-              </div>
-            </div>
-            <div className={styles.taskMgmtEditActions}>
-              <button
-                className={styles.taskMgmtFormSubmit}
-                onClick={handleDispatchTask}
-                disabled={dispatching}
-              >
-                {dispatching ? "派发中..." : "确认派发"}
-              </button>
-              <button
-                className={styles.taskMgmtFormCancel}
-                onClick={() => setDispatchingTask(null)}
-                disabled={dispatching}
-              >
-                取消
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className={styles.taskMgmtList}>
         {filteredTasks.length === 0 ? (
           <div className={styles.taskMgmtEmpty}>
@@ -464,16 +373,22 @@ function TaskManagement({
                   </div>
                 </div>
                 <div className={styles.taskMgmtItemRight}>
-                  {task.assignee && task.status !== "done" && task.status !== "running" && (
+                  {(task.status === "todo" || task.status === "triage") && (
                     <button
                       className={styles.taskMgmtItemDispatch}
-                      onClick={() => {
-                        setDispatchingTask(task);
-                        setDispatchMessage("");
-                      }}
-                      title="派发给角色"
+                      onClick={() => setAssignModal(task.id)}
+                      title="分配任务"
                     >
-                      🚀
+                      👤
+                    </button>
+                  )}
+                  {task.status === "running" && (
+                    <button
+                      className={styles.taskMgmtItemDispatch}
+                      onClick={() => setProgressModal(task.id)}
+                      title="查看进度"
+                    >
+                      📊
                     </button>
                   )}
                   <button
@@ -496,6 +411,33 @@ function TaskManagement({
           })
         )}
       </div>
+
+      {assignModal &&
+        (() => {
+          const task = tasks.find((t) => t.id === assignModal);
+          return task ? (
+            <AssignTaskModal
+              visible={true}
+              taskId={assignModal}
+              taskTitle={task.title}
+              projectId={projectId}
+              members={projectMembers}
+              allRoles={allRoles}
+              onClose={() => setAssignModal(null)}
+              onAssigned={() => {
+                setAssignModal(null);
+                refreshTasks();
+              }}
+            />
+          ) : null;
+        })()}
+
+      <TaskProgressModal
+        visible={!!progressModal}
+        taskId={progressModal || ""}
+        allRoles={allRoles}
+        onClose={() => setProgressModal(null)}
+      />
     </div>
   );
 }

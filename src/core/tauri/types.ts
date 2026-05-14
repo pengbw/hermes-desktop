@@ -192,3 +192,10 @@ export interface CreateProjectFromTemplateRequest {
   templateId: string;
   officeTheme?: string;
 }
+
+export interface CreateEmptyProjectRequest {
+  name: string;
+  description?: string;
+  icon?: string;
+  officeTheme?: string;
+}

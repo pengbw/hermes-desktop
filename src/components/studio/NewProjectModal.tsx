@@ -24,6 +24,7 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
   const [newProjectIcon, setNewProjectIcon] = useState("💼");
   const [newProjectRule, setNewProjectRule] = useState("");
   const [newProjectTemplate, setNewProjectTemplate] = useState<string>("");
+  const [isCustomProject, setIsCustomProject] = useState(false);
   const [newProjectTheme, setNewProjectTheme] = useState("cozy");
   const [templates, setTemplates] = useState<ProjectTemplateDetail[]>([]);
   const [previewTab, setPreviewTab] = useState<"roles" | "workflows">("roles");
@@ -61,6 +62,7 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
     setNewProjectIcon("💼");
     setNewProjectRule("");
     setNewProjectTemplate("");
+    setIsCustomProject(false);
     setNewProjectTheme("cozy");
     setPreviewTab("roles");
     onClose();
@@ -69,7 +71,16 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
   const handleCreate = async () => {
     if (!newProjectName.trim()) return;
     try {
-      if (selectedTmpl) {
+      if (isCustomProject) {
+        await invoke("create_empty_project", {
+          req: {
+            name: newProjectName.trim(),
+            description: newProjectDesc.trim() || undefined,
+            icon: newProjectIcon,
+            officeTheme: newProjectTheme,
+          },
+        });
+      } else if (selectedTmpl) {
         await invoke("create_project_from_template", {
           req: {
             name: newProjectName.trim(),
@@ -166,12 +177,16 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
               <textarea
                 className={styles.studioFormTextarea}
                 placeholder={
-                  selectedTmpl ? selectedTmpl.projectRule : t("studio.projectRulePlaceholder")
+                  isCustomProject
+                    ? "自定义项目，由项目创建者自主定义协作规范与交付标准。"
+                    : selectedTmpl
+                      ? selectedTmpl.projectRule
+                      : t("studio.projectRulePlaceholder")
                 }
                 value={newProjectRule}
                 onChange={(e) => setNewProjectRule(e.target.value)}
                 rows={2}
-                disabled={!!selectedTmpl}
+                disabled={!!selectedTmpl || isCustomProject}
               />
             </div>
 
@@ -228,6 +243,25 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
               </span>
             </div>
             <div className={styles.studioTemplateGrid}>
+              <button
+                className={
+                  styles.studioTemplateCard + " " + (isCustomProject ? styles.selected : "")
+                }
+                onClick={() => {
+                  setIsCustomProject(!isCustomProject);
+                  if (!isCustomProject) {
+                    setNewProjectTemplate("");
+                    setNewProjectRule("");
+                    setPreviewTab("roles");
+                  }
+                }}
+              >
+                <div className={styles.studioTemplateCardHeader}>
+                  <span className={styles.studioTemplateIcon}>✨</span>
+                  <span className={styles.studioTemplateName}>自定义</span>
+                  {isCustomProject && <span className={styles.studioTemplateCheck}>✓</span>}
+                </div>
+              </button>
               {templates.map((tmpl) => (
                 <button
                   key={tmpl.id}
@@ -237,6 +271,7 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
                     (newProjectTemplate === tmpl.id ? styles.selected : "")
                   }
                   onClick={() => {
+                    setIsCustomProject(false);
                     setNewProjectTemplate(newProjectTemplate === tmpl.id ? "" : tmpl.id);
                     if (newProjectTemplate !== tmpl.id) {
                       setNewProjectIcon(tmpl.icon);

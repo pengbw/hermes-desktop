@@ -9,6 +9,8 @@ import type {
 import styles from "@pages/studio/StudioPanel.module.css";
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import AssignTaskModal from "./AssignTaskModal";
+import TaskProgressModal from "./TaskProgressModal";
 
 const TASK_COLUMNS = [
   { key: "triage", label: "待分类", color: "#b2bec3" },
@@ -253,24 +255,6 @@ function TaskDetailPanel({
                     🔓 释放认领
                   </button>
                 )}
-                {task.assignee && task.status !== "done" && task.status !== "running" && (
-                  <button
-                    className={styles.taskDetailDispatchBtn}
-                    onClick={async () => {
-                      try {
-                        await invoke("dispatch_task_to_role", {
-                          taskId: task.id,
-                          roleId: task.assignee,
-                        });
-                        onTaskUpdate();
-                      } catch (err) {
-                        console.error("Failed to dispatch task:", err);
-                      }
-                    }}
-                  >
-                    🚀 派发给角色
-                  </button>
-                )}
               </div>
 
               {task.startedAt && (
@@ -445,8 +429,9 @@ function TaskDetailPanel({
 
 function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }: TaskBoardProps) {
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskAssignee, setNewTaskAssignee] = useState("");
   const [selectedTask, setSelectedTask] = useState<ProjectTask | null>(null);
+  const [assignModal, setAssignModal] = useState<string | null>(null);
+  const [progressModal, setProgressModal] = useState<string | null>(null);
 
   const refreshTasks = async () => {
     const updatedTasks = await invoke<ProjectTask[]>("list_project_tasks", { projectId });
@@ -464,7 +449,6 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
         req: {
           projectId,
           title: newTaskTitle.trim(),
-          assignee: newTaskAssignee || undefined,
           status: "todo",
         },
       });
@@ -530,21 +514,6 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
               }
             }}
           />
-          <select
-            className={styles.studioTasksAssigneeSelect}
-            value={newTaskAssignee}
-            onChange={(e) => setNewTaskAssignee(e.target.value)}
-          >
-            <option value="">未分配</option>
-            {projectMembers.map((m) => {
-              const role = allRoles.find((r) => r.id === m.roleId);
-              return (
-                <option key={m.roleId} value={m.roleId}>
-                  {role?.name || m.roleId}
-                </option>
-              );
-            })}
-          </select>
         </div>
       </div>
       <div className={styles.studioTasksKanban}>
@@ -603,12 +572,30 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
                             🤚 {claimerRole.name}
                           </span>
                         )}
-                        {(task.status === "ready" || task.status === "running") &&
-                          task.claimLock && (
-                            <span className={styles.studioKanbanCardDispatched}>🚀 已派发</span>
-                          )}
                       </div>
                       <div className={styles.studioTaskCardActions}>
+                        {(task.status === "todo" || task.status === "triage") && (
+                          <button
+                            className={styles.studioTaskAssignBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAssignModal(task.id);
+                            }}
+                          >
+                            👤
+                          </button>
+                        )}
+                        {task.status === "running" && (
+                          <button
+                            className={styles.studioTaskAssignBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProgressModal(task.id);
+                            }}
+                          >
+                            📊
+                          </button>
+                        )}
                         <button
                           className={styles.studioTaskDeleteBtn}
                           onClick={(e) => {
@@ -627,6 +614,33 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
           );
         })}
       </div>
+
+      {assignModal &&
+        (() => {
+          const task = tasks.find((t) => t.id === assignModal);
+          return task ? (
+            <AssignTaskModal
+              visible={true}
+              taskId={assignModal}
+              taskTitle={task.title}
+              projectId={projectId}
+              members={projectMembers}
+              allRoles={allRoles}
+              onClose={() => setAssignModal(null)}
+              onAssigned={() => {
+                setAssignModal(null);
+                refreshTasks();
+              }}
+            />
+          ) : null;
+        })()}
+
+      <TaskProgressModal
+        visible={!!progressModal}
+        taskId={progressModal || ""}
+        allRoles={allRoles}
+        onClose={() => setProgressModal(null)}
+      />
 
       {selectedTask && (
         <TaskDetailPanel

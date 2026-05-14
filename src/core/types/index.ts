@@ -185,8 +185,21 @@ export interface ProjectWorkflow {
   conditionExpr: string;
   branchLabel: string;
   parallelGroup: string;
+  isPrimary: boolean;
+  groupId: string | null;
   sortOrder: number;
   createdAt: number;
+}
+
+export interface WorkflowGroup {
+  id: string;
+  projectId: string;
+  name: string;
+  isPrimary: boolean;
+  parentGroupId: string | null;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface ProjectArtifact {
@@ -200,6 +213,8 @@ export interface ProjectArtifact {
   content: string;
   status: string;
   reviewComment: string;
+  workflowRunId: string | null;
+  stepIndex: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -250,6 +265,7 @@ export interface ProjectTask {
   workspaceKind: string;
   workspacePath: string;
   boardId: string;
+  workflowGroupId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -307,6 +323,7 @@ export interface WorkflowRun {
   currentStep: number;
   status: string;
   context: string;
+  taskId: string;
   startedAt: number;
   completedAt: number | null;
 }
@@ -363,6 +380,18 @@ export interface ProjectActivity {
   targetId: string | null;
   detail: string;
   createdAt: number;
+}
+
+export interface TaskProgress {
+  task: ProjectTask;
+  workflowRun: WorkflowRunStatus | null;
+  artifacts: ProjectArtifact[];
+  activities: ProjectActivity[];
+}
+
+export interface PendingReviewTask {
+  task: ProjectTask;
+  pendingArtifacts: ProjectArtifact[];
 }
 
 export interface ProjectStats {

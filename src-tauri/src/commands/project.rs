@@ -343,12 +343,25 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
         }
     }
 
+    // 创建主流程组
+    let primary_group_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO project_workflow_groups (id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at) VALUES (?, ?, '主流程', 1, NULL, 0, ?, ?)"
+    )
+    .bind(&primary_group_id)
+    .bind(&project_id)
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
     for twf in &template_workflows {
         let wf_id = uuid::Uuid::new_v4().to_string();
         let from_role_id_for_insert = twf.from_role_id.as_ref().filter(|s| !s.is_empty());
 
         sqlx::query(
-            "INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, '', '', '', '', ?, ?)"
+            "INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, '', '', '', '', 1, ?, ?, ?)"
         )
         .bind(&wf_id)
         .bind(&project_id)
@@ -356,6 +369,7 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
         .bind(&twf.to_role_id)
         .bind(&twf.artifact_type)
         .bind(&twf.transition_type)
+        .bind(&primary_group_id)
         .bind(twf.sort_order)
         .bind(now)
         .execute(&pool)
@@ -674,147 +688,6 @@ async fn do_dispatch_task(app: &AppHandle, pool: &sqlx::SqlitePool, task_id: &st
 }
 
 #[tauri::command]
-pub async fn dispatch_task_to_role(app: AppHandle, task_id: String, role_id: String, message: Option<String>) -> Result<(), String> {
-    let pool = get_pool(&app)?;
-
-    let task: Option<(String, String, String, String, i32, String)> = sqlx::query_as(
-        "SELECT title, body, assignee, status, priority, project_id FROM project_tasks WHERE id = ?"
-    )
-    .bind(&task_id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let (title, body, _assignee, _status, priority, project_id) = task.ok_or("Task not found")?;
-
-    do_dispatch_task(&app, &pool, &task_id, &role_id, &project_id, &title, &body, priority, message.as_deref(), "manual").await
-}
-
-#[tauri::command]
-pub async fn list_task_dispatches(app: AppHandle, task_id: String) -> Result<Vec<db::TaskDispatch>, String> {
-    let pool = get_pool(&app)?;
-    let rows: Vec<(String, String, String, String, String, i64)> = sqlx::query_as(
-        "SELECT id, task_id, role_id, dispatch_type, message, created_at FROM task_dispatches WHERE task_id = ? ORDER BY created_at DESC"
-    )
-    .bind(&task_id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(rows.into_iter().map(|(id, task_id, role_id, dispatch_type, message, created_at)| db::TaskDispatch {
-        id, task_id, role_id, dispatch_type, message, status: "sent".to_string(), created_at,
-    }).collect())
-}
-
-#[tauri::command]
-pub async fn auto_dispatch_ready_tasks(app: AppHandle, project_id: String) -> Result<Vec<String>, String> {
-    let pool = get_pool(&app)?;
-    let now = chrono::Utc::now().timestamp_millis();
-
-    let tasks: Vec<(String, String, String, i32)> = sqlx::query_as(
-        "SELECT id, title, assignee, priority FROM project_tasks WHERE project_id = ? AND status = 'ready' AND assignee != ''"
-    )
-    .bind(&project_id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let mut dispatched = Vec::new();
-
-    for (task_id, title, assignee, priority) in tasks {
-        let existing: Option<(String,)> = sqlx::query_as(
-            "SELECT id FROM task_dispatches WHERE task_id = ? AND role_id = ? AND status = 'sent'"
-        )
-        .bind(&task_id)
-        .bind(&assignee)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-        if existing.is_some() {
-            continue;
-        }
-
-        let dispatch_id = uuid::Uuid::new_v4().to_string();
-        sqlx::query(
-            "INSERT INTO task_dispatches (id, task_id, role_id, dispatch_type, message, status, created_at) VALUES (?, ?, ?, 'auto', '', 'sent', ?)"
-        )
-        .bind(&dispatch_id)
-        .bind(&task_id)
-        .bind(&assignee)
-        .bind(now)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-        sqlx::query(
-            "UPDATE project_tasks SET status = 'running', started_at = COALESCE(started_at, ?), claim_lock = ?, claim_expire_at = ?, updated_at = ? WHERE id = ?"
-        )
-        .bind(now)
-        .bind(&assignee)
-        .bind(now + 30 * 60 * 1000)
-        .bind(now)
-        .bind(&task_id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-        let _ = record_activity(&app, &project_id, Some(&assignee), "task_auto_dispatched", Some("task"), Some(&task_id), &format!("自动派发任务：{}", title)).await;
-
-        let body: Option<(String,)> = sqlx::query_as(
-            "SELECT body FROM project_tasks WHERE id = ?"
-        )
-        .bind(&task_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-        let mut task_message = format!("你被自动分配了一个任务：\n**任务标题**：{}\n**优先级**：{}", title, match priority {
-            p if p >= 3 => "高",
-            p if p >= 2 => "中",
-            _ => "低",
-        });
-        if let Some((b,)) = &body {
-            if !b.is_empty() {
-                task_message.push_str(&format!("\n**任务描述**：{}", b));
-            }
-        }
-
-        let event_id = format!("task_auto_dispatch_{}_{}", task_id, now);
-        let app_clone = app.clone();
-        let project_id_clone = project_id.clone();
-        let assignee_clone = assignee.clone();
-        tauri::async_runtime::spawn(async move {
-            let _ = crate::commands::project::chat_with_project_roles(
-                app_clone, project_id_clone, vec![assignee_clone], task_message, event_id,
-            ).await;
-        });
-
-        let _ = app.emit("task_dispatched", serde_json::json!({
-            "taskId": task_id,
-            "roleId": assignee,
-            "dispatchId": dispatch_id,
-            "dispatchType": "auto",
-        }));
-
-        if is_workflow_start_role(&pool, &project_id, &assignee).await {
-            let app_wf = app.clone();
-            let project_id_wf = project_id.clone();
-            let assignee_wf = assignee.clone();
-            tauri::async_runtime::spawn(async move {
-                let _ = trigger_workflow_execution(
-                    app_wf, project_id_wf, assignee_wf, None, None, Some(true),
-                ).await;
-            });
-        }
-
-        dispatched.push(task_id);
-    }
-
-    Ok(dispatched)
-}
-
-#[tauri::command]
 pub async fn list_projects(app: AppHandle) -> Result<Vec<db::Project>, String> {
     let pool = get_pool(&app)?;
     let rows = sqlx::query_as::<_, db::Project>(
@@ -825,6 +698,76 @@ pub async fn list_projects(app: AppHandle) -> Result<Vec<db::Project>, String> {
     .map_err(|e| e.to_string())?;
 
     Ok(rows)
+}
+
+#[tauri::command]
+pub async fn create_empty_project(app: AppHandle, req: db::CreateEmptyProjectRequest) -> Result<db::Project, String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let workspace_root = sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'workspace_root'")
+        .fetch_optional(&pool)
+        .await
+        .ok()
+        .flatten()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| format!("{}/hermes-workspace", dirs::home_dir().map(|h| h.to_string_lossy().to_string()).unwrap_or_else(|| ".".to_string())));
+
+    let slug: String = req.name.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let workspace_path = format!("{}/{}", workspace_root.trim_end_matches('/'), slug);
+    let _ = std::fs::create_dir_all(&workspace_path);
+
+    let description = req.description.unwrap_or_default();
+    let icon = req.icon.unwrap_or_default();
+    let office_theme = req.office_theme.unwrap_or_else(|| "cozy".to_string());
+
+    let project_rule = "自定义项目，由项目创建者自主定义协作规范与交付标准。".to_string();
+    let project_guidelines = "1. 自行定义角色职责与工作流程\n2. 明确每个任务的验收标准\n3. 产出物需经过审核确认\n4. 保持团队协作和信息同步".to_string();
+
+    sqlx::query(
+        "INSERT INTO projects (id, name, description, workspace_path, status, tag, icon, is_favorite, cover_image, project_rule, project_guidelines, office_theme, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', 'none', ?, 0, '', ?, ?, ?, ?, ?)"
+    )
+    .bind(&id)
+    .bind(&req.name)
+    .bind(&description)
+    .bind(&workspace_path)
+    .bind(&icon)
+    .bind(&project_rule)
+    .bind(&project_guidelines)
+    .bind(&office_theme)
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let _ = record_activity(&app, &id, None, "project_created", Some("project"), Some(&id), "创建自定义项目").await;
+
+    Ok(db::Project {
+        id,
+        name: req.name,
+        description,
+        workspace_path,
+        status: "active".to_string(),
+        tag: "none".to_string(),
+        icon,
+        is_favorite: 0,
+        cover_image: String::new(),
+        project_rule,
+        project_guidelines,
+        office_theme,
+        office_layout: String::new(),
+        created_at: now,
+        updated_at: now,
+    })
 }
 
 #[tauri::command]
@@ -1039,7 +982,7 @@ pub async fn add_project_member(app: AppHandle, req: db::CreateProjectMemberRequ
         let artifact_id = uuid::Uuid::new_v4().to_string();
         let artifact_title = format!("{} - 产出物", role_name);
         let _ = sqlx::query(
-            "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at) VALUES (?, ?, ?, '', 'auto', ?, '', '', 'pending', '', ?, ?)"
+            "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at) VALUES (?, ?, ?, '', 'auto', ?, '', '', 'pending', '', NULL, NULL, ?, ?)"
         )
         .bind(&artifact_id)
         .bind(&req.project_id)
@@ -1152,16 +1095,16 @@ pub async fn export_project(app: AppHandle, project_id: String) -> Result<serde_
     };
 
     let workflows: Vec<db::ProjectWorkflow> = {
-        let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, i64, i64)>(
-            "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
+        let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(
+            "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
         )
         .bind(&project_id)
         .fetch_all(&pool)
         .await
         .map_err(|e| e.to_string())?;
 
-        rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at)| db::ProjectWorkflow {
-            id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at,
+        rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
+            id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
         }).collect()
     };
 
@@ -1277,7 +1220,7 @@ pub async fn import_project(app: AppHandle, data: serde_json::Value) -> Result<d
             let parallel_group = w["parallelGroup"].as_str().unwrap_or("").to_string();
             let sort_order = w["sortOrder"].as_i64().unwrap_or(idx as i64);
 
-            sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)")
                 .bind(&wid)
                 .bind(&id)
                 .bind(&from_role_id)
@@ -1304,16 +1247,16 @@ pub async fn import_project(app: AppHandle, data: serde_json::Value) -> Result<d
 #[tauri::command]
 pub async fn list_project_workflows(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectWorkflow>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, i64, i64)>(
-        "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(
+        "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
     )
     .bind(&project_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at)| db::ProjectWorkflow {
-        id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at,
+    Ok(rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
+        id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
     }).collect())
 }
 
@@ -1344,7 +1287,7 @@ pub struct PendingApproval {
 }
 
 #[tauri::command]
-pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from_role_id: String, artifact_type: Option<String>, condition_result: Option<String>, skip_need_confirm: Option<bool>) -> Result<WorkflowExecutionResult, String> {
+pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from_role_id: String, artifact_type: Option<String>, condition_result: Option<String>, skip_need_confirm: Option<bool>, workflow_run_id: Option<String>, step_index: Option<i32>) -> Result<WorkflowExecutionResult, String> {
     let pool = get_pool(&app)?;
     let now = chrono::Utc::now().timestamp_millis();
 
@@ -1521,13 +1464,15 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
         match transition_type.as_str() {
             "auto_push" => {
                 sqlx::query(
-                    "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, '', '', 'in_progress', '', ?, ?)"
+                    "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, '', '', 'in_progress', '', ?, ?, ?, ?)"
                 )
                 .bind(&new_artifact_id)
                 .bind(&project_id)
                 .bind(to_role_id)
                 .bind(wf_artifact_type)
                 .bind(&artifact_title)
+                .bind(&workflow_run_id)
+                .bind(&step_index)
                 .bind(now)
                 .bind(now)
                 .execute(&pool)
@@ -1544,16 +1489,16 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
             }
             "need_confirm" => {
                 if should_skip_need_confirm {
-                    // Auto-push event: create pending artifact, do NOT trigger downstream work
-                    // Downstream will start working only after user approves the upstream artifact
                     sqlx::query(
-                        "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, '', '', 'pending', '', ?, ?)"
+                        "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, '', '', 'pending', '', ?, ?, ?, ?)"
                     )
                     .bind(&new_artifact_id)
                     .bind(&project_id)
                     .bind(to_role_id)
                     .bind(wf_artifact_type)
                     .bind(&artifact_title)
+                    .bind(&workflow_run_id)
+                    .bind(&step_index)
                     .bind(now)
                     .bind(now)
                     .execute(&pool)
@@ -1567,15 +1512,16 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
                         artifact_type: wf_artifact_type.clone(),
                     });
                 } else {
-                    // Approval event: upstream approved, downstream can start working
                     sqlx::query(
-                        "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, '', '', 'in_progress', '', ?, ?)"
+                        "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, '', '', 'in_progress', '', ?, ?, ?, ?)"
                     )
                     .bind(&new_artifact_id)
                     .bind(&project_id)
                     .bind(to_role_id)
                     .bind(wf_artifact_type)
                     .bind(&artifact_title)
+                    .bind(&workflow_run_id)
+                    .bind(&step_index)
                     .bind(now)
                     .bind(now)
                     .execute(&pool)
@@ -1634,13 +1580,15 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
             let artifact_title = format!("{} - {}", wf_artifact_type, to_role_name);
 
             sqlx::query(
-                "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, '', '', 'in_progress', '', ?, ?)"
+                "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, '', '', 'in_progress', '', ?, ?, ?, ?)"
             )
             .bind(&new_artifact_id)
             .bind(&project_id)
             .bind(to_role_id)
             .bind(wf_artifact_type)
             .bind(&artifact_title)
+            .bind(&workflow_run_id)
+            .bind(&step_index)
             .bind(now)
             .bind(now)
             .execute(&pool)
@@ -1698,13 +1646,15 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
                 let artifact_title = format!("{} - {}", wf_artifact_type, to_role_name);
 
                 sqlx::query(
-                    "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, '', '', 'in_progress', '', ?, ?)"
+                    "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, '', '', 'in_progress', '', ?, ?, ?, ?)"
                 )
                 .bind(&new_artifact_id)
                 .bind(&project_id)
                 .bind(to_role_id)
                 .bind(wf_artifact_type)
                 .bind(&artifact_title)
+                .bind(&workflow_run_id)
+                .bind(&step_index)
                 .bind(now)
                 .bind(now)
                 .execute(&pool)
@@ -1758,6 +1708,16 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
         });
     }
 
+    // Debounced data push for workflow execution
+    crate::commands::helpers::debounced_emit(&app, &project_id, "workflow_steps");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "artifacts");
+
+    // Instant event for workflow step change
+    let _ = app.emit("workflow_step_changed", serde_json::json!({
+        "projectId": project_id,
+        "fromRoleId": from_role_id,
+    }));
+
     Ok(WorkflowExecutionResult {
         triggered_workflows: triggered,
         pending_approvals: pending,
@@ -1784,7 +1744,7 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
     let branch_label = req.branch_label.unwrap_or_default();
     let parallel_group = req.parallel_group.unwrap_or_default();
 
-    sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)")
         .bind(&id)
         .bind(&req.project_id)
         .bind(&req.from_role_id)
@@ -1802,13 +1762,25 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
         .map_err(|e| e.to_string())?;
 
     Ok(db::ProjectWorkflow {
-        id, project_id: req.project_id, from_role_id: req.from_role_id, to_role_id: req.to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at: now,
+        id, project_id: req.project_id, from_role_id: req.from_role_id, to_role_id: req.to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary: false, group_id: None, sort_order, created_at: now,
     })
 }
 
 #[tauri::command]
 pub async fn remove_project_workflow(app: AppHandle, id: String) -> Result<(), String> {
     let pool = get_pool(&app)?;
+
+    let is_primary: bool = sqlx::query_scalar("SELECT is_primary FROM project_workflows WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or(false);
+
+    if is_primary {
+        return Err("主流程不可删除".to_string());
+    }
+
     sqlx::query("DELETE FROM project_workflows WHERE id = ?")
         .bind(&id)
         .execute(&pool)
@@ -1817,11 +1789,248 @@ pub async fn remove_project_workflow(app: AppHandle, id: String) -> Result<(), S
     Ok(())
 }
 
+// ========== 流程组 CRUD ==========
+
+#[tauri::command]
+pub async fn list_workflow_groups(app: AppHandle, project_id: String) -> Result<Vec<db::WorkflowGroup>, String> {
+    let pool = get_pool(&app)?;
+    let rows = sqlx::query_as::<_, (String, String, String, bool, Option<String>, i64, i64, i64)>(
+        "SELECT id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at FROM project_workflow_groups WHERE project_id = ? ORDER BY sort_order ASC"
+    )
+    .bind(&project_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|(id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at)| db::WorkflowGroup {
+        id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at,
+    }).collect())
+}
+
+#[tauri::command]
+pub async fn create_workflow_group(app: AppHandle, req: db::CreateWorkflowGroupRequest) -> Result<db::WorkflowGroup, String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+    let name = req.name.unwrap_or_else(|| "新流程".to_string());
+
+    let max_sort: Option<i64> = sqlx::query_scalar("SELECT MAX(sort_order) FROM project_workflow_groups WHERE project_id = ?")
+        .bind(&req.project_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let sort_order = max_sort.unwrap_or(0) + 1;
+
+    sqlx::query(
+        "INSERT INTO project_workflow_groups (id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?, ?, ?)"
+    )
+    .bind(&id)
+    .bind(&req.project_id)
+    .bind(&name)
+    .bind(&req.parent_group_id)
+    .bind(sort_order)
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(db::WorkflowGroup {
+        id,
+        project_id: req.project_id,
+        name,
+        is_primary: false,
+        parent_group_id: req.parent_group_id,
+        sort_order,
+        created_at: now,
+        updated_at: now,
+    })
+}
+
+#[tauri::command]
+pub async fn update_workflow_group(app: AppHandle, id: String, name: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    sqlx::query("UPDATE project_workflow_groups SET name = ?, updated_at = ? WHERE id = ?")
+        .bind(&name)
+        .bind(now)
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_workflow_group(app: AppHandle, id: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+
+    // 主流程组不可删除
+    let is_primary: bool = sqlx::query_scalar("SELECT is_primary FROM project_workflow_groups WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or(false);
+
+    if is_primary {
+        return Err("主流程组不可删除".to_string());
+    }
+
+    // 被任务绑定的流程组不可删除
+    let bound_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM project_tasks WHERE workflow_group_id = ?")
+        .bind(&id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if bound_count > 0 {
+        return Err("该流程组已被任务绑定，不可删除".to_string());
+    }
+
+    // 删除流程组下的工作流
+    sqlx::query("DELETE FROM project_workflows WHERE group_id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 删除流程组
+    sqlx::query("DELETE FROM project_workflow_groups WHERE id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_workflow_start_role(app: AppHandle, group_id: String) -> Result<Option<serde_json::Value>, String> {
+    let pool = get_pool(&app)?;
+
+    // 查找流程组中起始步骤（from_role_id 为空）的第一个工作流的 to_role_id
+    let start_role_id: Option<String> = sqlx::query_scalar(
+        "SELECT to_role_id FROM project_workflows WHERE group_id = ? AND from_role_id IS NULL ORDER BY sort_order ASC LIMIT 1"
+    )
+    .bind(&group_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match start_role_id {
+        Some(role_id) => {
+            let role: Option<(String, String, String)> = sqlx::query_as(
+                "SELECT id, name, icon FROM ai_roles WHERE id = ?"
+            )
+            .bind(&role_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            Ok(role.map(|(id, name, icon)| serde_json::json!({
+                "roleId": id,
+                "roleName": name,
+                "roleIcon": icon,
+            })))
+        }
+        None => Ok(None),
+    }
+}
+
+// ========== 任务分配 ==========
+
+#[tauri::command]
+pub async fn assign_task(
+    app: AppHandle,
+    task_id: String,
+    assignee: String,
+    workflow_group_id: Option<String>,
+    message: Option<String>,
+) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    // 更新任务状态为 running，设置受理人和流程组
+    sqlx::query(
+        "UPDATE project_tasks SET assignee = ?, status = 'running', workflow_group_id = ?, started_at = ?, updated_at = ? WHERE id = ?"
+    )
+    .bind(&assignee)
+    .bind(&workflow_group_id)
+    .bind(now)
+    .bind(now)
+    .bind(&task_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // 获取项目 ID
+    let project_id: String = sqlx::query_scalar("SELECT project_id FROM project_tasks WHERE id = ?")
+        .bind(&task_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let _ = record_activity(&app, &project_id, Some(&assignee), "task_assigned", Some("task"), Some(&task_id), &format!("任务已分配给角色")).await;
+
+    if let Some(ref gid) = workflow_group_id {
+        // 有流程模式：查找流程组起始角色，启动工作流
+        let start_role_id: Option<String> = sqlx::query_scalar(
+            "SELECT to_role_id FROM project_workflows WHERE group_id = ? AND from_role_id IS NULL ORDER BY sort_order ASC LIMIT 1"
+        )
+        .bind(gid)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some(start_role) = start_role_id {
+            let initial_message = message.unwrap_or_else(|| "请开始你的工作".to_string());
+            let event_id = format!("assign_task_{}_{}", project_id, task_id);
+            let _ = start_workflow_run(app.clone(), project_id.clone(), initial_message).await;
+        }
+    } else {
+        // 无流程模式：直接调用 auto_delegate_chat
+        let task_info: Option<(String, String)> = sqlx::query_as(
+            "SELECT title, body FROM project_tasks WHERE id = ?"
+        )
+        .bind(&task_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some((title, body)) = task_info {
+            let context_msg = message.unwrap_or_else(|| format!("请完成以下任务：{}", title));
+            let event_id = format!("assign_task_{}_{}", project_id, task_id);
+            let _ = auto_delegate_chat(
+                app.clone(),
+                project_id.clone(),
+                "builtin_user".to_string(),
+                assignee.clone(),
+                context_msg,
+                event_id,
+            ).await;
+        }
+    }
+
+    // Debounced data push
+    crate::commands::helpers::debounced_emit(&app, &project_id, "tasks");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "members");
+
+    // Instant event
+    let _ = app.emit("task_status_changed", serde_json::json!({
+        "projectId": project_id,
+        "taskId": task_id,
+        "newStatus": "running",
+    }));
+
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn sync_workflow_to_file(app: AppHandle, project_id: String) -> Result<(), String> {
     let pool = get_pool(&app)?;
-    let workflows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, i64, i64)>(
-        "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
+    let workflows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(
+        "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
     )
     .bind(&project_id)
     .fetch_all(&pool)
@@ -1845,7 +2054,7 @@ pub async fn sync_workflow_to_file(app: AppHandle, project_id: String) -> Result
     std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
 
     let config_path = config_dir.join("workflow.json");
-    let workflow_data: Vec<serde_json::Value> = workflows.iter().map(|(id, pid, from, to, artifact, trans, task_id, cond_expr, br_label, par_group, sort, created)| {
+    let workflow_data: Vec<serde_json::Value> = workflows.iter().map(|(id, pid, from, to, artifact, trans, task_id, cond_expr, br_label, par_group, is_primary, group_id, sort, created)| {
         serde_json::json!({
             "id": id,
             "projectId": pid,
@@ -1857,6 +2066,8 @@ pub async fn sync_workflow_to_file(app: AppHandle, project_id: String) -> Result
             "conditionExpr": cond_expr,
             "branchLabel": br_label,
             "parallelGroup": par_group,
+            "isPrimary": is_primary,
+            "groupId": group_id,
             "sortOrder": sort,
             "createdAt": created,
         })
@@ -1903,16 +2114,16 @@ pub async fn load_workflow_from_file(app: AppHandle, project_id: String) -> Resu
 #[tauri::command]
 pub async fn list_project_artifacts(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectArtifact>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, i64, i64)>(
-        "SELECT id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at FROM project_artifacts WHERE project_id = ? ORDER BY created_at DESC"
+    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, Option<String>, Option<i32>, i64, i64)>(
+        "SELECT id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at FROM project_artifacts WHERE project_id = ? ORDER BY created_at DESC"
     )
     .bind(&project_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at)| db::ProjectArtifact {
-        id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at,
+    Ok(rows.into_iter().map(|(id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at)| db::ProjectArtifact {
+        id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at,
     }).collect())
 }
 
@@ -1929,7 +2140,7 @@ pub async fn create_project_artifact(app: AppHandle, req: db::CreateProjectArtif
     let content = req.content.unwrap_or_default();
     let status = req.status.unwrap_or("draft".to_string());
 
-    sqlx::query("INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)")
+    sqlx::query("INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', NULL, NULL, ?, ?)")
         .bind(&id)
         .bind(&req.project_id)
         .bind(&req.role_id)
@@ -1948,7 +2159,7 @@ pub async fn create_project_artifact(app: AppHandle, req: db::CreateProjectArtif
     let _ = record_activity(&app, &req.project_id, Some(&req.role_id), "artifact_submitted", Some("artifact"), Some(&id), &format!("提交了产物：{}", if title.is_empty() { artifact_type.clone() } else { title.clone() })).await;
 
     Ok(db::ProjectArtifact {
-        id, project_id: req.project_id, role_id: req.role_id, task_id, artifact_type, title, file_path, content, status, review_comment: String::new(), created_at: now, updated_at: now,
+        id, project_id: req.project_id, role_id: req.role_id, task_id, artifact_type, title, file_path, content, status, review_comment: String::new(), workflow_run_id: None, step_index: None, created_at: now, updated_at: now,
     })
 }
 
@@ -2033,13 +2244,73 @@ pub async fn approve_project_artifact(app: AppHandle, id: String, comment: Optio
         tauri::async_runtime::spawn(async move {
             log::info!("approve_project_artifact: triggering workflow for project_id={}, from_role_id={}", project_id_wf, role_id_wf);
             match trigger_workflow_execution(
-                app_wf, project_id_wf, role_id_wf, None, None, None,
+                app_wf, project_id_wf, role_id_wf, None, None, None, None, None,
             ).await {
                 Ok(result) => log::info!("approve_project_artifact: triggered={}, pending={}", result.triggered_workflows.len(), result.pending_approvals.len()),
                 Err(e) => log::error!("approve_project_artifact: workflow trigger error={}", e),
             }
         });
     }
+
+    // Debounced data push for artifact approval
+    crate::commands::helpers::debounced_emit(&app, &project_id, "artifacts");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "workflow_steps");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "members");
+
+    // 无流程模式：审批通过后检查任务是否需要标记为 done
+    let task_id_from_artifact: Option<String> = sqlx::query_scalar(
+        "SELECT task_id FROM project_artifacts WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_optional(&pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some(ref tid) = task_id_from_artifact {
+        let workflow_group_id: Option<String> = sqlx::query_scalar(
+            "SELECT workflow_group_id FROM project_tasks WHERE id = ?"
+        )
+        .bind(tid)
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(None);
+
+        // 无流程模式：所有产物都已审批通过 → 任务 done
+        if workflow_group_id.as_ref().map_or(true, |s| s.is_empty()) {
+            let pending_count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM project_artifacts WHERE task_id = ? AND status IN ('draft', 'submitted')"
+            )
+            .bind(tid)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(0);
+
+            if pending_count == 0 {
+                let _ = sqlx::query(
+                    "UPDATE project_tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ? AND status != 'done'"
+                )
+                .bind(now)
+                .bind(now)
+                .bind(tid)
+                .execute(&pool)
+                .await;
+
+                crate::commands::helpers::debounced_emit(&app, &project_id, "tasks");
+                let _ = app.emit("task_status_changed", serde_json::json!({
+                    "projectId": project_id,
+                    "taskId": tid,
+                    "newStatus": "done",
+                }));
+            }
+        }
+    }
+
+    // Instant event for artifact status change
+    let _ = app.emit("artifact_status_changed", serde_json::json!({
+        "projectId": project_id,
+        "artifactId": id,
+        "newStatus": "approved",
+    }));
 
     Ok(())
 }
@@ -2074,7 +2345,7 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
             let new_artifact_id = uuid::Uuid::new_v4().to_string();
             let retry_title = format!("{} - 修改稿", art_title);
             sqlx::query(
-                "INSERT INTO project_artifacts (id, project_id, role_id, artifact_type, title, content, status, run_step_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', 'in_progress', ?, ?, ?)"
+                "INSERT INTO project_artifacts (id, project_id, role_id, artifact_type, title, content, status, run_step_id, workflow_run_id, step_index, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', 'in_progress', ?, NULL, NULL, ?, ?)"
             )
             .bind(&new_artifact_id)
             .bind(&art_project_id)
@@ -2117,6 +2388,16 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
                 "project_id": art_project_id,
                 "role_id": art_role_id,
                 "new_artifact_id": new_artifact_id,
+            }));
+
+            // Debounced data push for artifact rejection
+            crate::commands::helpers::debounced_emit(&app, &art_project_id, "artifacts");
+
+            // Instant event for artifact status change
+            let _ = app.emit("artifact_status_changed", serde_json::json!({
+                "projectId": art_project_id,
+                "artifactId": id,
+                "newStatus": "rejected",
             }));
         }
     }
@@ -2170,7 +2451,7 @@ pub async fn create_project_message(app: AppHandle, req: db::CreateProjectMessag
 pub async fn list_project_tasks(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectTask>, String> {
     let pool = get_pool(&app)?;
     let rows = sqlx::query(
-        "SELECT id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, created_at, updated_at FROM project_tasks WHERE project_id = ? ORDER BY priority DESC, created_at ASC"
+        "SELECT id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, workflow_group_id, created_at, updated_at FROM project_tasks WHERE project_id = ? ORDER BY priority DESC, created_at ASC"
     )
     .bind(&project_id)
     .fetch_all(&pool)
@@ -2199,10 +2480,11 @@ pub async fn list_project_tasks(app: AppHandle, project_id: String) -> Result<Ve
         let workspace_kind: String = row.try_get("workspace_kind").map_err(|e| e.to_string())?;
         let workspace_path: String = row.try_get("workspace_path").map_err(|e| e.to_string())?;
         let board_id: String = row.try_get("board_id").map_err(|e| e.to_string())?;
+        let workflow_group_id: Option<String> = row.try_get("workflow_group_id").map_err(|e| e.to_string())?;
         let created_at: i64 = row.try_get("created_at").map_err(|e| e.to_string())?;
         let updated_at: i64 = row.try_get("updated_at").map_err(|e| e.to_string())?;
         tasks.push(db::ProjectTask {
-            id, project_id, title, body, assignee, status, priority, parent_task_id: parent_task_id.unwrap_or_default(), artifact_id: artifact_id.unwrap_or_default(), result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, created_at, updated_at,
+            id, project_id, title, body, assignee, status, priority, parent_task_id: parent_task_id.unwrap_or_default(), artifact_id: artifact_id.unwrap_or_default(), result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, workflow_group_id, created_at, updated_at,
         });
     }
     Ok(tasks)
@@ -2224,7 +2506,7 @@ pub async fn create_project_task(app: AppHandle, req: db::CreateProjectTaskReque
     let workspace_kind = req.workspace_kind.unwrap_or_default();
     let workspace_path = req.workspace_path.unwrap_or_default();
 
-    sqlx::query("INSERT INTO project_tasks (id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '', 0, ?, ?, 0, ?, ?, '', ?, ?)")
+    sqlx::query("INSERT INTO project_tasks (id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, workflow_group_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '', '', 0, ?, ?, 0, ?, ?, '', NULL, ?, ?)")
         .bind(&id)
         .bind(&req.project_id)
         .bind(&req.title)
@@ -2245,12 +2527,8 @@ pub async fn create_project_task(app: AppHandle, req: db::CreateProjectTaskReque
 
     let _ = record_activity(&app, &req.project_id, None, "task_created", Some("task"), Some(&id), &format!("创建了任务：{}", req.title)).await;
 
-    if !assignee.is_empty() && status != "triage" {
-        let _ = do_dispatch_task(&app, &pool, &id, &assignee, &req.project_id, &req.title, &body, priority, None, "auto").await;
-    }
-
     let updated_task: db::ProjectTask = sqlx::query_as(
-        "SELECT id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, created_at, updated_at FROM project_tasks WHERE id = ?"
+        "SELECT id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, workflow_group_id, created_at, updated_at FROM project_tasks WHERE id = ?"
     )
     .bind(&id)
     .fetch_one(&pool)
@@ -2599,7 +2877,7 @@ pub async fn update_project_artifact(app: AppHandle, id: String, title: Option<S
 pub async fn execute_workflow_step(app: AppHandle, project_id: String, from_role_id: Option<String>, artifact_type: Option<String>) -> Result<Vec<db::ProjectWorkflow>, String> {
     let pool = get_pool(&app)?;
 
-    let mut query = String::from("SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at FROM project_workflows WHERE project_id = ?");
+    let mut query = String::from("SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ?");
     let mut bind_from: Option<String> = None;
     let mut bind_artifact: Option<String> = None;
 
@@ -2613,7 +2891,7 @@ pub async fn execute_workflow_step(app: AppHandle, project_id: String, from_role
     }
     query.push_str(" ORDER BY sort_order ASC");
 
-    let mut q = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, i64, i64)>(&query)
+    let mut q = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(&query)
         .bind(&project_id);
     if let Some(ref fr) = bind_from {
         q = q.bind(fr);
@@ -2624,8 +2902,8 @@ pub async fn execute_workflow_step(app: AppHandle, project_id: String, from_role
 
     let rows = q.fetch_all(&pool).await.map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at)| db::ProjectWorkflow {
-        id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at,
+    Ok(rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
+        id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
     }).collect())
 }
 
@@ -2668,8 +2946,8 @@ pub async fn get_project_role_context(app: AppHandle, project_id: String, role_i
         .unwrap_or_else(|| role_data.4.clone());
 
     let workflows: Vec<db::ProjectWorkflow> = {
-        let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, i64, i64)>(
-            "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at FROM project_workflows WHERE project_id = ? AND (from_role_id = ? OR to_role_id = ?) ORDER BY sort_order ASC"
+        let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(
+            "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ? AND (from_role_id = ? OR to_role_id = ?) ORDER BY sort_order ASC"
         )
         .bind(&project_id)
         .bind(&role_id)
@@ -2678,14 +2956,14 @@ pub async fn get_project_role_context(app: AppHandle, project_id: String, role_i
         .await
         .map_err(|e| e.to_string())?;
 
-        rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at)| db::ProjectWorkflow {
-            id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, sort_order, created_at,
+        rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
+            id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
         }).collect()
     };
 
     let artifacts: Vec<db::ProjectArtifact> = {
-        let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, i64, i64)>(
-            "SELECT id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at FROM project_artifacts WHERE project_id = ? AND role_id = ? ORDER BY created_at DESC"
+        let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, Option<String>, Option<i32>, i64, i64)>(
+            "SELECT id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at FROM project_artifacts WHERE project_id = ? AND role_id = ? ORDER BY created_at DESC"
         )
         .bind(&project_id)
         .bind(&role_id)
@@ -2693,8 +2971,8 @@ pub async fn get_project_role_context(app: AppHandle, project_id: String, role_i
         .await
         .map_err(|e| e.to_string())?;
 
-        rows.into_iter().map(|(id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at)| db::ProjectArtifact {
-            id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, created_at, updated_at,
+        rows.into_iter().map(|(id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at)| db::ProjectArtifact {
+            id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at,
         }).collect()
     };
 
@@ -3790,6 +4068,11 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                 "projectId": rec_project,
                 "roleId": rec_role,
             }));
+
+            // Debounced data push for auto_delegate_chat completion
+            crate::commands::helpers::debounced_emit(&rec_app, &rec_project, "tasks");
+            crate::commands::helpers::debounced_emit(&rec_app, &rec_project, "artifacts");
+            crate::commands::helpers::debounced_emit(&rec_app, &rec_project, "members");
         });
     }
 
@@ -4112,7 +4395,7 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
         return Err("No workflows defined for this project".to_string());
     }
 
-    sqlx::query("INSERT INTO workflow_runs (id, project_id, workflow_id, current_step, status, context, started_at) VALUES (?, ?, NULL, 0, 'running', '{}', ?)")
+    sqlx::query("INSERT INTO workflow_runs (id, project_id, workflow_id, current_step, status, context, task_id, started_at) VALUES (?, ?, NULL, 0, 'running', '{}', '', ?)")
         .bind(&id)
         .bind(&project_id)
         .bind(now)
@@ -4159,10 +4442,10 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
     {
         let app_trigger = app.clone();
         let project_id_trigger = project_id.clone();
+        let run_id_for_trigger = id.clone();
         tauri::async_runtime::spawn(async move {
             log::info!("start_workflow_run: triggering start node transition for project_id={}", project_id_trigger);
-            // Use empty from_role_id to represent the start node, so the "start → first_role" transition is executed
-            match trigger_workflow_execution(app_trigger, project_id_trigger, String::new(), None, None, Some(true)).await {
+            match trigger_workflow_execution(app_trigger, project_id_trigger, String::new(), None, None, Some(true), Some(run_id_for_trigger), Some(1)).await {
                 Ok(result) => log::info!("start_workflow_run: triggered={}, pending={}", result.triggered_workflows.len(), result.pending_approvals.len()),
                 Err(e) => log::error!("start_workflow_run: trigger error={}", e),
             }
@@ -4181,6 +4464,7 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
         current_step: 0,
         status: "running".to_string(),
         context: "{}".to_string(),
+        task_id: String::new(),
         started_at: now,
         completed_at: None,
     })
@@ -4310,6 +4594,8 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                         None,
                         None,
                         None,
+                        None,
+                        None,
                     ).await;
                 }
             }
@@ -4401,8 +4687,8 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                     let new_artifact_id = uuid::Uuid::new_v4().to_string();
                     let now_retry = chrono::Utc::now().timestamp_millis();
                     let _ = sqlx::query(
-                        "INSERT INTO project_artifacts (id, project_id, role_id, artifact_type, title, content, status, run_step_id, created_at, updated_at) \
-                         SELECT ?, project_id, role_id, artifact_type, ? || ' - 修改稿', '', 'in_progress', ?, ?, ? \
+                        "INSERT INTO project_artifacts (id, project_id, role_id, artifact_type, title, content, status, run_step_id, workflow_run_id, step_index, created_at, updated_at) \
+                         SELECT ?, project_id, role_id, artifact_type, ? || ' - 修改稿', '', 'in_progress', ?, NULL, NULL, ?, ? \
                          FROM project_artifacts WHERE project_id = ? AND role_id = ? AND status = 'submitted' \
                          ORDER BY updated_at DESC LIMIT 1"
                     )
@@ -4447,16 +4733,16 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
 #[tauri::command]
 pub async fn list_workflow_runs(app: AppHandle, project_id: String) -> Result<Vec<db::WorkflowRun>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, Option<String>, i64, String, String, i64, Option<i64>)>(
-        "SELECT id, project_id, workflow_id, current_step, status, context, started_at, completed_at FROM workflow_runs WHERE project_id = ? ORDER BY started_at DESC"
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, i64, String, String, String, i64, Option<i64>)>(
+        "SELECT id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at FROM workflow_runs WHERE project_id = ? ORDER BY started_at DESC"
     )
     .bind(&project_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, project_id, workflow_id, current_step, status, context, started_at, completed_at)| db::WorkflowRun {
-        id, project_id, workflow_id, current_step, status, context, started_at, completed_at,
+    Ok(rows.into_iter().map(|(id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at)| db::WorkflowRun {
+        id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at,
     }).collect())
 }
 
@@ -4464,8 +4750,8 @@ pub async fn list_workflow_runs(app: AppHandle, project_id: String) -> Result<Ve
 pub async fn get_workflow_run_status(app: AppHandle, run_id: String) -> Result<db::WorkflowRunStatus, String> {
     let pool = get_pool(&app)?;
 
-    let run_row = sqlx::query_as::<_, (String, String, Option<String>, i64, String, String, i64, Option<i64>)>(
-        "SELECT id, project_id, workflow_id, current_step, status, context, started_at, completed_at FROM workflow_runs WHERE id = ?"
+    let run_row = sqlx::query_as::<_, (String, String, Option<String>, i64, String, String, String, i64, Option<i64>)>(
+        "SELECT id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at FROM workflow_runs WHERE id = ?"
     )
     .bind(&run_id)
     .fetch_optional(&pool)
@@ -4480,8 +4766,9 @@ pub async fn get_workflow_run_status(app: AppHandle, run_id: String) -> Result<d
         current_step: run_row.3,
         status: run_row.4,
         context: run_row.5,
-        started_at: run_row.6,
-        completed_at: run_row.7,
+        task_id: run_row.6,
+        started_at: run_row.7,
+        completed_at: run_row.8,
     };
 
     let step_rows = sqlx::query_as::<_, (String, String, i64, Option<String>, String, String, String, String, Option<i64>, Option<i64>)>(
@@ -4662,6 +4949,212 @@ pub async fn list_role_skills(app: AppHandle, role_id: String) -> Result<Vec<db:
     Ok(rows.into_iter().map(|(id, role_id, skill_name, enabled, created_at)| db::RoleSkill {
         id, role_id, skill_name, enabled, created_at,
     }).collect())
+}
+
+// ========== 任务进度查询 ==========
+
+#[tauri::command]
+pub async fn get_task_progress(app: AppHandle, task_id: String) -> Result<db::TaskProgress, String> {
+    let pool = get_pool(&app)?;
+
+    // 查询任务信息
+    let task_row = sqlx::query(
+        "SELECT id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, workflow_group_id, created_at, updated_at FROM project_tasks WHERE id = ?"
+    )
+    .bind(&task_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let task = {
+        let row = task_row.ok_or("Task not found")?;
+        let id: String = row.try_get("id").map_err(|e| e.to_string())?;
+        let project_id: String = row.try_get("project_id").map_err(|e| e.to_string())?;
+        let title: String = row.try_get("title").map_err(|e| e.to_string())?;
+        let body: String = row.try_get("body").map_err(|e| e.to_string())?;
+        let assignee: String = row.try_get("assignee").map_err(|e| e.to_string())?;
+        let status: String = row.try_get("status").map_err(|e| e.to_string())?;
+        let priority: i32 = row.try_get("priority").map_err(|e| e.to_string())?;
+        let parent_task_id: Option<String> = row.try_get("parent_task_id").map_err(|e| e.to_string())?;
+        let artifact_id: Option<String> = row.try_get("artifact_id").map_err(|e| e.to_string())?;
+        let result: String = row.try_get("result").map_err(|e| e.to_string())?;
+        let claim_lock: String = row.try_get("claim_lock").map_err(|e| e.to_string())?;
+        let claim_expire_at: i64 = row.try_get("claim_expire_at").map_err(|e| e.to_string())?;
+        let started_at: Option<i64> = row.try_get("started_at").map_err(|e| e.to_string())?;
+        let completed_at: Option<i64> = row.try_get("completed_at").map_err(|e| e.to_string())?;
+        let skills: String = row.try_get("skills").map_err(|e| e.to_string())?;
+        let max_retries: i32 = row.try_get("max_retries").map_err(|e| e.to_string())?;
+        let retry_count: i32 = row.try_get("retry_count").map_err(|e| e.to_string())?;
+        let workspace_kind: String = row.try_get("workspace_kind").map_err(|e| e.to_string())?;
+        let workspace_path: String = row.try_get("workspace_path").map_err(|e| e.to_string())?;
+        let board_id: String = row.try_get("board_id").map_err(|e| e.to_string())?;
+        let workflow_group_id: Option<String> = row.try_get("workflow_group_id").map_err(|e| e.to_string())?;
+        let created_at: i64 = row.try_get("created_at").map_err(|e| e.to_string())?;
+        let updated_at: i64 = row.try_get("updated_at").map_err(|e| e.to_string())?;
+        db::ProjectTask {
+            id, project_id, title, body, assignee, status, priority,
+            parent_task_id: parent_task_id.unwrap_or_default(),
+            artifact_id: artifact_id.unwrap_or_default(),
+            result, claim_lock, claim_expire_at, started_at, completed_at,
+            skills, max_retries, retry_count, workspace_kind, workspace_path,
+            board_id, workflow_group_id, created_at, updated_at,
+        }
+    };
+
+    // 查询关联的工作流运行
+    let workflow_run = if !task.workflow_group_id.as_ref().map_or(true, |s| s.is_empty()) {
+        let run_row = sqlx::query_as::<_, (String, String, Option<String>, i64, String, String, String, i64, Option<i64>)>(
+            "SELECT id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at FROM workflow_runs WHERE task_id = ? ORDER BY started_at DESC LIMIT 1"
+        )
+        .bind(&task_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some((id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at)) = run_row {
+            // 查询工作流步骤
+            let step_rows = sqlx::query_as::<_, (String, String, i64, Option<String>, String, String, String, String, Option<i64>, Option<i64>)>(
+                "SELECT id, run_id, step_index, role_id, action, status, input, output, started_at, completed_at FROM workflow_run_steps WHERE run_id = ? ORDER BY step_index ASC"
+            )
+            .bind(&id)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let steps = step_rows.into_iter().map(|(id, run_id, step_index, role_id, action, status, input, output, started_at, completed_at)| db::WorkflowRunStep {
+                id, run_id, step_index, role_id, action, status, input, output, started_at, completed_at,
+            }).collect();
+
+            Some(db::WorkflowRunStatus {
+                run: db::WorkflowRun {
+                    id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at,
+                },
+                steps,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // 查询任务相关的产物
+    let artifact_rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, Option<String>, Option<i32>, i64, i64)>(
+        "SELECT id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at FROM project_artifacts WHERE task_id = ? ORDER BY created_at DESC"
+    )
+    .bind(&task_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let artifacts = artifact_rows.into_iter().map(|(id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at)| db::ProjectArtifact {
+        id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at,
+    }).collect();
+
+    // 查询任务相关的最近活动
+    let activity_rows = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, Option<String>, String, i64)>(
+        "SELECT id, project_id, role_id, action, target_type, target_id, detail, created_at FROM project_activities WHERE project_id = ? AND target_id = ? ORDER BY created_at DESC LIMIT 10"
+    )
+    .bind(&task.project_id)
+    .bind(&task_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let activities = activity_rows.into_iter().map(|(id, project_id, role_id, action, target_type, target_id, detail, created_at)| db::ProjectActivity {
+        id, project_id, role_id, action, target_type, target_id, detail, created_at,
+    }).collect();
+
+    Ok(db::TaskProgress {
+        task,
+        workflow_run,
+        artifacts,
+        activities,
+    })
+}
+
+// ========== 待审核任务列表 ==========
+
+#[tauri::command]
+pub async fn list_pending_review_tasks(app: AppHandle, project_id: String) -> Result<Vec<db::PendingReviewTask>, String> {
+    let pool = get_pool(&app)?;
+
+    // 查询有 submitted 状态产物的任务
+    let task_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT task_id FROM project_artifacts WHERE project_id = ? AND status = 'submitted' AND task_id != ''"
+    )
+    .bind(&project_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut result = Vec::new();
+    for tid in task_ids {
+        // 查询任务
+        let task_row = sqlx::query(
+            "SELECT id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, workflow_group_id, created_at, updated_at FROM project_tasks WHERE id = ?"
+        )
+        .bind(&tid)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some(row) = task_row {
+            let task = {
+                let id: String = row.try_get("id").map_err(|e| e.to_string())?;
+                let project_id: String = row.try_get("project_id").map_err(|e| e.to_string())?;
+                let title: String = row.try_get("title").map_err(|e| e.to_string())?;
+                let body: String = row.try_get("body").map_err(|e| e.to_string())?;
+                let assignee: String = row.try_get("assignee").map_err(|e| e.to_string())?;
+                let status: String = row.try_get("status").map_err(|e| e.to_string())?;
+                let priority: i32 = row.try_get("priority").map_err(|e| e.to_string())?;
+                let parent_task_id: Option<String> = row.try_get("parent_task_id").map_err(|e| e.to_string())?;
+                let artifact_id: Option<String> = row.try_get("artifact_id").map_err(|e| e.to_string())?;
+                let result: String = row.try_get("result").map_err(|e| e.to_string())?;
+                let claim_lock: String = row.try_get("claim_lock").map_err(|e| e.to_string())?;
+                let claim_expire_at: i64 = row.try_get("claim_expire_at").map_err(|e| e.to_string())?;
+                let started_at: Option<i64> = row.try_get("started_at").map_err(|e| e.to_string())?;
+                let completed_at: Option<i64> = row.try_get("completed_at").map_err(|e| e.to_string())?;
+                let skills: String = row.try_get("skills").map_err(|e| e.to_string())?;
+                let max_retries: i32 = row.try_get("max_retries").map_err(|e| e.to_string())?;
+                let retry_count: i32 = row.try_get("retry_count").map_err(|e| e.to_string())?;
+                let workspace_kind: String = row.try_get("workspace_kind").map_err(|e| e.to_string())?;
+                let workspace_path: String = row.try_get("workspace_path").map_err(|e| e.to_string())?;
+                let board_id: String = row.try_get("board_id").map_err(|e| e.to_string())?;
+                let workflow_group_id: Option<String> = row.try_get("workflow_group_id").map_err(|e| e.to_string())?;
+                let created_at: i64 = row.try_get("created_at").map_err(|e| e.to_string())?;
+                let updated_at: i64 = row.try_get("updated_at").map_err(|e| e.to_string())?;
+                db::ProjectTask {
+                    id, project_id, title, body, assignee, status, priority,
+                    parent_task_id: parent_task_id.unwrap_or_default(),
+                    artifact_id: artifact_id.unwrap_or_default(),
+                    result, claim_lock, claim_expire_at, started_at, completed_at,
+                    skills, max_retries, retry_count, workspace_kind, workspace_path,
+                    board_id, workflow_group_id, created_at, updated_at,
+                }
+            };
+
+            // 查询该任务的 submitted 产物
+            let artifact_rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, Option<String>, Option<i32>, i64, i64)>(
+                "SELECT id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at FROM project_artifacts WHERE task_id = ? AND status = 'submitted' ORDER BY created_at DESC"
+            )
+            .bind(&tid)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let pending_artifacts = artifact_rows.into_iter().map(|(id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at)| db::ProjectArtifact {
+                id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at,
+            }).collect();
+
+            result.push(db::PendingReviewTask {
+                task,
+                pending_artifacts,
+            });
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]

@@ -373,6 +373,39 @@ fn all_migrations() -> Vec<Migration> {
             description: "add run_step_id to project_artifacts for workflow step association",
             sql: "ALTER TABLE project_artifacts ADD COLUMN run_step_id TEXT NOT NULL DEFAULT ''",
         },
+        Migration {
+            version: 54,
+            description: "add is_primary to project_workflows for main workflow marking",
+            sql: "ALTER TABLE project_workflows ADD COLUMN is_primary BOOLEAN NOT NULL DEFAULT 0",
+        },
+        Migration {
+            version: 55,
+            description: "add workflow_run_id and step_index to project_artifacts for role binding",
+            sql: "ALTER TABLE project_artifacts ADD COLUMN workflow_run_id TEXT; ALTER TABLE project_artifacts ADD COLUMN step_index INTEGER",
+        },
+        Migration {
+            version: 56,
+            description: "add task_id to workflow_runs for task-workflow association",
+            sql: "ALTER TABLE workflow_runs ADD COLUMN task_id TEXT NOT NULL DEFAULT ''",
+        },
+        // v57: 流程组表 - 支持项目多流程
+        Migration {
+            version: 57,
+            description: "create project_workflow_groups table for multi-workflow support",
+            sql: "CREATE TABLE IF NOT EXISTS project_workflow_groups (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL DEFAULT '默认流程', is_primary BOOLEAN NOT NULL DEFAULT 0, parent_group_id TEXT, sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE)",
+        },
+        // v58: 工作流关联流程组
+        Migration {
+            version: 58,
+            description: "add group_id to project_workflows for workflow group association",
+            sql: "ALTER TABLE project_workflows ADD COLUMN group_id TEXT",
+        },
+        // v59: 任务关联流程组
+        Migration {
+            version: 59,
+            description: "add workflow_group_id to project_tasks for task-workflow group association",
+            sql: "ALTER TABLE project_tasks ADD COLUMN workflow_group_id TEXT",
+        },
     ]
 }
 
