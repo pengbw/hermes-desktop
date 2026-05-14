@@ -41,7 +41,7 @@ function TaskManagement({
   const [newBody, setNewBody] = useState("");
   const [newAssignee, setNewAssignee] = useState("");
   const [newPriority, setNewPriority] = useState(0);
-  const [newStatus, setNewStatus] = useState("ready");
+  const [newStatus, setNewStatus] = useState("todo");
   const [editingTask, setEditingTask] = useState<ProjectTask | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editBody, setEditBody] = useState("");
@@ -73,7 +73,7 @@ function TaskManagement({
       setNewBody("");
       setNewAssignee("");
       setNewPriority(0);
-      setNewStatus("ready");
+      setNewStatus("todo");
       setShowCreateForm(false);
       refreshTasks();
     } catch (err) {

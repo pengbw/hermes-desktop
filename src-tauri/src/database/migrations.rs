@@ -366,9 +366,12 @@ fn all_migrations() -> Vec<Migration> {
                     FOREIGN KEY (to_role_id) REFERENCES ai_roles(id) ON DELETE CASCADE
                 );
                 CREATE INDEX idx_template_workflows_template ON template_workflows(template_id);
-
-                DELETE FROM ai_roles WHERE is_builtin = 1;
             "#,
+        },
+        Migration {
+            version: 53,
+            description: "add run_step_id to project_artifacts for workflow step association",
+            sql: "ALTER TABLE project_artifacts ADD COLUMN run_step_id TEXT NOT NULL DEFAULT ''",
         },
     ]
 }

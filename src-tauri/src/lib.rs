@@ -11,6 +11,7 @@ use sqlx::SqlitePool;
 use std::process::Stdio;
 use std::sync::Mutex;
 use tauri::Manager;
+use tauri::Listener;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -179,6 +180,33 @@ pub fn run() {
             } else {
                 log::warn!("Hermes Agent not installed, skipping startup, waiting for frontend guide");
             }
+
+            // Listen for workflow auto_push completion events and trigger next step
+            let app_wf = app.handle().clone();
+            app.listen("workflow_auto_push_completed", move |event| {
+                let payload = event.payload().to_string();
+                match serde_json::from_str::<serde_json::Value>(&payload) {
+                    Ok(data) => {
+                        let project_id = data["projectId"].as_str().unwrap_or("").to_string();
+                        let role_id = data["roleId"].as_str().unwrap_or("").to_string();
+                        if !project_id.is_empty() && !role_id.is_empty() {
+                            let app_trigger = app_wf.clone();
+                            let project_trigger = project_id.clone();
+                            let role_trigger = role_id.clone();
+                            tauri::async_runtime::spawn(async move {
+                                log::info!("workflow_auto_push_completed: triggering next step for project_id={}, from_role_id={}", project_trigger, role_trigger);
+                                match commands::project::trigger_workflow_execution(app_trigger, project_trigger, role_trigger, None, None, Some(true)).await {
+                                    Ok(result) => log::info!("workflow_auto_push_completed: triggered={}, pending={}", result.triggered_workflows.len(), result.pending_approvals.len()),
+                                    Err(e) => log::error!("workflow_auto_push_completed: error={}", e),
+                                }
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("workflow_auto_push_completed: failed to parse payload: {}", e);
+                    }
+                }
+            });
 
             Ok(())
         })

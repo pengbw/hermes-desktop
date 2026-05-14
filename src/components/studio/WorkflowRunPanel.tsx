@@ -80,11 +80,21 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       loadRuns();
       if (selectedRunId) loadRunStatus(selectedRunId);
     });
+    const unlisten5 = listen("workflow_auto_push_completed", () => {
+      loadRuns();
+      if (selectedRunId) loadRunStatus(selectedRunId);
+    });
+    const unlisten6 = listen("artifacts_updated", () => {
+      loadRuns();
+      if (selectedRunId) loadRunStatus(selectedRunId);
+    });
     return () => {
       unlisten.then((fn) => fn());
       unlisten2.then((fn) => fn());
       unlisten3.then((fn) => fn());
       unlisten4.then((fn) => fn());
+      unlisten5.then((fn) => fn());
+      unlisten6.then((fn) => fn());
     };
   }, [loadRuns, loadRunStatus, selectedRunId]);
 
@@ -336,7 +346,9 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
                         {step.status === "pending" && "⏳"}
                       </div>
                       <div className={styles.wfRunStepInfo}>
-                        <span className={styles.wfRunStepRole}>{getRoleName(step.roleId)}</span>
+                        <span className={styles.wfRunStepRole}>
+                          {step.action === "start" ? "🚀 开始" : getRoleName(step.roleId)}
+                        </span>
                         <span
                           className={styles.wfRunStepStatus}
                           style={{ color: stepStatus.color }}
@@ -348,6 +360,9 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
                         )}
                         {step.action === "auto_push" && (
                           <span className={styles.wfRunStepAction}>🔄 自动</span>
+                        )}
+                        {step.action === "start" && (
+                          <span className={styles.wfRunStepAction}>🏁 起始</span>
                         )}
                       </div>
                     </div>
@@ -377,7 +392,11 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
                         <textarea
                           value={confirmComment}
                           onChange={(e) => setConfirmComment(e.target.value)}
-                          placeholder="添加备注（可选）..."
+                          placeholder={
+                            isPendingConfirm
+                              ? "通过：评语可选；驳回：评语必填"
+                              : "添加备注（可选）..."
+                          }
                           rows={2}
                           className={styles.taskDetailTextarea}
                         />
@@ -391,8 +410,10 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
                           <button
                             className={styles.wfRunConfirmReject}
                             onClick={() => handleConfirmStep(runStatus.run.id, false)}
+                            disabled={!confirmComment.trim()}
+                            style={{ opacity: confirmComment.trim() ? 1 : 0.5 }}
                           >
-                            ❌ 拒绝
+                            ❌ 驳回
                           </button>
                         </div>
                       </div>

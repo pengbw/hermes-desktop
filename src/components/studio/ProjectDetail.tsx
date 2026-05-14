@@ -159,9 +159,16 @@ function ProjectDetail({
   const [autoDelegateRunning, setAutoDelegateRunning] = useState(false);
   const [wfSubTab, setWfSubTab] = useState<"designer" | "runs">("designer");
   const [overviewSubTab, setOverviewSubTab] = useState<"tasks" | "artifacts" | "members">("tasks");
-  const [rejectModal, setRejectModal] = useState<{ artifactId: string; open: boolean }>({
-    artifactId: "",
+  const [approvalModal, setApprovalModal] = useState<{
+    open: boolean;
+    artifact: ProjectArtifact | null;
+    mode: "approve" | "reject" | null;
+    comment: string;
+  }>({
     open: false,
+    artifact: null,
+    mode: null,
+    comment: "",
   });
   const [chatRoleSkills, setChatRoleSkills] = useState<string[]>([]);
   const [projectFileRecords, setProjectFileRecords] = useState<ProjectFileRecord[]>([]);
@@ -213,26 +220,14 @@ function ProjectDetail({
       chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
     }
   }, [projectMessages, projectChatStreamed]);
-  const [rejectReason, setRejectReason] = useState("");
 
   const handleArtifactApprove = async (artifactId: string, approved: boolean) => {
     try {
       if (approved) {
         await invoke("approve_project_artifact", { id: artifactId });
-        const artifact = projectArtifacts.find((a) => a.id === artifactId);
-        if (artifact) {
-          try {
-            await invoke("trigger_workflow_execution", {
-              projectId: project.id,
-              fromRoleId: artifact.roleId,
-              artifactType: artifact.artifactType || undefined,
-            });
-          } catch (wfErr) {
-            console.warn("No downstream workflow found:", wfErr);
-          }
-        }
       } else {
-        setRejectModal({ artifactId, open: true });
+        const artifact = projectArtifacts.find((a) => a.id === artifactId);
+        setApprovalModal({ open: true, artifact: artifact || null, mode: "reject", comment: "" });
         return;
       }
       const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", {
@@ -245,22 +240,37 @@ function ProjectDetail({
   };
   void handleArtifactApprove;
 
-  const handleArtifactReject = async () => {
-    if (!rejectModal.artifactId) return;
+  const openApprovalModal = (artifact: ProjectArtifact, mode: "approve" | "reject") => {
+    setApprovalModal({ open: true, artifact, mode, comment: "" });
+  };
+
+  const closeApprovalModal = () => {
+    setApprovalModal({ open: false, artifact: null, mode: null, comment: "" });
+  };
+
+  const submitApproval = async () => {
+    if (!approvalModal.artifact || !approvalModal.mode) return;
     try {
-      await invoke("reject_project_artifact", {
-        id: rejectModal.artifactId,
-        reason: rejectReason || "需要修改",
-      });
+      if (approvalModal.mode === "approve") {
+        await invoke("approve_project_artifact", {
+          id: approvalModal.artifact.id,
+          comment: approvalModal.comment || undefined,
+        });
+      } else {
+        if (!approvalModal.comment.trim()) return; // reject requires comment
+        await invoke("reject_project_artifact", {
+          id: approvalModal.artifact.id,
+          reason: approvalModal.comment.trim(),
+        });
+      }
       const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", {
         projectId: project.id,
       });
       onArtifactsUpdate(artifacts);
     } catch (err) {
-      console.error("Failed to reject artifact:", err);
+      console.error("Failed to submit approval:", err);
     } finally {
-      setRejectModal({ artifactId: "", open: false });
-      setRejectReason("");
+      closeApprovalModal();
     }
   };
 
@@ -782,6 +792,7 @@ function ProjectDetail({
                               const isWorking =
                                 memberArtifact?.status === "in_progress" ||
                                 memberArtifact?.status === "pending";
+                              const isWaitingApproval = memberArtifact?.status === "submitted";
                               return (
                                 <div key={member.id} className={styles.studioArtifactListItem}>
                                   <span className={styles.studioArtifactListItemIcon}>
@@ -803,13 +814,27 @@ function ProjectDetail({
                                           工作中
                                         </span>
                                       )}
+                                      {isWaitingApproval && (
+                                        <span
+                                          className={styles.studioArtifactListItemPath}
+                                          style={{ color: "#fdcb6e" }}
+                                        >
+                                          待审批
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                   <span
                                     className={styles.studioArtifactListItemStatus}
-                                    style={{ color: isWorking ? "#0984e3" : "#00b894" }}
+                                    style={{
+                                      color: isWorking
+                                        ? "#0984e3"
+                                        : isWaitingApproval
+                                          ? "#fdcb6e"
+                                          : "#00b894",
+                                    }}
                                   >
-                                    {isWorking ? "忙碌" : "空闲"}
+                                    {isWorking ? "忙碌" : isWaitingApproval ? "待审批" : "空闲"}
                                   </span>
                                   {memberArtifact?.status === "submitted" && (
                                     <div style={{ display: "flex", gap: 6, marginLeft: 8 }}>
@@ -823,22 +848,9 @@ function ProjectDetail({
                                           color: "#fff",
                                           cursor: "pointer",
                                         }}
-                                        onClick={async () => {
-                                          try {
-                                            await invoke("approve_project_artifact", {
-                                              id: memberArtifact.id,
-                                            });
-                                            const artifacts = await invoke<ProjectArtifact[]>(
-                                              "list_project_artifacts",
-                                              { projectId: project.id }
-                                            );
-                                            onArtifactsUpdate(artifacts);
-                                          } catch (err) {
-                                            console.error("Failed to approve:", err);
-                                          }
-                                        }}
+                                        onClick={() => openApprovalModal(memberArtifact, "approve")}
                                       >
-                                        ✓ 通过
+                                        ✓ 审批
                                       </button>
                                       <button
                                         style={{
@@ -850,21 +862,7 @@ function ProjectDetail({
                                           color: "#fff",
                                           cursor: "pointer",
                                         }}
-                                        onClick={async () => {
-                                          try {
-                                            await invoke("reject_project_artifact", {
-                                              id: memberArtifact.id,
-                                              reason: "需要修改",
-                                            });
-                                            const artifacts = await invoke<ProjectArtifact[]>(
-                                              "list_project_artifacts",
-                                              { projectId: project.id }
-                                            );
-                                            onArtifactsUpdate(artifacts);
-                                          } catch (err) {
-                                            console.error("Failed to reject:", err);
-                                          }
-                                        }}
+                                        onClick={() => openApprovalModal(memberArtifact, "reject")}
                                       >
                                         ✗ 驳回
                                       </button>
@@ -900,9 +898,15 @@ function ProjectDetail({
                           const memberArtifact = projectArtifacts.find(
                             (a) => a.roleId === member.roleId
                           );
+                          const hasActiveTask = projectTasks.some(
+                            (t) =>
+                              t.assignee === member.roleId &&
+                              (t.status === "ready" || t.status === "running")
+                          );
                           const isWorking =
                             memberArtifact?.status === "in_progress" ||
-                            memberArtifact?.status === "pending";
+                            memberArtifact?.status === "pending" ||
+                            hasActiveTask;
                           return {
                             id: member.id,
                             name: getRoleName(member.roleId),
@@ -1251,44 +1255,104 @@ function ProjectDetail({
         </div>
       </div>
 
-      {rejectModal.open && (
-        <div
-          className={styles.studioModalOverlay}
-          onClick={() => {
-            setRejectModal({ artifactId: "", open: false });
-            setRejectReason("");
-          }}
-        >
+      {approvalModal.open && approvalModal.artifact && (
+        <div className={styles.studioModalOverlay} onClick={closeApprovalModal}>
           <div
             className={styles.studioModal + " " + styles.studioRejectModal}
             onClick={(e) => e.stopPropagation()}
+            style={{ width: 480 }}
           >
-            <h3>打回产物</h3>
-            <p className={styles.studioRejectHint}>请输入打回原因，角色将根据原因进行修改：</p>
+            <h3>{approvalModal.mode === "approve" ? "✅ 审批通过" : "❌ 驳回产物"}</h3>
+
+            {/* Artifact name with click to view details */}
+            <div style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 12px",
+                  background: "rgba(0,0,0,0.06)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                }}
+                onClick={() => {
+                  const art = approvalModal.artifact;
+                  if (art?.filePath) {
+                    onPreviewFile(art.filePath, art.title || art.artifactType);
+                  } else if (art?.content) {
+                    onPreviewFile("", art.title || art.artifactType);
+                  }
+                }}
+              >
+                <span style={{ fontSize: 20 }}>📦</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: "#2d3436" }}>
+                    {approvalModal.artifact.title || approvalModal.artifact.artifactType}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#636e72", marginTop: 2 }}>
+                    {getRoleName(approvalModal.artifact.roleId)}
+                    {approvalModal.artifact.filePath && (
+                      <span style={{ marginLeft: 8 }}>📄 {approvalModal.artifact.filePath}</span>
+                    )}
+                  </div>
+                </div>
+                {(approvalModal.artifact.filePath || approvalModal.artifact.content) && (
+                  <span style={{ fontSize: 12, color: "#0984e3", whiteSpace: "nowrap" }}>
+                    查看详情 →
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {approvalModal.mode === "approve" ? (
+              <p className={styles.studioRejectHint}>
+                确认通过该产物？通过后将自动流转到下游节点。评语为选填项。
+              </p>
+            ) : (
+              <p className={styles.studioRejectHint}>
+                请输入驳回原因（必填），AI角色将根据评语自动修改完善产物并重新提交审批：
+              </p>
+            )}
+
             <textarea
               className={styles.studioRejectTextarea}
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="请输入打回原因..."
+              value={approvalModal.comment}
+              onChange={(e) => setApprovalModal((prev) => ({ ...prev, comment: e.target.value }))}
+              placeholder={
+                approvalModal.mode === "approve"
+                  ? "添加审批评语（可选）..."
+                  : "请输入驳回原因，描述需要修改的内容（必填）..."
+              }
               rows={4}
-              autoFocus
+              autoFocus={approvalModal.mode === "reject"}
             />
+
             <div className={styles.studioModalActions}>
               <button
                 className={styles.studioModalBtn + " " + styles.cancel}
-                onClick={() => {
-                  setRejectModal({ artifactId: "", open: false });
-                  setRejectReason("");
-                }}
+                onClick={closeApprovalModal}
               >
                 取消
               </button>
-              <button
-                className={styles.studioModalBtn + " " + styles.confirm + " " + styles.reject}
-                onClick={handleArtifactReject}
-              >
-                确认打回
-              </button>
+              {approvalModal.mode === "approve" ? (
+                <button
+                  className={styles.studioModalBtn + " " + styles.confirm}
+                  onClick={submitApproval}
+                  style={{ background: "#00b894" }}
+                >
+                  ✓ 确认通过
+                </button>
+              ) : (
+                <button
+                  className={styles.studioModalBtn + " " + styles.confirm + " " + styles.reject}
+                  onClick={submitApproval}
+                  disabled={!approvalModal.comment.trim()}
+                  style={{ opacity: approvalModal.comment.trim() ? 1 : 0.5 }}
+                >
+                  ✗ 确认驳回
+                </button>
+              )}
             </div>
           </div>
         </div>

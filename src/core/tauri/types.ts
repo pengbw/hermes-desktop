@@ -125,15 +125,28 @@ export interface UpdateProjectRequest {
 export interface CreateProjectTaskRequest {
   projectId: string;
   title: string;
-  description: string;
-  assigneeId?: string;
+  body?: string;
+  assignee?: string;
+  status?: string;
+  priority?: number;
+  parentTaskId?: string;
+  skills?: string;
+  maxRetries?: number;
+  workspaceKind?: string;
+  workspacePath?: string;
 }
 
 export interface UpdateProjectTaskRequest {
-  status?: string;
   title?: string;
-  description?: string;
-  assigneeId?: string;
+  body?: string;
+  assignee?: string;
+  status?: string;
+  priority?: number;
+  result?: string;
+  skills?: string;
+  maxRetries?: number;
+  workspaceKind?: string;
+  workspacePath?: string;
 }
 
 export interface KnowledgeConfig {

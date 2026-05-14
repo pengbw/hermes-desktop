@@ -342,11 +342,21 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             title TEXT NOT NULL,
             body TEXT NOT NULL DEFAULT '',
             assignee TEXT NOT NULL DEFAULT '',
-            status TEXT NOT NULL DEFAULT 'triage',
+            status TEXT NOT NULL DEFAULT 'todo',
             priority INTEGER NOT NULL DEFAULT 0,
             parent_task_id TEXT,
             artifact_id TEXT,
             result TEXT NOT NULL DEFAULT '',
+            claim_lock TEXT NOT NULL DEFAULT '',
+            claim_expire_at INTEGER NOT NULL DEFAULT 0,
+            started_at INTEGER,
+            completed_at INTEGER,
+            skills TEXT NOT NULL DEFAULT '[]',
+            max_retries INTEGER NOT NULL DEFAULT 0,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            workspace_kind TEXT NOT NULL DEFAULT '',
+            workspace_path TEXT NOT NULL DEFAULT '',
+            board_id TEXT NOT NULL DEFAULT '',
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -1151,7 +1161,7 @@ pub struct CreateProjectMessageRequest {
     pub message_type: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectTask {
     pub id: String,

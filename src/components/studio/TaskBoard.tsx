@@ -19,6 +19,15 @@ const TASK_COLUMNS = [
   { key: "blocked", label: "阻塞", color: "#e17055" },
 ];
 
+const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
+  triage: ["todo", "blocked"],
+  todo: ["ready", "blocked"],
+  ready: ["running", "blocked"],
+  running: ["done", "blocked"],
+  blocked: ["todo", "ready"],
+  done: [],
+};
+
 interface TaskBoardProps {
   tasks: ProjectTask[];
   projectId: string;
@@ -467,6 +476,14 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
   };
 
   const handleUpdateTaskStatus = async (taskId: string, status: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (task) {
+      const allowed = VALID_STATUS_TRANSITIONS[task.status] || [];
+      if (allowed.length > 0 && !allowed.includes(status)) {
+        console.warn(`Invalid status transition: ${task.status} -> ${status}`);
+        return;
+      }
+    }
     try {
       await invoke("update_project_task", { id: taskId, req: { status } });
       refreshTasks();
@@ -586,9 +603,10 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
                             🤚 {claimerRole.name}
                           </span>
                         )}
-                        {task.status === "running" && task.claimLock && (
-                          <span className={styles.studioKanbanCardDispatched}>🚀 已派发</span>
-                        )}
+                        {(task.status === "ready" || task.status === "running") &&
+                          task.claimLock && (
+                            <span className={styles.studioKanbanCardDispatched}>🚀 已派发</span>
+                          )}
                       </div>
                       <div className={styles.studioTaskCardActions}>
                         <button
