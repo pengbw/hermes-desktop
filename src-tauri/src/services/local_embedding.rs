@@ -1,8 +1,17 @@
 use std::sync::Mutex;
 use tokenizers::Tokenizer;
 
+#[cfg(not(target_os = "windows"))]
 enum EmbeddingBackend {
     Onnx(ort::session::Session),
+    Candle {
+        model: candle_transformers::models::bert::BertModel,
+        device: candle_core::Device,
+    },
+}
+
+#[cfg(target_os = "windows")]
+enum EmbeddingBackend {
     Candle {
         model: candle_transformers::models::bert::BertModel,
         device: candle_core::Device,
@@ -51,18 +60,21 @@ impl LocalEmbeddingModel {
         };
         let _ = tokenizer.with_truncation(Some(trunc));
 
+        #[cfg(not(target_os = "windows"))]
         if onnx_path.exists() {
             log::info!("[local_embedding] 使用 ONNX Runtime 后端");
             let session = ort::session::Session::builder()
                 .map_err(|e| format!("创建ONNX会话构建器失败: {}", e))?
                 .commit_from_file(&onnx_path)
                 .map_err(|e| format!("加载ONNX模型失败: {}", e))?;
-            Ok(LocalEmbeddingModel {
+            return Ok(LocalEmbeddingModel {
                 backend: EmbeddingBackend::Onnx(session),
                 tokenizer,
-            })
-        } else if safetensors_path.exists() && config_path.exists() {
-            log::info!("[local_embedding] ONNX模型不存在，使用 candle CPU 后端");
+            });
+        }
+
+        if safetensors_path.exists() && config_path.exists() {
+            log::info!("[local_embedding] 使用 candle CPU 后端");
             let device = candle_core::Device::Cpu;
 
             let config_str = std::fs::read_to_string(&config_path)
@@ -125,6 +137,7 @@ impl LocalEmbeddingModel {
         );
 
         match &mut self.backend {
+            #[cfg(not(target_os = "windows"))]
             EmbeddingBackend::Onnx(ref mut session) => {
                 Self::embed_onnx(session, &all_token_ids, &all_attention_masks, max_len)
             }
@@ -134,6 +147,7 @@ impl LocalEmbeddingModel {
         }
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn embed_onnx(
         session: &mut ort::session::Session,
         all_token_ids: &[Vec<u32>],
@@ -244,6 +258,7 @@ impl LocalEmbeddingModel {
             .map_err(|e| format!("转换embedding向量失败: {}", e))
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn mean_pool_and_normalize(
         flat: &[f32],
         batch_size: usize,

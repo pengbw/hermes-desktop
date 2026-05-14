@@ -36,12 +36,14 @@ sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls", "deriv
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 futures-util = "0.3"
 base64 = "0.22"
-ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
 candle-core = "0.10.2"
 candle-nn = "0.10.2"
 candle-transformers = "0.10.2"
-ndarray = "0.17"
 tokenizers = "0.21"
 notify = { version = "7", features = ["macos_kqueue"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
+ndarray = "0.17"
 
 [target.'cfg(target_os = "macos")'.dependencies]
