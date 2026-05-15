@@ -34,6 +34,16 @@ body {
   user-select: none;
 }
 
+input,
+textarea,
+[contenteditable="true"],
+pre,
+code,
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* 滚动条样式 */
 ::-webkit-scrollbar {
   width: 6px;

@@ -1590,3 +1590,38 @@ pub struct CreateEmptyProjectRequest {
     pub icon: Option<String>,
     pub office_theme: Option<String>,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillCatalogItem {
+    pub id: String,
+    pub name: String,
+    pub identifier: String,
+    pub category: String,
+    pub category_label: String,
+    pub description: String,
+    pub source: String,
+    pub trust: String,
+    pub version: String,
+    pub tags: String,
+    pub config_schema: String,
+    pub user_config: String,
+    pub sort_order: i32,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogSkillInput {
+    pub name: String,
+    pub identifier: String,
+    pub category: Option<String>,
+    pub category_label: Option<String>,
+    pub description: Option<String>,
+    pub source: Option<String>,
+    pub trust: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub config_schema: Option<serde_json::Value>,
+    pub sort_order: Option<i32>,
+}

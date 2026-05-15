@@ -486,6 +486,42 @@ export interface BrowseResult {
   total_skills: number;
 }
 
+export interface ConfigSchemaField {
+  type: string;
+  label: string;
+  required: boolean;
+  secret: boolean;
+  url?: string;
+  description: string;
+}
+
+export interface CatalogSkill {
+  id: string;
+  name: string;
+  identifier: string;
+  category: string;
+  categoryLabel: string;
+  description: string;
+  source: string;
+  trust: string;
+  version: string;
+  tags: string[];
+  configSchema: Record<string, ConfigSchemaField> | null;
+  userConfig: Record<string, string>;
+  installed: boolean;
+  sortOrder: number;
+}
+
+export interface SkillCatalogResult {
+  skills: CatalogSkill[];
+  total: number;
+  installedCount: number;
+  notInstalledCount: number;
+  categories: SkillCategory[];
+  page: number;
+  totalPages: number;
+}
+
 export interface InstallProgress {
   line: string;
   done: boolean;

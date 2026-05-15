@@ -58,7 +58,8 @@
     "targets": "all",
     "resources": {
       "hermes-agent-source/": "./",
-      "models/all-MiniLM-L6-v2/model.onnx": "models/all-MiniLM-L6-v2/model.onnx"
+      "models/all-MiniLM-L6-v2/model.onnx": "models/all-MiniLM-L6-v2/model.onnx",
+      "resources/skill-catalog.json": "resources/skill-catalog.json"
     },
     "icon": [
       "icons/32x32.png",

@@ -402,13 +402,13 @@ fn all_migrations() -> Vec<Migration> {
         },
         // v59: 任务关联流程组
         Migration {
-            version: 59,
+            version: 62,
             description: "add workflow_group_id to project_tasks for task-workflow group association",
             sql: "ALTER TABLE project_tasks ADD COLUMN workflow_group_id TEXT",
         },
         // v60: 项目成员技能表
         Migration {
-            version: 60,
+            version: 63,
             description: "create project_member_skills table for per-project member skill binding",
             sql: r#"
                 CREATE TABLE IF NOT EXISTS project_member_skills (
@@ -423,6 +423,32 @@ fn all_migrations() -> Vec<Migration> {
                 );
                 CREATE INDEX IF NOT EXISTS idx_pms_project ON project_member_skills(project_id);
                 CREATE INDEX IF NOT EXISTS idx_pms_member ON project_member_skills(member_id);
+            "#,
+        },
+        Migration {
+            version: 64,
+            description: "create skill_catalog table",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS skill_catalog (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    identifier TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT '',
+                    category_label TEXT NOT NULL DEFAULT '',
+                    description TEXT NOT NULL DEFAULT '',
+                    source TEXT NOT NULL DEFAULT 'hub',
+                    trust TEXT NOT NULL DEFAULT '',
+                    version TEXT NOT NULL DEFAULT '',
+                    tags TEXT NOT NULL DEFAULT '[]',
+                    config_schema TEXT NOT NULL DEFAULT '{}',
+                    user_config TEXT NOT NULL DEFAULT '{}',
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL DEFAULT 0,
+                    updated_at INTEGER NOT NULL DEFAULT 0,
+                    UNIQUE(identifier)
+                );
+                CREATE INDEX IF NOT EXISTS idx_skill_catalog_category ON skill_catalog(category);
+                CREATE INDEX IF NOT EXISTS idx_skill_catalog_source ON skill_catalog(source);
             "#,
         },
     ]
@@ -498,6 +524,40 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
                     );
                     return Err(e);
                 }
+            }
+        }
+    }
+
+    repair_missing_columns(pool).await?;
+
+    Ok(())
+}
+
+async fn repair_missing_columns(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    let repairs: &[(&str, &str)] = &[
+        ("project_workflows", "is_primary BOOLEAN NOT NULL DEFAULT 0"),
+        ("project_workflows", "group_id TEXT"),
+        ("project_artifacts", "workflow_run_id TEXT"),
+        ("project_artifacts", "step_index INTEGER"),
+        ("project_tasks", "workflow_group_id TEXT"),
+        ("workflow_runs", "task_id TEXT NOT NULL DEFAULT ''"),
+    ];
+
+    for (table, col_def) in repairs {
+        let col_name = col_def.split_whitespace().next().unwrap_or("");
+        if col_name.is_empty() {
+            continue;
+        }
+        let check_sql = format!("PRAGMA table_info({})", table);
+        let rows: Vec<(i32, String, String, i32, Option<String>, i32)> =
+            sqlx::query_as(&check_sql).fetch_all(pool).await?;
+        let exists = rows.iter().any(|(_, name, _, _, _, _)| name == col_name);
+        if !exists {
+            let alter_sql = format!("ALTER TABLE {} ADD COLUMN {}", table, col_def);
+            log::warn!("Repairing missing column: {}", alter_sql);
+            match sqlx::query(&alter_sql).execute(pool).await {
+                Ok(_) => log::info!("Repaired column {}.{}", table, col_name),
+                Err(e) => log::error!("Failed to repair column {}.{}: {}", table, col_name, e),
             }
         }
     }
