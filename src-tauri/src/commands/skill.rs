@@ -1,6 +1,15 @@
-use crate::commands::helpers::{hermes_command, strip_ansi};
-use serde::Serialize;
+use crate::commands::helpers::{hermes_command, strip_ansi, AppState};
+use crate::database::models::CatalogSkillInput;
+use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
+use std::collections::{HashMap, HashSet};
 use std::process::Stdio;
+use tauri::{AppHandle, Manager};
+
+fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
+    let state = app.state::<AppState>();
+    Ok(state.db_pool.clone())
+}
 
 #[derive(Serialize, Clone)]
 struct HermesSkill {
@@ -27,7 +36,7 @@ pub struct HermesSkillsResult {
 }
 
 #[derive(Serialize, Clone)]
-struct SkillCategory {
+pub struct SkillCategory {
     id: String,
     name: String,
     description: String,
@@ -491,4 +500,535 @@ pub async fn inspect_skill(identifier: String) -> Result<String, String> {
     }
 
     Err(format!("Failed to view details: skill {} not found", identifier))
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogSkill {
+    pub id: String,
+    pub name: String,
+    pub identifier: String,
+    pub category: String,
+    pub category_label: String,
+    pub description: String,
+    pub source: String,
+    pub trust: String,
+    pub version: String,
+    pub tags: Vec<String>,
+    pub config_schema: serde_json::Value,
+    pub user_config: serde_json::Value,
+    pub installed: bool,
+    pub sort_order: i32,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillCatalogResult {
+    pub skills: Vec<CatalogSkill>,
+    pub total: usize,
+    pub installed_count: usize,
+    pub not_installed_count: usize,
+    pub categories: Vec<SkillCategory>,
+    pub page: usize,
+    pub total_pages: usize,
+}
+
+async fn get_hermes_installed_identifiers() -> Result<HashSet<String>, String> {
+    let output = hermes_command()
+        .args(&["skills", "list"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("获取已安装技能失败: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let mut installed = HashSet::new();
+
+    for line in stdout.lines() {
+        let clean = strip_ansi(line);
+        let clean = clean.trim();
+        if clean.starts_with('\u{2502}') || clean.starts_with("|") {
+            let sep = if clean.contains('\u{2502}') { "\u{2502}" } else { "|" };
+            let parts: Vec<&str> = clean.split(sep)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if parts.len() >= 4 {
+                let name = parts[0].to_string();
+                if name == "Name" || name.contains('\u{2501}') {
+                    continue;
+                }
+                installed.insert(name);
+            }
+        }
+    }
+
+    Ok(installed)
+}
+
+#[tauri::command]
+pub async fn list_skill_catalog(
+    app: AppHandle,
+    search: Option<String>,
+    category: Option<String>,
+    source: Option<String>,
+    installed_filter: Option<String>,
+    page: Option<usize>,
+    page_size: Option<usize>,
+) -> Result<SkillCatalogResult, String> {
+    let pool = get_pool(&app)?;
+
+    let installed_set = get_hermes_installed_identifiers().await.unwrap_or_default();
+
+    let mut query_str = String::from("SELECT id, name, identifier, category, category_label, description, source, trust, version, tags, config_schema, user_config, sort_order, created_at, updated_at FROM skill_catalog WHERE 1=1");
+    let mut bind_search: Option<String> = None;
+    let mut bind_category: Option<String> = None;
+    let mut bind_source: Option<String> = None;
+
+    if search.is_some() {
+        query_str.push_str(" AND (name LIKE ? OR description LIKE ? OR category LIKE ? OR identifier LIKE ?)");
+        bind_search = search.clone();
+    }
+    if category.is_some() {
+        query_str.push_str(" AND category = ?");
+        bind_category = category.clone();
+    }
+    if source.is_some() {
+        query_str.push_str(" AND source = ?");
+        bind_source = source.clone();
+    }
+    query_str.push_str(" ORDER BY sort_order ASC, name ASC");
+
+    let search_pattern = bind_search.as_ref().map(|s| format!("%{}%", s));
+
+    let mut q = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, String, String, i32, i64, i64)>(&query_str);
+    if let Some(ref pattern) = search_pattern {
+        q = q.bind(pattern).bind(pattern).bind(pattern).bind(pattern);
+    }
+    if let Some(ref c) = bind_category { q = q.bind(c); }
+    if let Some(ref s) = bind_source { q = q.bind(s); }
+
+    let rows = q.fetch_all(&pool).await.map_err(|e| e.to_string())?;
+
+    let mut all_skills: Vec<CatalogSkill> = rows.into_iter().map(|(id, name, identifier, category, category_label, description, source, trust, version, tags_str, config_schema_str, user_config_str, sort_order, _created_at, _updated_at)| {
+        let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
+        let config_schema: serde_json::Value = serde_json::from_str(&config_schema_str).unwrap_or(serde_json::Value::Null);
+        let user_config: serde_json::Value = serde_json::from_str(&user_config_str).unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+        let installed = installed_set.contains(&identifier) || installed_set.contains(&name);
+        CatalogSkill { id, name, identifier, category, category_label, description, source, trust, version, tags, config_schema, user_config, installed, sort_order }
+    }).collect();
+
+    let installed_names_in_catalog: HashSet<String> = all_skills.iter()
+        .filter(|s| s.installed)
+        .map(|s| s.identifier.clone())
+        .chain(all_skills.iter().filter(|s| s.installed).map(|s| s.name.clone()))
+        .collect();
+
+    for hermes_name in &installed_set {
+        if !installed_names_in_catalog.contains(hermes_name) {
+            all_skills.push(CatalogSkill {
+                id: format!("hermes-{}", hermes_name),
+                name: hermes_name.clone(),
+                identifier: hermes_name.clone(),
+                category: String::new(),
+                category_label: String::new(),
+                description: String::new(),
+                source: "hermes-dynamic".to_string(),
+                trust: String::new(),
+                version: String::new(),
+                tags: vec![],
+                config_schema: serde_json::Value::Null,
+                user_config: serde_json::Value::Object(serde_json::Map::new()),
+                installed: true,
+                sort_order: 9999,
+            });
+        }
+    }
+
+    let filter = installed_filter.unwrap_or_else(|| "all".to_string());
+    let filtered: Vec<CatalogSkill> = all_skills.iter().filter(|s| {
+        match filter.as_str() {
+            "installed" => s.installed,
+            "not_installed" => !s.installed,
+            _ => true,
+        }
+    }).cloned().collect();
+
+    let total = filtered.len();
+    let installed_count = filtered.iter().filter(|s| s.installed).count();
+    let not_installed_count = total - installed_count;
+
+    let mut cat_counts: HashMap<String, (String, usize)> = HashMap::new();
+    for s in &all_skills {
+        if !s.category.is_empty() {
+            cat_counts.entry(s.category.clone())
+                .and_modify(|(_label, count)| *count += 1)
+                .or_insert((s.category_label.clone(), 1));
+        }
+    }
+    let mut categories: Vec<SkillCategory> = cat_counts.into_iter().map(|(id, (name, count))| {
+        let icon = category_icon(&id);
+        SkillCategory { id, name, description: String::new(), icon, count }
+    }).collect();
+    categories.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let ps = page_size.unwrap_or(20);
+    let p = page.unwrap_or(1);
+    let total_pages = if total == 0 { 1 } else { (total + ps - 1) / ps };
+    let start = (p - 1) * ps;
+    let paged: Vec<CatalogSkill> = filtered.into_iter().skip(start).take(ps).collect();
+
+    Ok(SkillCatalogResult {
+        skills: paged,
+        total,
+        installed_count,
+        not_installed_count,
+        categories,
+        page: p,
+        total_pages,
+    })
+}
+
+#[tauri::command]
+pub async fn add_skill_to_catalog(app: AppHandle, input: CatalogSkillInput) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+    let category = input.category.unwrap_or_default();
+    let category_label = input.category_label.unwrap_or_default();
+    let description = input.description.unwrap_or_default();
+    let source = input.source.unwrap_or_else(|| "hub".to_string());
+    let trust = input.trust.unwrap_or_default();
+    let tags = serde_json::to_string(&input.tags.unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
+    let config_schema = input.config_schema.unwrap_or(serde_json::Value::Null).to_string();
+    let sort_order = input.sort_order.unwrap_or(0);
+
+    sqlx::query("INSERT OR REPLACE INTO skill_catalog (id, name, identifier, category, category_label, description, source, trust, version, tags, config_schema, user_config, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, '{}', ?, ?, ?)")
+        .bind(&id)
+        .bind(&input.name)
+        .bind(&input.identifier)
+        .bind(&category)
+        .bind(&category_label)
+        .bind(&description)
+        .bind(&source)
+        .bind(&trust)
+        .bind(&tags)
+        .bind(&config_schema)
+        .bind(sort_order)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn remove_skill_from_catalog(app: AppHandle, id: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    sqlx::query("DELETE FROM skill_catalog WHERE id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_skill_in_catalog(app: AppHandle, id: String, input: CatalogSkillInput) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+    let category = input.category.unwrap_or_default();
+    let category_label = input.category_label.unwrap_or_default();
+    let description = input.description.unwrap_or_default();
+    let source = input.source.unwrap_or_else(|| "hub".to_string());
+    let trust = input.trust.unwrap_or_default();
+    let tags = serde_json::to_string(&input.tags.unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
+    let config_schema = input.config_schema.unwrap_or(serde_json::Value::Null).to_string();
+    let sort_order = input.sort_order.unwrap_or(0);
+
+    sqlx::query("UPDATE skill_catalog SET name=?, identifier=?, category=?, category_label=?, description=?, source=?, trust=?, tags=?, config_schema=?, sort_order=?, updated_at=? WHERE id=?")
+        .bind(&input.name)
+        .bind(&input.identifier)
+        .bind(&category)
+        .bind(&category_label)
+        .bind(&description)
+        .bind(&source)
+        .bind(&trust)
+        .bind(&tags)
+        .bind(&config_schema)
+        .bind(sort_order)
+        .bind(now)
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn batch_import_skills(app: AppHandle, skills: Vec<CatalogSkillInput>) -> Result<usize, String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut count = 0usize;
+
+    for input in skills {
+        let id = uuid::Uuid::new_v4().to_string();
+        let category = input.category.unwrap_or_default();
+        let category_label = input.category_label.unwrap_or_default();
+        let description = input.description.unwrap_or_default();
+        let source = input.source.unwrap_or_else(|| "hub".to_string());
+        let trust = input.trust.unwrap_or_default();
+        let tags = serde_json::to_string(&input.tags.unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
+        let config_schema = input.config_schema.unwrap_or(serde_json::Value::Null).to_string();
+        let sort_order = input.sort_order.unwrap_or(0);
+
+        let result = sqlx::query("INSERT OR IGNORE INTO skill_catalog (id, name, identifier, category, category_label, description, source, trust, version, tags, config_schema, user_config, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, '{}', ?, ?, ?)")
+            .bind(&id)
+            .bind(&input.name)
+            .bind(&input.identifier)
+            .bind(&category)
+            .bind(&category_label)
+            .bind(&description)
+            .bind(&source)
+            .bind(&trust)
+            .bind(&tags)
+            .bind(&config_schema)
+            .bind(sort_order)
+            .bind(now)
+            .bind(now)
+            .execute(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if result.rows_affected() > 0 {
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
+#[tauri::command]
+pub async fn save_skill_config(app: AppHandle, identifier: String, config: HashMap<String, String>) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+    let config_json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
+
+    sqlx::query("UPDATE skill_catalog SET user_config = ?, updated_at = ? WHERE identifier = ?")
+        .bind(&config_json)
+        .bind(now)
+        .bind(&identifier)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn install_skill_from_catalog(app: AppHandle, identifier: String, config: Option<HashMap<String, String>>) -> Result<String, String> {
+    if let Some(ref cfg) = config {
+        let pool = get_pool(&app)?;
+        let now = chrono::Utc::now().timestamp_millis();
+        let config_json = serde_json::to_string(cfg).map_err(|e| e.to_string())?;
+        sqlx::query("UPDATE skill_catalog SET user_config = ?, updated_at = ? WHERE identifier = ?")
+            .bind(&config_json)
+            .bind(now)
+            .bind(&identifier)
+            .execute(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let install_identifier = if let Ok(Some(actual_identifier)) = search_hermes_skill(&identifier).await {
+        actual_identifier
+    } else {
+        identifier.clone()
+    };
+
+    let mut cmd = hermes_command();
+    cmd.args(&["skills", "install", &install_identifier, "-y", "--force"]);
+
+    if let Some(ref cfg) = config {
+        for (key, value) in cfg {
+            cmd.env(&key, &value);
+        }
+    }
+
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("安装失败: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(stdout)
+    } else {
+        Err(format!("安装失败: {}", stderr))
+    }
+}
+
+async fn search_hermes_skill(query: &str) -> Result<Option<String>, String> {
+    let mut cmd = hermes_command();
+    cmd.args(&["skills", "search", query]);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let output = cmd.output().map_err(|e| format!("搜索技能失败: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+
+    for line in stdout.lines() {
+        let clean = strip_ansi(line);
+        let clean = clean.trim();
+        if clean.starts_with('|') || clean.starts_with("┏") || clean.starts_with("━") {
+            let sep = if clean.contains('┃') { "┃" } else if clean.contains('|') { "|" } else { "\t" };
+            let parts: Vec<&str> = clean.split(sep)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if parts.len() >= 5 {
+                let name = parts[0];
+                if name != "Name" && !name.contains("─") && !name.is_empty() {
+                    let full_identifier = parts[4].to_string();
+                    if !full_identifier.is_empty() {
+                        return Ok(Some(full_identifier));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct CatalogFile {
+    version: String,
+    #[serde(rename = "updatedAt")]
+    updated_at: String,
+    categories: Vec<CatalogCategoryDef>,
+    skills: Vec<CatalogSkillDef>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct CatalogCategoryDef {
+    id: String,
+    label: String,
+    icon: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct CatalogSkillDef {
+    name: String,
+    identifier: String,
+    #[serde(default)]
+    category: String,
+    #[serde(rename = "categoryLabel", default)]
+    category_label: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default = "default_source")]
+    source: String,
+    #[serde(default)]
+    trust: String,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(rename = "configSchema", default)]
+    config_schema: serde_json::Value,
+    #[serde(default)]
+    sort_order: i32,
+}
+
+fn default_source() -> String { "hub".to_string() }
+
+#[tauri::command]
+pub async fn load_skill_catalog_from_file(app: AppHandle) -> Result<usize, String> {
+    let pool = get_pool(&app)?;
+
+    let resource_json = app.path().resource_dir()
+        .map(|p| p.join("resources").join("skill-catalog.json"))
+        .map_err(|e| format!("获取资源目录失败: {}", e))?;
+
+    let content = if resource_json.exists() {
+        std::fs::read_to_string(&resource_json)
+            .map_err(|e| format!("读取 resources/skill-catalog.json 失败: {}", e))?
+    } else {
+        let local_data_dir = dirs::data_local_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("hermes-desktop");
+        let local_json = local_data_dir.join("skill-catalog.json");
+        if local_json.exists() {
+            std::fs::read_to_string(&local_json)
+                .map_err(|e| format!("读取本地 skill-catalog.json 失败: {}", e))?
+        } else {
+            return Err("找不到 skill-catalog.json 文件".to_string());
+        }
+    };
+
+    let catalog: CatalogFile = serde_json::from_str(&content)
+        .map_err(|e| format!("解析 skill-catalog.json 失败: {}", e))?;
+
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut count = 0usize;
+
+    for skill_def in &catalog.skills {
+        let cat_label = if skill_def.category_label.is_empty() {
+            catalog.categories.iter()
+                .find(|c| c.id == skill_def.category)
+                .map(|c| c.label.clone())
+                .unwrap_or_default()
+        } else {
+            skill_def.category_label.clone()
+        };
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let tags = serde_json::to_string(&skill_def.tags).unwrap_or_else(|_| "[]".to_string());
+        let config_schema = skill_def.config_schema.to_string();
+
+        let result = sqlx::query("INSERT OR REPLACE INTO skill_catalog (id, name, identifier, category, category_label, description, source, trust, version, tags, config_schema, user_config, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, '{}', ?, ?, ?)")
+            .bind(&id)
+            .bind(&skill_def.name)
+            .bind(&skill_def.identifier)
+            .bind(&skill_def.category)
+            .bind(&cat_label)
+            .bind(&skill_def.description)
+            .bind(&skill_def.source)
+            .bind(&skill_def.trust)
+            .bind(&tags)
+            .bind(&config_schema)
+            .bind(skill_def.sort_order)
+            .bind(now)
+            .bind(now)
+            .execute(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if result.rows_affected() > 0 {
+            count += 1;
+        }
+    }
+
+    Ok(count)
+}
+
+#[tauri::command]
+pub async fn check_and_init_skill_catalog(app: AppHandle) -> Result<usize, String> {
+    let pool = get_pool(&app)?;
+
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM skill_catalog")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if count.0 > 0 {
+        return Ok(0);
+    }
+
+    load_skill_catalog_from_file(app).await
 }
