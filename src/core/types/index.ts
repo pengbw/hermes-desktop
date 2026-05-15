@@ -371,6 +371,15 @@ export interface RoleSkill {
   createdAt: number;
 }
 
+export interface ProjectMemberSkill {
+  id: string;
+  projectId: string;
+  memberId: string;
+  skillName: string;
+  enabled: boolean;
+  createdAt: number;
+}
+
 export interface ProjectActivity {
   id: string;
   projectId: string;

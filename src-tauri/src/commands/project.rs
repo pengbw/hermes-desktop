@@ -644,27 +644,14 @@ async fn do_dispatch_task(app: &AppHandle, pool: &sqlx::SqlitePool, task_id: &st
     log::info!("do_dispatch_task: role_id={}, project_id={}, is_workflow_start={}", role_id, project_id, is_start);
 
     if is_start {
-        // For start roles, start the workflow run FIRST to ensure artifacts exist before delegation.
-        // trigger_workflow_execution will skip auto_delegate_chat for start triggers,
-        // so we handle delegation here after artifacts are created.
+        // For start roles, start the workflow run which will trigger auto_delegate_chat
         let app_wf = app.clone();
         let project_id_wf = project_id.to_string();
         let initial_msg = title.to_string();
-        match start_workflow_run(app_wf, project_id_wf, initial_msg).await {
+        match start_workflow_run(app_wf, project_id_wf, initial_msg, None, None).await {
             Ok(run) => log::info!("start_workflow_run: created run_id={}, status={}", run.id, run.status),
             Err(e) => log::error!("start_workflow_run: error={}", e),
         }
-
-        // Now delegate to the role - artifacts are guaranteed to exist
-        let app_clone = app.clone();
-        let project_id_clone = project_id.to_string();
-        let role_id_clone = role_id.to_string();
-        let task_message_clone = task_message.clone();
-        tauri::async_runtime::spawn(async move {
-            let _ = crate::commands::project::auto_delegate_chat(
-                app_clone, project_id_clone, "builtin_user".to_string(), role_id_clone, task_message_clone, event_id,
-            ).await;
-        });
     } else {
         // For non-start roles, delegate directly
         let app_clone = app.clone();
@@ -1208,6 +1195,19 @@ pub async fn import_project(app: AppHandle, data: serde_json::Value) -> Result<d
     }
 
     if let Some(workflows) = data["workflows"].as_array() {
+        // 创建主流程组
+        let primary_group_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO project_workflow_groups (id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at) VALUES (?, ?, '主流程', 1, NULL, 0, ?, ?)"
+        )
+        .bind(&primary_group_id)
+        .bind(&id)
+        .bind(now)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
         for (idx, w) in workflows.iter().enumerate() {
             let wid = uuid::Uuid::new_v4().to_string();
             let from_role_id = w["fromRoleId"].as_str().map(|s| s.to_string());
@@ -1220,7 +1220,7 @@ pub async fn import_project(app: AppHandle, data: serde_json::Value) -> Result<d
             let parallel_group = w["parallelGroup"].as_str().unwrap_or("").to_string();
             let sort_order = w["sortOrder"].as_i64().unwrap_or(idx as i64);
 
-            sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)")
+            sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)")
                 .bind(&wid)
                 .bind(&id)
                 .bind(&from_role_id)
@@ -1231,6 +1231,7 @@ pub async fn import_project(app: AppHandle, data: serde_json::Value) -> Result<d
                 .bind(&condition_expr)
                 .bind(&branch_label)
                 .bind(&parallel_group)
+                .bind(&primary_group_id)
                 .bind(sort_order)
                 .bind(now)
                 .execute(&pool)
@@ -1677,33 +1678,34 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
         let project_id_notify = project_id.clone();
         let from_role_id_notify = from_role_id.clone();
         let triggered_clone = triggered.clone();
-        let skip_delegate = is_start_trigger; // Skip auto_delegate_chat for start triggers - do_dispatch_task handles initial delegation
+        let start_trigger = is_start_trigger;
         tauri::async_runtime::spawn(async move {
-            if skip_delegate {
-                log::info!("trigger_workflow_execution: skipping auto_delegate_chat for start trigger, {} workflows triggered", triggered_clone.len());
-            } else {
-                for tw in triggered_clone {
-                    let context_msg = if tw.transition_type == "need_confirm" {
-                        format!(
-                            "工作流审批节点：你需要完成「{}」产物，完成后将提交审批。请基于上游产出开始你的工作。",
-                            tw.artifact_type
-                        )
-                    } else {
-                        format!(
-                            "工作流自动流转：产物「{}」已从上游交付，请基于上游产出开始你的工作。",
-                            tw.artifact_type
-                        )
-                    };
-                    let event_id = format!("wf_notify_{}_{}", project_id_notify, tw.artifact_id);
-                    let _ = crate::commands::project::auto_delegate_chat(
-                        app_notify.clone(),
-                        project_id_notify.clone(),
-                        from_role_id_notify.clone(),
-                        tw.to_role_id.clone(),
-                        context_msg,
-                        event_id,
-                    ).await;
-                }
+            for tw in triggered_clone {
+                let context_msg = if start_trigger {
+                    format!(
+                        "你被分配了一个新任务，请完成「{}」产物。",
+                        tw.artifact_type
+                    )
+                } else if tw.transition_type == "need_confirm" {
+                    format!(
+                        "工作流审批节点：你需要完成「{}」产物，完成后将提交审批。请基于上游产出开始你的工作。",
+                        tw.artifact_type
+                    )
+                } else {
+                    format!(
+                        "工作流自动流转：产物「{}」已从上游交付，请基于上游产出开始你的工作。",
+                        tw.artifact_type
+                    )
+                };
+                let event_id = format!("wf_notify_{}_{}", project_id_notify, tw.artifact_id);
+                let _ = crate::commands::project::auto_delegate_chat(
+                    app_notify.clone(),
+                    project_id_notify.clone(),
+                    from_role_id_notify.clone(),
+                    tw.to_role_id.clone(),
+                    context_msg,
+                    event_id,
+                ).await;
             }
         });
     }
@@ -1744,7 +1746,20 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
     let branch_label = req.branch_label.unwrap_or_default();
     let parallel_group = req.parallel_group.unwrap_or_default();
 
-    sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)")
+    // 如果未指定流程组，使用主流程组
+    let effective_group_id = if let Some(ref gid) = req.group_id {
+        Some(gid.clone())
+    } else {
+        sqlx::query_scalar(
+            "SELECT id FROM project_workflow_groups WHERE project_id = ? AND is_primary = 1 LIMIT 1"
+        )
+        .bind(&req.project_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?
+    };
+
+    sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)")
         .bind(&id)
         .bind(&req.project_id)
         .bind(&req.from_role_id)
@@ -1755,6 +1770,7 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
         .bind(&condition_expr)
         .bind(&branch_label)
         .bind(&parallel_group)
+        .bind(&effective_group_id)
         .bind(sort_order)
         .bind(now)
         .execute(&pool)
@@ -1762,7 +1778,7 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
         .map_err(|e| e.to_string())?;
 
     Ok(db::ProjectWorkflow {
-        id, project_id: req.project_id, from_role_id: req.from_role_id, to_role_id: req.to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary: false, group_id: None, sort_order, created_at: now,
+        id, project_id: req.project_id, from_role_id: req.from_role_id, to_role_id: req.to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary: false, group_id: effective_group_id, sort_order, created_at: now,
     })
 }
 
@@ -1974,20 +1990,9 @@ pub async fn assign_task(
     let _ = record_activity(&app, &project_id, Some(&assignee), "task_assigned", Some("task"), Some(&task_id), &format!("任务已分配给角色")).await;
 
     if let Some(ref gid) = workflow_group_id {
-        // 有流程模式：查找流程组起始角色，启动工作流
-        let start_role_id: Option<String> = sqlx::query_scalar(
-            "SELECT to_role_id FROM project_workflows WHERE group_id = ? AND from_role_id IS NULL ORDER BY sort_order ASC LIMIT 1"
-        )
-        .bind(gid)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-        if let Some(start_role) = start_role_id {
-            let initial_message = message.unwrap_or_else(|| "请开始你的工作".to_string());
-            let event_id = format!("assign_task_{}_{}", project_id, task_id);
-            let _ = start_workflow_run(app.clone(), project_id.clone(), initial_message).await;
-        }
+        // 有流程模式：启动工作流
+        let initial_message = message.unwrap_or_else(|| "请开始你的工作".to_string());
+        let _ = start_workflow_run(app.clone(), project_id.clone(), initial_message, Some(gid.clone()), Some(task_id.clone())).await;
     } else {
         // 无流程模式：直接调用 auto_delegate_chat
         let task_info: Option<(String, String)> = sqlx::query_as(
@@ -2125,6 +2130,24 @@ pub async fn list_project_artifacts(app: AppHandle, project_id: String) -> Resul
     Ok(rows.into_iter().map(|(id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at)| db::ProjectArtifact {
         id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at,
     }).collect())
+}
+
+#[tauri::command]
+pub async fn get_project_artifact(app: AppHandle, id: String) -> Result<db::ProjectArtifact, String> {
+    let pool = get_pool(&app)?;
+    let row = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, Option<String>, Option<i32>, i64, i64)>(
+        "SELECT id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at FROM project_artifacts WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "Artifact not found".to_string())?;
+
+    let (id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at) = row;
+    Ok(db::ProjectArtifact {
+        id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at,
+    })
 }
 
 #[tauri::command]
@@ -3035,7 +3058,7 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
     );
 
     if !project_workspace.is_empty() {
-        system_prompt.push_str(&format!("\n\n【重要 - 文件路径规则】\n项目工作空间路径：{}\n所有文件产出必须保存到该目录下。\n注意：你的记忆(MEMORY)中可能包含旧的路径信息，请忽略记忆中的任何路径，始终以上述工作空间路径为准。生成文件路径时，必须以 {} 开头。", project_workspace, project_workspace));
+        system_prompt.push_str(&format!("\n\n【文件产出规则】\n项目工作空间路径：{}\n如果需要产出文件，请将产出物写入该目录下，文件路径以 {} 开头。如果无法产出正式文件，则将你的回复信息写入文件。忽略记忆中的旧路径，始终以上述工作空间路径为准。", project_workspace, project_workspace));
     }
 
     if !mood_hint.is_empty() {
@@ -3078,13 +3101,7 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
 
     system_prompt.push_str(&format!("\n\n请以「{}」的身份回答问题，保持角色一致性。回答要专业、有针对性。", display_name));
 
-    let skills: Vec<String> = sqlx::query_scalar(
-        "SELECT skill_name FROM role_skills WHERE role_id = ? AND enabled = 1"
-    )
-    .bind(&role_id)
-    .fetch_all(&pool)
-    .await
-    .unwrap_or_default();
+    let skills = get_merged_skills(&pool, &project_id, &role_id).await;
 
     if !skills.is_empty() {
         let skill_names = skills.join("、");
@@ -3280,6 +3297,9 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
         "stream": true,
     });
 
+    log::info!("[chat_with_project_role] project={}, role={}, api_base={}", project_id, role_id, api_base);
+    log::info!("[chat_with_project_role] request body: {}", serde_json::to_string_pretty(&body).unwrap_or_default());
+
     let response = client
         .post(format!("{}/chat/completions", api_base))
         .header("Authorization", format!("Bearer {}", api_key))
@@ -3424,7 +3444,7 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
         );
 
         if !project_workspace.is_empty() {
-            system_prompt.push_str(&format!("\n\n【重要 - 文件路径规则】\n项目工作空间路径：{}\n所有文件产出必须保存到该目录下。\n注意：你的记忆(MEMORY)中可能包含旧的路径信息，请忽略记忆中的任何路径，始终以上述工作空间路径为准。生成文件路径时，必须以 {} 开头。", project_workspace, project_workspace));
+            system_prompt.push_str(&format!("\n\n【文件产出规则】\n项目工作空间路径：{}\n如果需要产出文件，请将产出物写入该目录下，文件路径以 {} 开头。如果无法产出正式文件，则将你的回复信息写入文件。忽略记忆中的旧路径，始终以上述工作空间路径为准。", project_workspace, project_workspace));
         }
 
         if !project_guidelines.is_empty() {
@@ -3445,13 +3465,7 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
 
         system_prompt.push_str(&format!("\n\n请以「{}」的身份回答问题，保持角色一致性。回答要专业、有针对性。", display_name));
 
-        let skills: Vec<String> = sqlx::query_scalar(
-            "SELECT skill_name FROM role_skills WHERE role_id = ? AND enabled = 1"
-        )
-        .bind(role_id)
-        .fetch_all(&pool)
-        .await
-        .unwrap_or_default();
+        let skills = get_merged_skills(&pool, &project_id, role_id).await;
 
         if !skills.is_empty() {
             system_prompt.push_str(&format!(
@@ -3544,6 +3558,9 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
             "messages": messages,
             "stream": false,
         });
+
+        log::info!("[chat_with_project_roles] project={}, role={}, api_base={}", project_id, role_id, api_base);
+        log::info!("[chat_with_project_roles] request body: {}", serde_json::to_string_pretty(&body).unwrap_or_default());
 
         let response = client
             .post(format!("{}/chat/completions", api_base))
@@ -3641,6 +3658,16 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
     let from_resp = from_role["responsibilities"].as_str().unwrap_or("");
     let to_resp = to_role["responsibilities"].as_str().unwrap_or("");
 
+    // 查询当前角色需要产出的产物类型（来自工作流定义）
+    let expected_artifact_types: Vec<(String, String)> = sqlx::query_as(
+        "SELECT DISTINCT artifact_type, transition_type FROM project_workflows WHERE project_id = ? AND to_role_id = ? AND artifact_type != ''"
+    )
+    .bind(&project_id)
+    .bind(&to_role_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
+
     let recent_artifacts: Vec<(String, String, String, String)> = sqlx::query_as(
         "SELECT title, artifact_type, status, content FROM project_artifacts WHERE project_id = ? AND role_id = ? ORDER BY updated_at DESC LIMIT 3"
     )
@@ -3692,23 +3719,32 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
         project_name, to_name, to_role["name"].as_str().unwrap_or(""), to_resp, to_soul, project_desc, from_name, from_name, from_resp
     );
 
+    // 明确告知角色需要产出的产物类型
+    if !expected_artifact_types.is_empty() {
+        let artifact_desc: Vec<String> = expected_artifact_types.iter()
+            .map(|(atype, ttype)| {
+                let t = match ttype.as_str() {
+                    "need_confirm" => "（需审批后流转）",
+                    "auto_push" => "（自动流转）",
+                    _ => "",
+                };
+                format!("- {}{}", atype, t)
+            })
+            .collect();
+        system_prompt.push_str(&format!("\n\n【你需要产出的产物】\n你需要完成以下产物：\n{}\n请将产物文件写入工作空间目录。", artifact_desc.join("\n")));
+    }
+
     if !project_workspace.is_empty() {
-        system_prompt.push_str(&format!("\n\n【重要 - 文件路径规则】\n项目工作空间路径：{}\n所有文件产出必须保存到该目录下。\n注意：你的记忆(MEMORY)中可能包含旧的路径信息，请忽略记忆中的任何路径，始终以上述工作空间路径为准。生成文件路径时，必须以 {} 开头。", project_workspace, project_workspace));
+        system_prompt.push_str(&format!("\n\n【文件产出规则】\n项目工作空间路径：{}\n如果需要产出文件，请将产出物写入该目录下，文件路径以 {} 开头。如果无法产出正式文件，则将你的回复信息写入文件。忽略记忆中的旧路径，始终以上述工作空间路径为准。", project_workspace, project_workspace));
     }
 
     if !project_guidelines.is_empty() {
         system_prompt.push_str(&format!("\n\n项目执行规则：\n{}", project_guidelines));
     }
 
-    system_prompt.push_str(&format!("\n\n请以「{}」的身份回答，保持角色一致性。完成工作后请说明你的产出物。", to_name));
+    system_prompt.push_str(&format!("\n\n请以「{}」的身份回答，保持角色一致性。完成工作后请说明你产出了哪些文件以及文件路径。", to_name));
 
-    let skills: Vec<String> = sqlx::query_scalar(
-        "SELECT skill_name FROM role_skills WHERE role_id = ? AND enabled = 1"
-    )
-    .bind(&to_role_id)
-    .fetch_all(&pool)
-    .await
-    .unwrap_or_default();
+    let skills = get_merged_skills(&pool, &project_id, &to_role_id).await;
 
     if !skills.is_empty() {
         system_prompt.push_str(&format!(
@@ -3716,6 +3752,18 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
             skills.join("、")
         ));
     }
+
+    // 快照当前工作空间文件列表，用于 Agent 完成后检测新文件
+    let pre_existing_files: std::collections::HashSet<String> = if !project_workspace.is_empty() {
+        let ws_path = std::path::Path::new(&project_workspace);
+        if ws_path.exists() {
+            scan_dir_recursive_set(ws_path, ws_path)
+        } else {
+            std::collections::HashSet::new()
+        }
+    } else {
+        std::collections::HashSet::new()
+    };
 
     let messages = vec![
         serde_json::json!({ "role": "system", "content": system_prompt }),
@@ -3727,6 +3775,9 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
         "messages": messages,
         "stream": false,
     });
+
+    log::info!("[auto_delegate_chat] project={}, from={}, to={}, api_base={}", project_id, from_role_id, to_role_id, api_base);
+    log::info!("[auto_delegate_chat] request body: {}", serde_json::to_string_pretty(&body).unwrap_or_default());
 
     let response = client
         .post(format!("{}/chat/completions", api_base))
@@ -3747,6 +3798,8 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
     let resp_json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
     let raw_reply = resp_json["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string();
     let reply = clean_context_tags(&raw_reply);
+
+    log::info!("[auto_delegate_chat] AI reply ({} chars): {}", reply.len(), if reply.len() > 500 { &reply[..500] } else { &reply });
 
     let reply_msg_id = uuid::Uuid::new_v4().to_string();
     let now2 = chrono::Utc::now().timestamp_millis();
@@ -3774,9 +3827,76 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
         let rec_app = app.clone();
         let rec_project = project_id.clone();
         let rec_role = to_role_id.clone();
-        let rec_from_role = effective_from_role_id.clone();
+        let _rec_from_role = effective_from_role_id.clone();
+        let rec_reply = reply.clone();
+        let rec_pre_existing = pre_existing_files.clone();
+        let rec_workspace = project_workspace.to_string();
         tauri::async_runtime::spawn(async move {
             let _ = record_chat_files(rec_app.clone(), rec_project.clone(), rec_role.clone()).await;
+
+            // 检测 Agent 写入的新文件，更新 artifact 的 file_path
+            // 延迟 2 秒再扫描，给 Agent 异步写文件留出时间
+            if !rec_workspace.is_empty() {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+                let ws_path = std::path::Path::new(&rec_workspace);
+                if ws_path.exists() {
+                    let post_files = scan_dir_recursive_set(ws_path, ws_path);
+                    let new_files: Vec<String> = post_files.difference(&rec_pre_existing).cloned().collect();
+
+                    log::info!("auto_delegate_chat: pre_existing={} files, post={} files, new={} files", rec_pre_existing.len(), post_files.len(), new_files.len());
+
+                    if !new_files.is_empty() {
+                        log::info!("auto_delegate_chat: detected new files in workspace: {:?}", new_files);
+
+                        // 查询该角色的 in_progress 产物
+                        let pool_match = match get_pool(&rec_app) {
+                            Ok(p) => p,
+                            Err(_) => {
+                                log::error!("auto_delegate_chat: failed to get pool for file_path update");
+                                return;
+                            }
+                        };
+
+                        let role_artifacts: Vec<(String, String)> = sqlx::query_as(
+                            "SELECT id, artifact_type FROM project_artifacts WHERE project_id = ? AND role_id = ? AND status = 'in_progress'"
+                        )
+                        .bind(&rec_project)
+                        .bind(&rec_role)
+                        .fetch_all(&pool_match)
+                        .await
+                        .unwrap_or_default();
+
+                        for (art_id, art_type) in &role_artifacts {
+                            // 尝试匹配产物类型与文件名
+                            let default_file = new_files.first().map(|s| s.as_str()).unwrap_or("");
+                            let matched_file = new_files.iter().find(|f| {
+                                let file_lower = f.to_lowercase();
+                                let type_lower = art_type.to_lowercase();
+                                file_lower.contains(&type_lower) || type_lower.contains(&file_lower.split('/').last().unwrap_or("").split('.').next().unwrap_or(""))
+                            }).map(|s| s.as_str()).unwrap_or(default_file);
+
+                            if !matched_file.is_empty() {
+                                let full_path = format!("{}/{}", rec_workspace.trim_end_matches('/'), matched_file.trim_start_matches('/'));
+                                let now_fp = chrono::Utc::now().timestamp_millis();
+                                let result = sqlx::query(
+                                    "UPDATE project_artifacts SET file_path = ?, updated_at = ? WHERE id = ?"
+                                )
+                                .bind(&full_path)
+                                .bind(now_fp)
+                                .bind(art_id)
+                                .execute(&pool_match)
+                                .await;
+
+                                match result {
+                                    Ok(_) => log::info!("auto_delegate_chat: updated artifact {} file_path to {}", art_id, full_path),
+                                    Err(e) => log::error!("auto_delegate_chat: failed to update artifact file_path: {}", e),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             // After role finishes work, handle workflow-associated artifacts
             let pool = match get_pool(&rec_app) {
@@ -3843,6 +3963,30 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
 
             let mut has_need_confirm_submitted = false;
             let mut should_trigger_next = false;
+
+            // 将 AI 回复内容写入该角色的所有 in_progress 产物
+            if !rec_reply.is_empty() {
+                for (art_id, _) in &role_artifacts {
+                    let result = sqlx::query(
+                        "UPDATE project_artifacts SET content = ?, updated_at = ? WHERE id = ? AND status = 'in_progress'"
+                    )
+                    .bind(&rec_reply)
+                    .bind(now)
+                    .bind(art_id)
+                    .execute(&pool)
+                    .await;
+
+                    match result {
+                        Ok(r) if r.rows_affected() > 0 => {
+                            log::info!("auto_delegate_chat: updated artifact {} content ({} chars)", art_id, rec_reply.len());
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            log::error!("auto_delegate_chat: failed to update artifact content {}: {}", art_id, e);
+                        }
+                    }
+                }
+            }
 
             for (art_id, _art_type) in &role_artifacts {
                 if has_need_confirm_outgoing {
@@ -3963,6 +4107,15 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                     "projectId": rec_project,
                     "roleId": rec_role,
                 }));
+
+                // 为每个 submitted 产物发出 artifact_status_changed 事件，前端据此弹出审批窗口
+                for (art_id, _) in &role_artifacts {
+                    let _ = rec_app.emit("artifact_status_changed", serde_json::json!({
+                        "projectId": rec_project,
+                        "artifactId": art_id,
+                        "newStatus": "submitted",
+                    }));
+                }
             }
 
             // Trigger next workflow step for auto_push artifacts via event
@@ -4378,26 +4531,60 @@ pub async fn list_task_events(app: AppHandle, task_id: String) -> Result<Vec<db:
 }
 
 #[tauri::command]
-pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_message: String) -> Result<db::WorkflowRun, String> {
+pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_message: String, group_id: Option<String>, task_id: Option<String>) -> Result<db::WorkflowRun, String> {
     let pool = get_pool(&app)?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
+    let effective_task_id = task_id.unwrap_or_default();
 
-    let workflows: Vec<(String, Option<String>, String, String, i64)> = sqlx::query_as(
-        "SELECT id, from_role_id, to_role_id, transition_type, sort_order FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
-    )
-    .bind(&project_id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    // 按流程组过滤工作流，如果未指定则查询主流程组
+    let workflows: Vec<(String, Option<String>, String, String, i64)> = if let Some(ref gid) = group_id {
+        sqlx::query_as(
+            "SELECT id, from_role_id, to_role_id, transition_type, sort_order FROM project_workflows WHERE project_id = ? AND group_id = ? ORDER BY sort_order ASC"
+        )
+        .bind(&project_id)
+        .bind(gid)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| e.to_string())?
+    } else {
+        // 未指定流程组时，使用主流程组
+        let primary_group_id: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM project_workflow_groups WHERE project_id = ? AND is_primary = 1 LIMIT 1"
+        )
+        .bind(&project_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some(pgid) = primary_group_id {
+            sqlx::query_as(
+                "SELECT id, from_role_id, to_role_id, transition_type, sort_order FROM project_workflows WHERE project_id = ? AND group_id = ? ORDER BY sort_order ASC"
+            )
+            .bind(&project_id)
+            .bind(&pgid)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| e.to_string())?
+        } else {
+            sqlx::query_as(
+                "SELECT id, from_role_id, to_role_id, transition_type, sort_order FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
+            )
+            .bind(&project_id)
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| e.to_string())?
+        }
+    };
 
     if workflows.is_empty() {
         return Err("No workflows defined for this project".to_string());
     }
 
-    sqlx::query("INSERT INTO workflow_runs (id, project_id, workflow_id, current_step, status, context, task_id, started_at) VALUES (?, ?, NULL, 0, 'running', '{}', '', ?)")
+    sqlx::query("INSERT INTO workflow_runs (id, project_id, workflow_id, current_step, status, context, task_id, started_at) VALUES (?, ?, NULL, 0, 'running', '{}', ?, ?)")
         .bind(&id)
         .bind(&project_id)
+        .bind(&effective_task_id)
         .bind(now)
         .execute(&pool)
         .await
@@ -4414,10 +4601,10 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
         .map_err(|e| e.to_string())?;
 
     // Insert workflow steps starting from step_index 1
-    for (i, (_wf_id, from_role_id, to_role_id, transition_type, _sort_order)) in workflows.iter().enumerate() {
+    for (i, (_wf_id, _from_role_id, to_role_id, transition_type, _sort_order)) in workflows.iter().enumerate() {
         let step_id = uuid::Uuid::new_v4().to_string();
         let role_id = Some(to_role_id.clone());
-        let step_index = (i + 1) as i64; // offset by 1 because step 0 is "开始"
+        let step_index = (i + 1) as i64;
         sqlx::query("INSERT INTO workflow_run_steps (id, run_id, step_index, role_id, action, status, input, output) VALUES (?, ?, ?, ?, ?, 'pending', ?, '')")
             .bind(&step_id)
             .bind(&id)
@@ -4464,7 +4651,7 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
         current_step: 0,
         status: "running".to_string(),
         context: "{}".to_string(),
-        task_id: String::new(),
+        task_id: effective_task_id,
         started_at: now,
         completed_at: None,
     })
@@ -4951,6 +5138,55 @@ pub async fn list_role_skills(app: AppHandle, role_id: String) -> Result<Vec<db:
     }).collect())
 }
 
+// ========== 项目成员技能管理 ==========
+
+#[tauri::command]
+pub async fn bind_member_skill(app: AppHandle, project_id: String, member_id: String, skill_name: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+
+    sqlx::query("INSERT OR IGNORE INTO project_member_skills (id, project_id, member_id, skill_name, enabled, created_at) VALUES (?, ?, ?, ?, 1, ?)")
+        .bind(&id)
+        .bind(&project_id)
+        .bind(&member_id)
+        .bind(&skill_name)
+        .bind(now)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unbind_member_skill(app: AppHandle, id: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    sqlx::query("DELETE FROM project_member_skills WHERE id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_member_skills(app: AppHandle, project_id: String, member_id: String) -> Result<Vec<db::ProjectMemberSkill>, String> {
+    let pool = get_pool(&app)?;
+    let rows = sqlx::query_as::<_, (String, String, String, String, bool, i64)>(
+        "SELECT id, project_id, member_id, skill_name, enabled, created_at FROM project_member_skills WHERE project_id = ? AND member_id = ? ORDER BY created_at ASC"
+    )
+    .bind(&project_id)
+    .bind(&member_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows.into_iter().map(|(id, project_id, member_id, skill_name, enabled, created_at)| db::ProjectMemberSkill {
+        id, project_id, member_id, skill_name, enabled, created_at,
+    }).collect())
+}
+
 // ========== 任务进度查询 ==========
 
 #[tauri::command]
@@ -5079,78 +5315,108 @@ pub async fn get_task_progress(app: AppHandle, task_id: String) -> Result<db::Ta
 pub async fn list_pending_review_tasks(app: AppHandle, project_id: String) -> Result<Vec<db::PendingReviewTask>, String> {
     let pool = get_pool(&app)?;
 
-    // 查询有 submitted 状态产物的任务
-    let task_ids: Vec<String> = sqlx::query_scalar(
-        "SELECT DISTINCT task_id FROM project_artifacts WHERE project_id = ? AND status = 'submitted' AND task_id != ''"
+    // 查询所有 submitted 状态的产物（包括无 task_id 的）
+    let artifact_rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, Option<String>, Option<i32>, i64, i64)>(
+        "SELECT id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at FROM project_artifacts WHERE project_id = ? AND status = 'submitted' ORDER BY created_at DESC"
     )
     .bind(&project_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
+    // 按 task_id 分组
+    let mut grouped: std::collections::HashMap<String, Vec<db::ProjectArtifact>> = std::collections::HashMap::new();
+    for row in artifact_rows {
+        let (id, pid, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at) = row;
+        let artifact = db::ProjectArtifact {
+            id, project_id: pid, role_id, task_id: task_id.clone(), artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at,
+        };
+        grouped.entry(task_id.clone()).or_default().push(artifact);
+    }
+
     let mut result = Vec::new();
-    for tid in task_ids {
-        // 查询任务
-        let task_row = sqlx::query(
-            "SELECT id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, workflow_group_id, created_at, updated_at FROM project_tasks WHERE id = ?"
-        )
-        .bind(&tid)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-        if let Some(row) = task_row {
-            let task = {
-                let id: String = row.try_get("id").map_err(|e| e.to_string())?;
-                let project_id: String = row.try_get("project_id").map_err(|e| e.to_string())?;
-                let title: String = row.try_get("title").map_err(|e| e.to_string())?;
-                let body: String = row.try_get("body").map_err(|e| e.to_string())?;
-                let assignee: String = row.try_get("assignee").map_err(|e| e.to_string())?;
-                let status: String = row.try_get("status").map_err(|e| e.to_string())?;
-                let priority: i32 = row.try_get("priority").map_err(|e| e.to_string())?;
-                let parent_task_id: Option<String> = row.try_get("parent_task_id").map_err(|e| e.to_string())?;
-                let artifact_id: Option<String> = row.try_get("artifact_id").map_err(|e| e.to_string())?;
-                let result: String = row.try_get("result").map_err(|e| e.to_string())?;
-                let claim_lock: String = row.try_get("claim_lock").map_err(|e| e.to_string())?;
-                let claim_expire_at: i64 = row.try_get("claim_expire_at").map_err(|e| e.to_string())?;
-                let started_at: Option<i64> = row.try_get("started_at").map_err(|e| e.to_string())?;
-                let completed_at: Option<i64> = row.try_get("completed_at").map_err(|e| e.to_string())?;
-                let skills: String = row.try_get("skills").map_err(|e| e.to_string())?;
-                let max_retries: i32 = row.try_get("max_retries").map_err(|e| e.to_string())?;
-                let retry_count: i32 = row.try_get("retry_count").map_err(|e| e.to_string())?;
-                let workspace_kind: String = row.try_get("workspace_kind").map_err(|e| e.to_string())?;
-                let workspace_path: String = row.try_get("workspace_path").map_err(|e| e.to_string())?;
-                let board_id: String = row.try_get("board_id").map_err(|e| e.to_string())?;
-                let workflow_group_id: Option<String> = row.try_get("workflow_group_id").map_err(|e| e.to_string())?;
-                let created_at: i64 = row.try_get("created_at").map_err(|e| e.to_string())?;
-                let updated_at: i64 = row.try_get("updated_at").map_err(|e| e.to_string())?;
-                db::ProjectTask {
-                    id, project_id, title, body, assignee, status, priority,
-                    parent_task_id: parent_task_id.unwrap_or_default(),
-                    artifact_id: artifact_id.unwrap_or_default(),
-                    result, claim_lock, claim_expire_at, started_at, completed_at,
-                    skills, max_retries, retry_count, workspace_kind, workspace_path,
-                    board_id, workflow_group_id, created_at, updated_at,
-                }
+    for (tid, pending_artifacts) in grouped {
+        if tid.is_empty() {
+            // 无关联任务的产物，构造虚拟任务
+            let first_artifact = &pending_artifacts[0];
+            let virtual_task = db::ProjectTask {
+                id: format!("__virtual_{}", first_artifact.id),
+                project_id: project_id.clone(),
+                title: first_artifact.title.clone(),
+                body: String::new(),
+                assignee: first_artifact.role_id.clone(),
+                status: "running".to_string(),
+                priority: 0,
+                parent_task_id: String::new(),
+                artifact_id: String::new(),
+                result: String::new(),
+                claim_lock: String::new(),
+                claim_expire_at: 0,
+                started_at: None,
+                completed_at: None,
+                skills: String::new(),
+                max_retries: 0,
+                retry_count: 0,
+                workspace_kind: String::new(),
+                workspace_path: String::new(),
+                board_id: String::new(),
+                workflow_group_id: None,
+                created_at: first_artifact.created_at,
+                updated_at: first_artifact.updated_at,
             };
-
-            // 查询该任务的 submitted 产物
-            let artifact_rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, String, String, String, Option<String>, Option<i32>, i64, i64)>(
-                "SELECT id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at FROM project_artifacts WHERE task_id = ? AND status = 'submitted' ORDER BY created_at DESC"
+            result.push(db::PendingReviewTask {
+                task: virtual_task,
+                pending_artifacts,
+            });
+        } else {
+            // 有关联任务的产物
+            let task_row = sqlx::query(
+                "SELECT id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, workflow_group_id, created_at, updated_at FROM project_tasks WHERE id = ?"
             )
             .bind(&tid)
-            .fetch_all(&pool)
+            .fetch_optional(&pool)
             .await
             .map_err(|e| e.to_string())?;
 
-            let pending_artifacts = artifact_rows.into_iter().map(|(id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at)| db::ProjectArtifact {
-                id, project_id, role_id, task_id, artifact_type, title, file_path, content, status, review_comment, workflow_run_id, step_index, created_at, updated_at,
-            }).collect();
-
-            result.push(db::PendingReviewTask {
-                task,
-                pending_artifacts,
-            });
+            if let Some(row) = task_row {
+                let task = {
+                    let id: String = row.try_get("id").map_err(|e| e.to_string())?;
+                    let project_id: String = row.try_get("project_id").map_err(|e| e.to_string())?;
+                    let title: String = row.try_get("title").map_err(|e| e.to_string())?;
+                    let body: String = row.try_get("body").map_err(|e| e.to_string())?;
+                    let assignee: String = row.try_get("assignee").map_err(|e| e.to_string())?;
+                    let status: String = row.try_get("status").map_err(|e| e.to_string())?;
+                    let priority: i32 = row.try_get("priority").map_err(|e| e.to_string())?;
+                    let parent_task_id: Option<String> = row.try_get("parent_task_id").map_err(|e| e.to_string())?;
+                    let artifact_id: Option<String> = row.try_get("artifact_id").map_err(|e| e.to_string())?;
+                    let result: String = row.try_get("result").map_err(|e| e.to_string())?;
+                    let claim_lock: String = row.try_get("claim_lock").map_err(|e| e.to_string())?;
+                    let claim_expire_at: i64 = row.try_get("claim_expire_at").map_err(|e| e.to_string())?;
+                    let started_at: Option<i64> = row.try_get("started_at").map_err(|e| e.to_string())?;
+                    let completed_at: Option<i64> = row.try_get("completed_at").map_err(|e| e.to_string())?;
+                    let skills: String = row.try_get("skills").map_err(|e| e.to_string())?;
+                    let max_retries: i32 = row.try_get("max_retries").map_err(|e| e.to_string())?;
+                    let retry_count: i32 = row.try_get("retry_count").map_err(|e| e.to_string())?;
+                    let workspace_kind: String = row.try_get("workspace_kind").map_err(|e| e.to_string())?;
+                    let workspace_path: String = row.try_get("workspace_path").map_err(|e| e.to_string())?;
+                    let board_id: String = row.try_get("board_id").map_err(|e| e.to_string())?;
+                    let workflow_group_id: Option<String> = row.try_get("workflow_group_id").map_err(|e| e.to_string())?;
+                    let created_at: i64 = row.try_get("created_at").map_err(|e| e.to_string())?;
+                    let updated_at: i64 = row.try_get("updated_at").map_err(|e| e.to_string())?;
+                    db::ProjectTask {
+                        id, project_id, title, body, assignee, status, priority,
+                        parent_task_id: parent_task_id.unwrap_or_default(),
+                        artifact_id: artifact_id.unwrap_or_default(),
+                        result, claim_lock, claim_expire_at, started_at, completed_at,
+                        skills, max_retries, retry_count, workspace_kind, workspace_path,
+                        board_id, workflow_group_id, created_at, updated_at,
+                    }
+                };
+                result.push(db::PendingReviewTask {
+                    task,
+                    pending_artifacts,
+                });
+            }
         }
     }
 
@@ -5498,6 +5764,70 @@ fn scan_dir_recursive(base: &std::path::Path, dir: &std::path::Path) -> Result<V
     }
 
     Ok(results)
+}
+
+// 合并查询全局角色技能和项目成员技能，去重后返回
+async fn get_merged_skills(pool: &sqlx::SqlitePool, project_id: &str, role_id: &str) -> Vec<String> {
+    let mut skill_set = std::collections::HashSet::new();
+
+    // 全局角色技能
+    let role_skills: Vec<String> = sqlx::query_scalar(
+        "SELECT skill_name FROM role_skills WHERE role_id = ? AND enabled = 1"
+    )
+    .bind(role_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for s in &role_skills {
+        skill_set.insert(s.clone());
+    }
+
+    // 项目成员技能（通过 project_members 关联 member_id）
+    let member_skills: Vec<String> = sqlx::query_scalar(
+        "SELECT pms.skill_name FROM project_member_skills pms \
+         INNER JOIN project_members pm ON pms.member_id = pm.id \
+         WHERE pm.project_id = ? AND pm.role_id = ? AND pms.enabled = 1"
+    )
+    .bind(project_id)
+    .bind(role_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for s in &member_skills {
+        skill_set.insert(s.clone());
+    }
+
+    let mut result: Vec<String> = skill_set.into_iter().collect();
+    result.sort();
+    result
+}
+
+// 递归扫描目录，返回相对路径的 HashSet（用于对比 Agent 前后文件变化）
+fn scan_dir_recursive_set(base: &std::path::Path, dir: &std::path::Path) -> std::collections::HashSet<String> {
+    let mut results = std::collections::HashSet::new();
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return results,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+
+        if file_name.starts_with('.') {
+            continue;
+        }
+
+        if path.is_dir() {
+            results.extend(scan_dir_recursive_set(base, &path));
+        } else if let Ok(relative) = path.strip_prefix(base) {
+            results.insert(relative.to_string_lossy().to_string());
+        }
+    }
+
+    results
 }
 
 #[tauri::command]

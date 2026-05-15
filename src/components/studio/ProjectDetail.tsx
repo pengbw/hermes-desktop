@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, lazy, Suspense } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { TauriEvents } from "@services/tauri/TauriEvents";
@@ -20,7 +20,6 @@ import MarkdownRenderer from "../../components/MarkdownRenderer";
 import RoleManager from "./RoleManager";
 import TaskBoard from "./TaskBoard";
 import TaskManagement from "./TaskManagement";
-import WorkflowRunPanel from "./WorkflowRunPanel";
 import PendingReviewPanel from "./PendingReviewPanel";
 import ArtifactReviewReminder from "./ArtifactReviewReminder";
 
@@ -160,50 +159,33 @@ function ProjectDetail({
   const [projectChatStreaming, setProjectChatStreaming] = useState(false);
   const [projectChatStreamed, setProjectChatStreamed] = useState("");
   const [autoDelegateRunning, setAutoDelegateRunning] = useState(false);
-  const [wfSubTab, setWfSubTab] = useState<"designer" | "runs">("designer");
   const [overviewSubTab, setOverviewSubTab] = useState<"tasks" | "artifacts" | "members">("tasks");
   const [taskSubTab, setTaskSubTab] = useState<"list" | "pending">("list");
-  const [approvalModal, setApprovalModal] = useState<{
-    open: boolean;
-    artifact: ProjectArtifact | null;
-    mode: "approve" | "reject" | null;
-    comment: string;
-  }>({
-    open: false,
-    artifact: null,
-    mode: null,
-    comment: "",
-  });
   const [chatRoleSkills, setChatRoleSkills] = useState<string[]>([]);
   const [projectFileRecords, setProjectFileRecords] = useState<ProjectFileRecord[]>([]);
 
-  const loadFileRecordsRef = useRef(false);
+  const fileRecordsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadFileRecords = () => {
-    if (loadFileRecordsRef.current) return;
-    loadFileRecordsRef.current = true;
-    invoke("scan_project_files", { projectId: project.id })
-      .then(() => {
-        invoke<ProjectFileRecord[]>("list_project_file_records", { projectId: project.id })
-          .then((records) => {
-            setProjectFileRecords(records);
-          })
-          .catch(() => setProjectFileRecords([]))
-          .finally(() => {
-            loadFileRecordsRef.current = false;
-          });
-      })
-      .catch(() => {
-        invoke<ProjectFileRecord[]>("list_project_file_records", { projectId: project.id })
-          .then((records) => {
-            setProjectFileRecords(records);
-          })
-          .catch(() => setProjectFileRecords([]))
-          .finally(() => {
-            loadFileRecordsRef.current = false;
-          });
-      });
-  };
+  const loadFileRecords = useCallback(() => {
+    if (fileRecordsTimerRef.current) clearTimeout(fileRecordsTimerRef.current);
+    fileRecordsTimerRef.current = setTimeout(() => {
+      invoke("scan_project_files", { projectId: project.id })
+        .then(() => {
+          invoke<ProjectFileRecord[]>("list_project_file_records", { projectId: project.id })
+            .then((records) => {
+              setProjectFileRecords(records);
+            })
+            .catch(() => setProjectFileRecords([]));
+        })
+        .catch(() => {
+          invoke<ProjectFileRecord[]>("list_project_file_records", { projectId: project.id })
+            .then((records) => {
+              setProjectFileRecords(records);
+            })
+            .catch(() => setProjectFileRecords([]));
+        });
+    }, 1500);
+  }, [project.id]);
 
   useEffect(() => {
     loadFileRecords();
@@ -239,6 +221,7 @@ function ProjectDetail({
           invoke<ProjectArtifact[]>("list_project_artifacts", { projectId: project.id })
             .then(onArtifactsUpdate)
             .catch(console.error);
+          loadFileRecords();
         } else if (change === "members") {
           invoke<ProjectMember[]>("list_project_members", { projectId: project.id })
             .then(onMembersUpdate)
@@ -253,58 +236,23 @@ function ProjectDetail({
     };
   }, [project.id, onTasksUpdate, onArtifactsUpdate, onMembersUpdate]);
 
-  const handleArtifactApprove = async (artifactId: string, approved: boolean) => {
-    try {
-      if (approved) {
-        await invoke("approve_project_artifact", { id: artifactId });
-      } else {
-        const artifact = projectArtifacts.find((a) => a.id === artifactId);
-        setApprovalModal({ open: true, artifact: artifact || null, mode: "reject", comment: "" });
-        return;
+  const sortedMembers = useMemo(() => {
+    const roleOrder = new Map<string, number>();
+    let order = 0;
+    for (const wf of projectWorkflows) {
+      if (wf.fromRoleId && !roleOrder.has(wf.fromRoleId)) {
+        roleOrder.set(wf.fromRoleId, order++);
       }
-      const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", {
-        projectId: project.id,
-      });
-      onArtifactsUpdate(artifacts);
-    } catch (err) {
-      console.error("Failed to update artifact:", err);
-    }
-  };
-  void handleArtifactApprove;
-
-  const openApprovalModal = (artifact: ProjectArtifact, mode: "approve" | "reject") => {
-    setApprovalModal({ open: true, artifact, mode, comment: "" });
-  };
-
-  const closeApprovalModal = () => {
-    setApprovalModal({ open: false, artifact: null, mode: null, comment: "" });
-  };
-
-  const submitApproval = async () => {
-    if (!approvalModal.artifact || !approvalModal.mode) return;
-    try {
-      if (approvalModal.mode === "approve") {
-        await invoke("approve_project_artifact", {
-          id: approvalModal.artifact.id,
-          comment: approvalModal.comment || undefined,
-        });
-      } else {
-        if (!approvalModal.comment.trim()) return; // reject requires comment
-        await invoke("reject_project_artifact", {
-          id: approvalModal.artifact.id,
-          reason: approvalModal.comment.trim(),
-        });
+      if (wf.toRoleId && !roleOrder.has(wf.toRoleId)) {
+        roleOrder.set(wf.toRoleId, order++);
       }
-      const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", {
-        projectId: project.id,
-      });
-      onArtifactsUpdate(artifacts);
-    } catch (err) {
-      console.error("Failed to submit approval:", err);
-    } finally {
-      closeApprovalModal();
     }
-  };
+    return [...projectMembers].sort((a, b) => {
+      const oa = roleOrder.get(a.roleId) ?? 999;
+      const ob = roleOrder.get(b.roleId) ?? 999;
+      return oa - ob;
+    });
+  }, [projectMembers, projectWorkflows]);
 
   const mentionData = useMemo(
     () =>
@@ -859,11 +807,11 @@ function ProjectDetail({
 
                     {overviewSubTab === "members" && (
                       <>
-                        {projectMembers.length === 0 ? (
+                        {sortedMembers.length === 0 ? (
                           <p className={styles.studioEmpty}>暂无成员</p>
                         ) : (
                           <div className={styles.studioArtifactList}>
-                            {projectMembers.map((member) => {
+                            {sortedMembers.map((member) => {
                               const role = allRoles.find((r) => r.id === member.roleId);
                               const memberArtifact = projectArtifacts.find(
                                 (a) => a.roleId === member.roleId
@@ -874,9 +822,6 @@ function ProjectDetail({
                               const isWaitingApproval = memberArtifact?.status === "submitted";
                               return (
                                 <div key={member.id} className={styles.studioArtifactListItem}>
-                                  <span className={styles.studioArtifactListItemIcon}>
-                                    {role?.icon || "🤖"}
-                                  </span>
                                   <div className={styles.studioArtifactListItemInfo}>
                                     <div className={styles.studioArtifactListItemTitle}>
                                       {getRoleName(member.roleId)}
@@ -915,38 +860,6 @@ function ProjectDetail({
                                   >
                                     {isWorking ? "忙碌" : isWaitingApproval ? "待审批" : "空闲"}
                                   </span>
-                                  {memberArtifact?.status === "submitted" && (
-                                    <div style={{ display: "flex", gap: 6, marginLeft: 8 }}>
-                                      <button
-                                        style={{
-                                          padding: "2px 10px",
-                                          fontSize: 12,
-                                          borderRadius: 4,
-                                          border: "none",
-                                          background: "#00b894",
-                                          color: "#fff",
-                                          cursor: "pointer",
-                                        }}
-                                        onClick={() => openApprovalModal(memberArtifact, "approve")}
-                                      >
-                                        ✓ 审批
-                                      </button>
-                                      <button
-                                        style={{
-                                          padding: "2px 10px",
-                                          fontSize: 12,
-                                          borderRadius: 4,
-                                          border: "none",
-                                          background: "#d63031",
-                                          color: "#fff",
-                                          cursor: "pointer",
-                                        }}
-                                        onClick={() => openApprovalModal(memberArtifact, "reject")}
-                                      >
-                                        ✗ 驳回
-                                      </button>
-                                    </div>
-                                  )}
                                 </div>
                               );
                             })}
@@ -1075,36 +988,15 @@ function ProjectDetail({
               <div className={styles.studioDetailSection + " " + styles.studioWorkflowSection}>
                 <div className={styles.studioDetailSectionHeader}>
                   <h3>🔄 {t("studio.projectTab.workflows")}</h3>
-                  <div className={styles.wfSubTabs}>
-                    <button
-                      className={`${styles.wfSubTab} ${wfSubTab === "designer" ? styles.wfSubTabActive : ""}`}
-                      onClick={() => setWfSubTab("designer")}
-                    >
-                      📐 设计器
-                    </button>
-                    <button
-                      className={`${styles.wfSubTab} ${wfSubTab === "runs" ? styles.wfSubTabActive : ""}`}
-                      onClick={() => setWfSubTab("runs")}
-                    >
-                      🚀 运行
-                    </button>
-                  </div>
                 </div>
-                {wfSubTab === "designer" && (
-                  <div className={styles.studioWorkflowDesigner}>
-                    <WorkflowDesigner
-                      projectId={project.id}
-                      roles={allRoles}
-                      projectMembers={projectMembers}
-                      t={t}
-                    />
-                  </div>
-                )}
-                {wfSubTab === "runs" && (
-                  <div className={styles.studioWorkflowDesigner}>
-                    <WorkflowRunPanel projectId={project.id} allRoles={allRoles} />
-                  </div>
-                )}
+                <div className={styles.studioWorkflowDesigner}>
+                  <WorkflowDesigner
+                    projectId={project.id}
+                    roles={allRoles}
+                    projectMembers={projectMembers}
+                    t={t}
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -1343,109 +1235,6 @@ function ProjectDetail({
           )}
         </div>
       </div>
-
-      {approvalModal.open && approvalModal.artifact && (
-        <div className={styles.studioModalOverlay} onClick={closeApprovalModal}>
-          <div
-            className={styles.studioModal + " " + styles.studioRejectModal}
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 480 }}
-          >
-            <h3>{approvalModal.mode === "approve" ? "✅ 审批通过" : "❌ 驳回产物"}</h3>
-
-            {/* Artifact name with click to view details */}
-            <div style={{ marginBottom: 16 }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "10px 12px",
-                  background: "rgba(0,0,0,0.06)",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                }}
-                onClick={() => {
-                  const art = approvalModal.artifact;
-                  if (art?.filePath) {
-                    onPreviewFile(art.filePath, art.title || art.artifactType);
-                  } else if (art?.content) {
-                    onPreviewFile("", art.title || art.artifactType);
-                  }
-                }}
-              >
-                <span style={{ fontSize: 20 }}>📦</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: "#2d3436" }}>
-                    {approvalModal.artifact.title || approvalModal.artifact.artifactType}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#636e72", marginTop: 2 }}>
-                    {getRoleName(approvalModal.artifact.roleId)}
-                    {approvalModal.artifact.filePath && (
-                      <span style={{ marginLeft: 8 }}>📄 {approvalModal.artifact.filePath}</span>
-                    )}
-                  </div>
-                </div>
-                {(approvalModal.artifact.filePath || approvalModal.artifact.content) && (
-                  <span style={{ fontSize: 12, color: "#0984e3", whiteSpace: "nowrap" }}>
-                    查看详情 →
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {approvalModal.mode === "approve" ? (
-              <p className={styles.studioRejectHint}>
-                确认通过该产物？通过后将自动流转到下游节点。评语为选填项。
-              </p>
-            ) : (
-              <p className={styles.studioRejectHint}>
-                请输入驳回原因（必填），AI角色将根据评语自动修改完善产物并重新提交审批：
-              </p>
-            )}
-
-            <textarea
-              className={styles.studioRejectTextarea}
-              value={approvalModal.comment}
-              onChange={(e) => setApprovalModal((prev) => ({ ...prev, comment: e.target.value }))}
-              placeholder={
-                approvalModal.mode === "approve"
-                  ? "添加审批评语（可选）..."
-                  : "请输入驳回原因，描述需要修改的内容（必填）..."
-              }
-              rows={4}
-              autoFocus={approvalModal.mode === "reject"}
-            />
-
-            <div className={styles.studioModalActions}>
-              <button
-                className={styles.studioModalBtn + " " + styles.cancel}
-                onClick={closeApprovalModal}
-              >
-                取消
-              </button>
-              {approvalModal.mode === "approve" ? (
-                <button
-                  className={styles.studioModalBtn + " " + styles.confirm}
-                  onClick={submitApproval}
-                  style={{ background: "#00b894" }}
-                >
-                  ✓ 确认通过
-                </button>
-              ) : (
-                <button
-                  className={styles.studioModalBtn + " " + styles.confirm + " " + styles.reject}
-                  onClick={submitApproval}
-                  disabled={!approvalModal.comment.trim()}
-                  style={{ opacity: approvalModal.comment.trim() ? 1 : 0.5 }}
-                >
-                  ✗ 确认驳回
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       <ArtifactReviewReminder
         projectId={project.id}

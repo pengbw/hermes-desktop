@@ -1680,69 +1680,6 @@
   margin-top: 4px;
 }
 
-.studioRejectModal {
-  max-width: 420px;
-  width: 90%;
-}
-
-.studioRejectHint {
-  font-size: 13px;
-  color: var(--text-secondary, #636e72);
-  margin-bottom: 12px;
-}
-
-.studioRejectTextarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 14px;
-  resize: vertical;
-  min-height: 80px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #2d3436);
-  box-sizing: border-box;
-}
-
-.studioRejectTextarea:focus {
-  outline: none;
-  border-color: var(--color-primary, #6c5ce7);
-}
-
-.studioModalActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.studioModalBtn {
-  padding: 8px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  cursor: pointer;
-  border: none;
-  transition: all 0.2s;
-}
-
-.studioModalBtn.cancel {
-  background: var(--bg-tertiary, #f0f0f0);
-  color: var(--text-secondary, #636e72);
-}
-
-.studioModalBtn.cancel:hover {
-  background: var(--bg-secondary, #e8e8e8);
-}
-
-.studioModalBtn.confirm.reject {
-  background: #e17055;
-  color: #fff;
-}
-
-.studioModalBtn.confirm.reject:hover {
-  background: #d63031;
-}
-
 .studioArtifactStatus.statusIn_progress,
 .statusIn_progress {
   background: #fdcb6e;

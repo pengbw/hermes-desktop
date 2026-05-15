@@ -406,6 +406,25 @@ fn all_migrations() -> Vec<Migration> {
             description: "add workflow_group_id to project_tasks for task-workflow group association",
             sql: "ALTER TABLE project_tasks ADD COLUMN workflow_group_id TEXT",
         },
+        // v60: 项目成员技能表
+        Migration {
+            version: 60,
+            description: "create project_member_skills table for per-project member skill binding",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS project_member_skills (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    member_id TEXT NOT NULL,
+                    skill_name TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                    FOREIGN KEY (member_id) REFERENCES project_members(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_pms_project ON project_member_skills(project_id);
+                CREATE INDEX IF NOT EXISTS idx_pms_member ON project_member_skills(member_id);
+            "#,
+        },
     ]
 }
 

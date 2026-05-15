@@ -361,8 +361,18 @@ export const TauriCommands = {
     return invoke("list_task_events", { taskId });
   },
 
-  async startWorkflowRun(projectId: string, initialMessage: string): Promise<void> {
-    return invoke("start_workflow_run", { projectId, initialMessage });
+  async startWorkflowRun(
+    projectId: string,
+    initialMessage: string,
+    groupId?: string,
+    taskId?: string
+  ): Promise<void> {
+    return invoke("start_workflow_run", {
+      projectId,
+      initialMessage,
+      groupId: groupId || null,
+      taskId: taskId || null,
+    });
   },
 
   async pauseWorkflowRun(runId: string): Promise<void> {
@@ -407,6 +417,18 @@ export const TauriCommands = {
 
   async listRoleSkills(roleId: string): Promise<void> {
     return invoke("list_role_skills", { roleId });
+  },
+
+  async bindMemberSkill(projectId: string, memberId: string, skillName: string): Promise<void> {
+    return invoke("bind_member_skill", { projectId, memberId, skillName });
+  },
+
+  async unbindMemberSkill(id: string): Promise<void> {
+    return invoke("unbind_member_skill", { id });
+  },
+
+  async listMemberSkills(projectId: string, memberId: string): Promise<void> {
+    return invoke("list_member_skills", { projectId, memberId });
   },
 
   async listProjectActivities(projectId: string, limit?: number): Promise<void> {

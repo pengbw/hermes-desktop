@@ -104,6 +104,8 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       const run = await invoke<WorkflowRun>("start_workflow_run", {
         projectId,
         initialMessage: startMessage.trim(),
+        groupId: null,
+        taskId: null,
       });
       setStartMessage("");
       setShowStartForm(false);

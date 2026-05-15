@@ -81,34 +81,57 @@ export default function AssignTaskModal({
     }
   };
 
+  const selectedRole = roleMap.get(assignee);
+
   return (
-    <div className={styles.modalOverlay} onClick={onClose}>
+    <div className={styles.studioModalOverlay} onClick={onClose}>
       <div
-        className={styles.modalContent}
-        style={{ maxWidth: 480 }}
+        className={styles.studioModal}
+        style={{ maxWidth: 520 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className={styles.modalHeader}>
+        <div className={styles.studioModalHeader}>
           <h3>📋 分配任务</h3>
-          <button className={styles.modalClose} onClick={onClose}>
+          <button className={styles.studioModalClose} onClick={onClose}>
             ✕
           </button>
         </div>
 
-        <div className={styles.modalBody}>
-          <div style={{ marginBottom: 12, color: "#666", fontSize: 13 }}>任务：{taskTitle}</div>
+        <div style={{ padding: "20px 24px", overflowY: "auto" }}>
+          <div
+            style={{
+              padding: "10px 14px",
+              background: "#f8f9fa",
+              borderRadius: 8,
+              marginBottom: 18,
+              fontSize: 13,
+              color: "#555",
+              borderLeft: "3px solid #6c5ce7",
+            }}
+          >
+            <span style={{ fontWeight: 600, color: "#333" }}>任务：</span>
+            {taskTitle}
+          </div>
 
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500 }}>
-              流程选择
+          <div style={{ marginBottom: 16 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#333",
+              }}
+            >
+              🔄 流程选择
             </label>
             <select
-              className={styles.taskMgmtFormSelect}
+              className={styles.studioFormInput}
               value={selectedGroupId || ""}
               onChange={(e) => {
                 setSelectedGroupId(e.target.value || null);
               }}
-              style={{ width: "100%" }}
+              style={{ width: "100%", padding: "10px 12px" }}
             >
               <option value="">不使用流程（自由分配）</option>
               {workflowGroups.map((g) => (
@@ -118,68 +141,106 @@ export default function AssignTaskModal({
                 </option>
               ))}
             </select>
-          </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500 }}>
-              受理人
-            </label>
-            <select
-              className={styles.taskMgmtFormSelect}
-              value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
-              disabled={assigneeLocked}
-              style={{ width: "100%", opacity: assigneeLocked ? 0.6 : 1 }}
-            >
-              <option value="">选择受理人</option>
-              {members.map((m) => {
-                const role = roleMap.get(m.roleId);
-                return (
-                  <option key={m.roleId} value={m.roleId}>
-                    {role?.icon || "👤"} {role?.name || m.roleId}
-                  </option>
-                );
-              })}
-            </select>
-            {assigneeLocked && (
-              <span style={{ fontSize: 11, color: "#e67e22", marginTop: 2 }}>
-                已自动锁定为流程起始角色
-              </span>
+            {selectedGroupId && (
+              <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                选择流程后，受理人将自动锁定为流程起始角色
+              </div>
             )}
           </div>
 
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500 }}>
-              任务说明（可选）
+          <div style={{ marginBottom: 16 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#333",
+              }}
+            >
+              👤 受理人
+            </label>
+            <div style={{ position: "relative" }}>
+              <select
+                className={styles.studioFormInput}
+                value={assignee}
+                onChange={(e) => setAssignee(e.target.value)}
+                disabled={assigneeLocked}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  opacity: assigneeLocked ? 0.7 : 1,
+                  background: assigneeLocked ? "#f0f0f0" : undefined,
+                }}
+              >
+                <option value="">选择受理人</option>
+                {members.map((m) => {
+                  const role = roleMap.get(m.roleId);
+                  return (
+                    <option key={m.roleId} value={m.roleId}>
+                      {role?.icon || "👤"} {role?.name || m.roleId}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            {assigneeLocked && selectedRole && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginTop: 6,
+                  padding: "6px 10px",
+                  background: "#fff3cd",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  color: "#856404",
+                }}
+              >
+                <span>🔒 已锁定为流程起始角色：</span>
+                <span style={{ fontWeight: 600 }}>
+                  {selectedRole.icon} {selectedRole.name}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginBottom: 8 }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#333",
+              }}
+            >
+              💬 任务说明
+              <span style={{ fontWeight: 400, color: "#999", marginLeft: 4 }}>（可选）</span>
             </label>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="输入给受理人的说明..."
               rows={3}
-              style={{
-                width: "100%",
-                padding: 8,
-                borderRadius: 6,
-                border: "1px solid #ddd",
-                fontSize: 13,
-                resize: "vertical",
-              }}
+              className={styles.studioFormTextarea}
+              style={{ width: "100%", resize: "vertical" }}
             />
           </div>
         </div>
 
-        <div className={styles.modalFooter}>
-          <button className={styles.modalCancelBtn} onClick={onClose}>
+        <div className={styles.studioModalFooter}>
+          <button className={styles.studioBtnSecondary} onClick={onClose}>
             取消
           </button>
           <button
-            className={styles.modalConfirmBtn}
+            className={styles.studioBtnPrimary}
             onClick={handleAssign}
             disabled={!assignee || loading}
             style={{ opacity: !assignee || loading ? 0.5 : 1 }}
           >
-            {loading ? "分配中..." : "确认分配"}
+            {loading ? "分配中..." : "✓ 确认分配"}
           </button>
         </div>
       </div>

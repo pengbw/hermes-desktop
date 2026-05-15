@@ -645,6 +645,8 @@ function WorkflowDesignerInner({
   const [workflows, setWorkflows] = useState<WorkflowData[]>([]);
   const [workflowGroups, setWorkflowGroups] = useState<WorkflowGroup[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editingGroupName, setEditingGroupName] = useState("");
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [sidebarSearch, setSidebarSearch] = useState("");
@@ -798,6 +800,7 @@ function WorkflowDesignerInner({
               toRoleId: targetRole.data.roleId,
               artifactType: undefined,
               transitionType: "auto_push",
+              groupId: activeGroupId || undefined,
             },
           })
             .then(() => {
@@ -920,6 +923,7 @@ function WorkflowDesignerInner({
           conditionExpr: conditionExpr || undefined,
           branchLabel: branchLabel || undefined,
           parallelGroup: parallelGroup || undefined,
+          groupId: activeGroupId || undefined,
         },
       })
         .then(() => {
@@ -1063,37 +1067,82 @@ function WorkflowDesignerInner({
             fontSize: 12,
           }}
         >
-          {workflowGroups.map((g) => (
-            <button
-              key={g.id}
-              onClick={() => {
-                setActiveGroupId(g.id);
-                setTimeout(() => loadWorkflows(), 0);
-              }}
-              style={{
-                padding: "4px 12px",
-                borderRadius: 4,
-                border: "1px solid #ddd",
-                background: activeGroupId === g.id ? "#6c5ce7" : "#fff",
-                color: activeGroupId === g.id ? "#fff" : "#333",
-                cursor: "pointer",
-                fontSize: 12,
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              {g.name}
-              {g.isPrimary && <span style={{ fontSize: 10 }}>🔒</span>}
-            </button>
-          ))}
+          {workflowGroups.map((g) => {
+            const isEditing = editingGroupId === g.id;
+            return isEditing ? (
+              <input
+                key={g.id}
+                value={editingGroupName}
+                onChange={(e) => setEditingGroupName(e.target.value)}
+                onBlur={async () => {
+                  const newName = editingGroupName.trim();
+                  if (newName && newName !== g.name) {
+                    try {
+                      await invoke("update_workflow_group", { id: g.id, name: newName });
+                      loadWorkflows();
+                    } catch (err) {
+                      console.error("Failed to rename workflow group:", err);
+                    }
+                  }
+                  setEditingGroupId(null);
+                }}
+                onKeyDown={async (e) => {
+                  if (e.key === "Enter") {
+                    (e.target as HTMLInputElement).blur();
+                  } else if (e.key === "Escape") {
+                    setEditingGroupId(null);
+                  }
+                }}
+                autoFocus
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 4,
+                  border: "2px solid #6c5ce7",
+                  background: "#fff",
+                  fontSize: 12,
+                  outline: "none",
+                  width: 100,
+                }}
+              />
+            ) : (
+              <button
+                key={g.id}
+                onClick={() => {
+                  setActiveGroupId(g.id);
+                }}
+                onDoubleClick={() => {
+                  if (g.isPrimary) return;
+                  setEditingGroupId(g.id);
+                  setEditingGroupName(g.name);
+                }}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: 4,
+                  border: "1px solid #ddd",
+                  background: activeGroupId === g.id ? "#6c5ce7" : "#fff",
+                  color: activeGroupId === g.id ? "#fff" : "#333",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+                title={g.isPrimary ? "主流程（不可重命名）" : "双击修改名称"}
+              >
+                {g.name}
+                {g.isPrimary && <span style={{ fontSize: 10 }}>🔒</span>}
+                {!g.isPrimary && <span style={{ fontSize: 10, opacity: 0.5 }}>✏️</span>}
+              </button>
+            );
+          })}
           <button
             onClick={async () => {
               try {
-                await invoke("create_workflow_group", {
+                const newGroup = await invoke<WorkflowGroup>("create_workflow_group", {
                   req: { projectId },
                 });
-                loadWorkflows();
+                setActiveGroupId(newGroup.id);
+                invoke("sync_workflow_to_file", { projectId }).catch(console.error);
               } catch (err) {
                 console.error("Failed to create workflow group:", err);
               }
@@ -1186,6 +1235,7 @@ function WorkflowDesignerInner({
                           (edge.data as { artifactType?: string })?.artifactType || undefined,
                         transitionType:
                           (edge.data as { transitionType?: string })?.transitionType || undefined,
+                        groupId: activeGroupId || undefined,
                       },
                     });
                   }

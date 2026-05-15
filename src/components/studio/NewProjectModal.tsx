@@ -186,7 +186,7 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
                 value={newProjectRule}
                 onChange={(e) => setNewProjectRule(e.target.value)}
                 rows={2}
-                disabled={!!selectedTmpl || isCustomProject}
+                disabled={!!selectedTmpl && !isCustomProject}
               />
             </div>
 
@@ -243,25 +243,6 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
               </span>
             </div>
             <div className={styles.studioTemplateGrid}>
-              <button
-                className={
-                  styles.studioTemplateCard + " " + (isCustomProject ? styles.selected : "")
-                }
-                onClick={() => {
-                  setIsCustomProject(!isCustomProject);
-                  if (!isCustomProject) {
-                    setNewProjectTemplate("");
-                    setNewProjectRule("");
-                    setPreviewTab("roles");
-                  }
-                }}
-              >
-                <div className={styles.studioTemplateCardHeader}>
-                  <span className={styles.studioTemplateIcon}>✨</span>
-                  <span className={styles.studioTemplateName}>自定义</span>
-                  {isCustomProject && <span className={styles.studioTemplateCheck}>✓</span>}
-                </div>
-              </button>
               {templates.map((tmpl) => (
                 <button
                   key={tmpl.id}
@@ -297,6 +278,25 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
                   </div>
                 </button>
               ))}
+              <button
+                className={
+                  styles.studioTemplateCard + " " + (isCustomProject ? styles.selected : "")
+                }
+                onClick={() => {
+                  setIsCustomProject(!isCustomProject);
+                  if (!isCustomProject) {
+                    setNewProjectTemplate("");
+                    setNewProjectRule("");
+                    setPreviewTab("roles");
+                  }
+                }}
+              >
+                <div className={styles.studioTemplateCardHeader}>
+                  <span className={styles.studioTemplateIcon}>✨</span>
+                  <span className={styles.studioTemplateName}>自定义</span>
+                  {isCustomProject && <span className={styles.studioTemplateCheck}>✓</span>}
+                </div>
+              </button>
             </div>
 
             {selectedTmpl && (

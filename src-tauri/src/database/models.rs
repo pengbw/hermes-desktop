@@ -712,6 +712,39 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
 
     sqlx::query(
         r#"
+        CREATE TABLE IF NOT EXISTS project_member_skills (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (member_id) REFERENCES project_members(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_pms_project ON project_member_skills(project_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_pms_member ON project_member_skills(member_id)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
         CREATE TABLE IF NOT EXISTS project_activities (
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
@@ -1040,6 +1073,7 @@ pub struct CreateProjectWorkflowRequest {
     pub condition_expr: Option<String>,
     pub branch_label: Option<String>,
     pub parallel_group: Option<String>,
+    pub group_id: Option<String>,
 }
 
 // 流程组：支持项目多流程
@@ -1327,13 +1361,6 @@ pub struct WorkflowRunStatus {
     pub steps: Vec<WorkflowRunStep>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct StartWorkflowRunRequest {
-    pub project_id: String,
-    pub initial_message: String,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactVersion {
@@ -1360,6 +1387,17 @@ pub struct ArtifactDiff {
 pub struct RoleSkill {
     pub id: String,
     pub role_id: String,
+    pub skill_name: String,
+    pub enabled: bool,
+    pub created_at: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMemberSkill {
+    pub id: String,
+    pub project_id: String,
+    pub member_id: String,
     pub skill_name: String,
     pub enabled: bool,
     pub created_at: i64,

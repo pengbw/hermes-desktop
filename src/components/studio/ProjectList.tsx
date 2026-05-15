@@ -24,7 +24,6 @@ interface ProjectListProps {
   onOpenSettings: (projectId: string) => void;
   onArchiveProject: (project: ProjectItem) => void;
   onDeleteProject: (project: ProjectItem) => void;
-  onImportProject: () => void;
   t: (key: string) => string;
 }
 
@@ -49,7 +48,6 @@ function ProjectList({
   onOpenSettings,
   onArchiveProject,
   onDeleteProject,
-  onImportProject,
   t,
 }: ProjectListProps) {
   const filteredProjects = projects.filter((p) => {
@@ -224,9 +222,6 @@ function ProjectList({
             </div>
             <button className={styles.studioBtnPrimary} onClick={onNewProject}>
               + {t("studio.newProject")}
-            </button>
-            <button className={styles.studioBtnSecondary} onClick={onImportProject}>
-              ↑ {t("studio.importProject")}
             </button>
             <div className={styles.studioSearchBox}>
               <input

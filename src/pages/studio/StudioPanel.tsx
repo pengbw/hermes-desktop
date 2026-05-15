@@ -225,25 +225,6 @@ function StudioPanel() {
     return "";
   };
 
-  const handleImportProject = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = async (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-        await invoke("import_project", { data });
-        loadProjects();
-      } catch (err) {
-        console.error("Import failed:", err);
-      }
-    };
-    input.click();
-  };
-
   if (loading) {
     return (
       <div className={`panel ${styles.studioPanel}`}>
@@ -307,7 +288,6 @@ function StudioPanel() {
         onOpenSettings={handleOpenSettings}
         onArchiveProject={handleArchiveProject}
         onDeleteProject={handleDeleteProject}
-        onImportProject={handleImportProject}
         t={t}
       />
 

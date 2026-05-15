@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { PendingReviewTask, AiRoleItem } from "@core/types";
 
 interface PendingReviewPanelProps {
@@ -30,24 +31,40 @@ export default function PendingReviewPanel({
     try {
       const data = await invoke<PendingReviewTask[]>("list_pending_review_tasks", { projectId });
       setPendingTasks(data);
-      if (selectedTask) {
-        const refreshed = data.find((t) => t.task.id === selectedTask.task.id);
-        if (refreshed) {
-          setSelectedTask(refreshed);
-        } else {
-          setSelectedTask(data.length > 0 ? data[0] : null);
+      setSelectedTask((prev) => {
+        if (prev) {
+          const refreshed = data.find((t) => t.task.id === prev.task.id);
+          if (refreshed) return refreshed;
         }
-      } else if (data.length > 0) {
-        setSelectedTask(data[0]);
-      }
+        return data.length > 0 ? data[0] : null;
+      });
     } catch (err) {
       console.error("Failed to load pending review tasks:", err);
     }
-  }, [projectId, selectedTask]);
+  }, [projectId]);
 
   useEffect(() => {
     loadPending();
   }, [projectId]);
+
+  // 监听产物状态变更事件，自动刷新待办审核列表
+  useEffect(() => {
+    const unlisten = listen<{
+      projectId: string;
+      artifactId: string;
+      newStatus: string;
+    }>("artifact_status_changed", (event) => {
+      const { projectId: pid, newStatus } = event.payload;
+      if (pid !== projectId) return;
+      if (newStatus === "submitted" || newStatus === "approved" || newStatus === "rejected") {
+        loadPending();
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [projectId, loadPending]);
 
   const handleReview = async (artifactId: string, action: "approve" | "reject") => {
     setReviewing(true);

@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import type { ProjectMember, AiRoleItem, ProjectArtifact, RoleSkill } from "@core/types";
+import type {
+  ProjectMember,
+  AiRoleItem,
+  ProjectArtifact,
+  RoleSkill,
+  ProjectMemberSkill,
+} from "@core/types";
 import styles from "@pages/studio/StudioPanel.module.css";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -25,53 +31,86 @@ function RoleSkillPanel({
   roleId,
   roleName,
   roleIcon,
+  projectId,
+  memberId,
   onClose,
 }: {
   roleId: string;
   roleName: string;
   roleIcon: string;
+  projectId: string;
+  memberId: string;
   onClose: () => void;
 }) {
-  const [skills, setSkills] = useState<RoleSkill[]>([]);
+  const [roleSkills, setRoleSkills] = useState<RoleSkill[]>([]);
+  const [memberSkills, setMemberSkills] = useState<ProjectMemberSkill[]>([]);
   const [newSkillName, setNewSkillName] = useState("");
   const [showSkillInput, setShowSkillInput] = useState(false);
 
   const loadSkills = useCallback(async () => {
     try {
-      const data = await invoke<RoleSkill[]>("list_role_skills", { roleId });
-      setSkills(data);
+      const roleData = await invoke<RoleSkill[]>("list_role_skills", { roleId });
+      setRoleSkills(roleData);
     } catch (err) {
-      console.error("Failed to load skills:", err);
+      console.error("Failed to load role skills:", err);
     }
-  }, [roleId]);
+    try {
+      const memberData = await invoke<ProjectMemberSkill[]>("list_member_skills", {
+        projectId,
+        memberId,
+      });
+      setMemberSkills(memberData);
+    } catch (err) {
+      console.error("Failed to load member skills:", err);
+    }
+  }, [roleId, projectId, memberId]);
 
   useEffect(() => {
     loadSkills();
   }, [loadSkills]);
 
-  const handleBindSkill = async () => {
-    if (!newSkillName.trim()) return;
-    try {
-      await invoke("bind_role_skill", { roleId, skillName: newSkillName.trim() });
-      setNewSkillName("");
-      setShowSkillInput(false);
-      loadSkills();
-    } catch (err) {
-      console.error("Failed to bind skill:", err);
-    }
-  };
-
-  const handleUnbindSkill = async (id: string) => {
+  const handleUnbindRoleSkill = async (id: string) => {
     try {
       await invoke("unbind_role_skill", { id });
       loadSkills();
     } catch (err) {
-      console.error("Failed to unbind skill:", err);
+      console.error("Failed to unbind role skill:", err);
     }
   };
 
-  const boundSkillNames = new Set(skills.map((s) => s.skillName));
-  const availableSkills = KNOWN_SKILLS.filter((s) => !boundSkillNames.has(s));
+  const handleBindMemberSkill = async (skillName: string) => {
+    try {
+      await invoke("bind_member_skill", { projectId, memberId, skillName });
+      loadSkills();
+    } catch (err) {
+      console.error("Failed to bind member skill:", err);
+    }
+  };
+
+  const handleUnbindMemberSkill = async (id: string) => {
+    try {
+      await invoke("unbind_member_skill", { id });
+      loadSkills();
+    } catch (err) {
+      console.error("Failed to unbind member skill:", err);
+    }
+  };
+
+  const allSkillNames = new Set([
+    ...roleSkills.map((s) => s.skillName),
+    ...memberSkills.map((s) => s.skillName),
+  ]);
+  const availableSkills = KNOWN_SKILLS.filter((s) => !allSkillNames.has(s));
+
+  const handleAddSkill = (skillName: string) => {
+    if (showSkillInput && newSkillName.trim()) {
+      skillName = newSkillName.trim();
+    }
+    if (!skillName) return;
+    handleBindMemberSkill(skillName);
+    setNewSkillName("");
+    setShowSkillInput(false);
+  };
 
   return (
     <div className={styles.taskDetailOverlay} onClick={onClose}>
@@ -87,12 +126,41 @@ function RoleSkillPanel({
 
         <div className={styles.taskDetailContent}>
           <div className={styles.taskDetailSection}>
+            {roleSkills.length > 0 && (
+              <>
+                <h4 style={{ margin: "8px 0 4px", fontSize: "13px", color: "#888" }}>
+                  全局角色技能（角色模板定义）
+                </h4>
+                <div className={styles.roleSkillList}>
+                  {roleSkills.map((skill) => (
+                    <div key={skill.id} className={styles.roleSkillItem}>
+                      <span className={styles.roleSkillName}>{skill.skillName}</span>
+                      <span
+                        className={`${styles.roleSkillEnabled} ${skill.enabled ? styles.roleSkillOn : styles.roleSkillOff}`}
+                      >
+                        {skill.enabled ? "启用" : "禁用"}
+                      </span>
+                      <button
+                        className={styles.roleSkillRemoveBtn}
+                        onClick={() => handleUnbindRoleSkill(skill.id)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <h4 style={{ margin: "12px 0 4px", fontSize: "13px", color: "#888" }}>
+              项目成员技能（本项目专属）
+            </h4>
             <div className={styles.artifactVersionActions}>
               <button
                 className={styles.artifactVersionCreateBtn}
                 onClick={() => setShowSkillInput(!showSkillInput)}
               >
-                ➕ 添加技能
+                ➕ 添加项目技能
               </button>
             </div>
 
@@ -106,11 +174,7 @@ function RoleSkillPanel({
                         <button
                           key={s}
                           className={styles.roleSkillQuickTag}
-                          onClick={() => {
-                            invoke("bind_role_skill", { roleId, skillName: s })
-                              .then(() => loadSkills())
-                              .catch(console.error);
-                          }}
+                          onClick={() => handleBindMemberSkill(s)}
                         >
                           + {s}
                         </button>
@@ -127,12 +191,13 @@ function RoleSkillPanel({
                       placeholder="输入技能名称..."
                       className={styles.taskDetailInput}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && newSkillName.trim()) handleBindSkill();
+                        if (e.key === "Enter" && newSkillName.trim())
+                          handleAddSkill(newSkillName.trim());
                       }}
                     />
                     <button
                       className={styles.artifactVersionDiffBtn}
-                      onClick={handleBindSkill}
+                      onClick={() => handleAddSkill(newSkillName.trim())}
                       disabled={!newSkillName.trim()}
                     >
                       添加
@@ -142,12 +207,12 @@ function RoleSkillPanel({
               </div>
             )}
 
-            {skills.length === 0 && !showSkillInput && (
-              <div className={styles.taskDetailEmpty}>暂无绑定技能，点击上方按钮添加</div>
+            {memberSkills.length === 0 && !showSkillInput && (
+              <div className={styles.taskDetailEmpty}>暂无项目专属技能，点击上方按钮添加</div>
             )}
 
             <div className={styles.roleSkillList}>
-              {skills.map((skill) => (
+              {memberSkills.map((skill) => (
                 <div key={skill.id} className={styles.roleSkillItem}>
                   <span className={styles.roleSkillName}>{skill.skillName}</span>
                   <span
@@ -157,7 +222,7 @@ function RoleSkillPanel({
                   </span>
                   <button
                     className={styles.roleSkillRemoveBtn}
-                    onClick={() => handleUnbindSkill(skill.id)}
+                    onClick={() => handleUnbindMemberSkill(skill.id)}
                   >
                     ✕
                   </button>
@@ -194,6 +259,7 @@ function RoleManager({
     id: string;
     name: string;
     icon: string;
+    memberId: string;
   } | null>(null);
 
   const handleAddMember = async (roleId: string) => {
@@ -312,6 +378,7 @@ function RoleManager({
                         id: member.roleId,
                         name: role?.name || "未知角色",
                         icon: role?.icon || "🤖",
+                        memberId: member.id,
                       })
                     }
                   >
@@ -339,6 +406,8 @@ function RoleManager({
           roleId={skillPanelRole.id}
           roleName={skillPanelRole.name}
           roleIcon={skillPanelRole.icon}
+          projectId={projectId}
+          memberId={skillPanelRole.memberId}
           onClose={() => setSkillPanelRole(null)}
         />
       )}
