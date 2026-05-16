@@ -55,7 +55,17 @@ type StartNodeType = Node<{
   label: string;
 }>;
 
-type FlowNode = RoleNodeType | ConditionNodeType | ParallelNodeType | MergeNodeType | StartNodeType;
+type EndNodeType = Node<{
+  label: string;
+}>;
+
+type FlowNode =
+  | RoleNodeType
+  | ConditionNodeType
+  | ParallelNodeType
+  | MergeNodeType
+  | StartNodeType
+  | EndNodeType;
 
 function RoleNode({ data, selected }: NodeProps<RoleNodeType>) {
   return (
@@ -163,12 +173,23 @@ function StartNode({ data, selected }: NodeProps<StartNodeType>) {
   );
 }
 
+function EndNode({ data, selected }: NodeProps<EndNodeType>) {
+  return (
+    <div className={`${styles.wfEndNode} ${selected ? styles.selected : ""}`}>
+      <Handle type="target" position={Position.Top} className={styles.wfHandle} />
+      <div className={styles.wfEndIcon}>⏹</div>
+      <div className={styles.wfEndLabel}>{data.label}</div>
+    </div>
+  );
+}
+
 const nodeTypes = {
   roleNode: RoleNode,
   conditionNode: ConditionNode,
   parallelNode: ParallelNode,
   mergeNode: MergeNode,
   startNode: StartNode,
+  endNode: EndNode,
 };
 
 const dagreGraph = new dagre.graphlib.Graph();
@@ -186,7 +207,7 @@ const layoutGraph = (nodes: FlowNode[], edges: Edge[]) => {
     ) {
       w = 100;
       h = 70;
-    } else if (node.type === "startNode") {
+    } else if (node.type === "startNode" || node.type === "endNode") {
       w = 60;
       h = 60;
     }
@@ -252,8 +273,8 @@ function buildFlowFromWorkflows(
     const fromId = wf.fromRoleId;
     const toId = wf.toRoleId;
 
-    if (toId) addRoleNode(toId, wf);
-    if (fromId) addRoleNode(fromId, null);
+    if (toId && toId !== "end") addRoleNode(toId, wf);
+    if (fromId && fromId !== "start" && fromId !== "end") addRoleNode(fromId, null);
 
     if (wf.transitionType === "need_confirm" && fromId && toId) {
       const condId = `cond_${conditionCounter.val++}`;
@@ -332,13 +353,27 @@ function buildFlowFromWorkflows(
         source: "start",
         target: toId,
         type: "smoothstep",
-        style: { stroke: "#95a5a6", strokeWidth: 2 },
+        style: { stroke: "#00b894", strokeWidth: 2 },
         label: "开始",
-        labelStyle: { fill: "#95a5a6", fontWeight: 600, fontSize: 11 },
+        labelStyle: { fill: "#00b894", fontWeight: 600, fontSize: 11 },
         labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
         labelBgPadding: [4, 6] as [number, number],
         labelBgBorderRadius: 4,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#95a5a6" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#00b894" },
+      });
+    } else if (fromId && !toId) {
+      edges.push({
+        id: `e-${fromId}-end`,
+        source: fromId,
+        target: "end",
+        type: "smoothstep",
+        style: { stroke: "#d63031", strokeWidth: 2 },
+        label: wf.artifactType || "完成",
+        labelStyle: { fill: "#d63031", fontWeight: 600, fontSize: 11 },
+        labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
+        labelBgPadding: [4, 6] as [number, number],
+        labelBgBorderRadius: 4,
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#d63031" },
       });
     }
   }
@@ -351,6 +386,18 @@ function buildFlowFromWorkflows(
       position: { x: 0, y: 0 },
       data: {
         label: "开始",
+      },
+    });
+  }
+
+  const hasEndSource = edges.some((e) => e.target === "end");
+  if (hasEndSource) {
+    nodes.push({
+      id: "end",
+      type: "endNode",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "结束",
       },
     });
   }
@@ -441,6 +488,21 @@ function Sidebar({
         >
           <span className={styles.wfSidebarItemIcon}>▶</span>
           <span className={styles.wfSidebarItemLabel}>开始</span>
+        </div>
+        <div
+          className={styles.wfSidebarItem + " " + styles.wfSidebarLogicItem}
+          draggable
+          onDragStart={(e) =>
+            onDragStart(e, {
+              type: "endNode",
+              data: {
+                label: "结束",
+              },
+            })
+          }
+        >
+          <span className={styles.wfSidebarItemIcon}>⏹</span>
+          <span className={styles.wfSidebarItemLabel}>结束</span>
         </div>
         <div
           className={styles.wfSidebarItem + " " + styles.wfSidebarLogicItem}
@@ -629,6 +691,56 @@ function ContextMenu({
   );
 }
 
+function validateWorkflow(nodes: FlowNode[], edges: Edge[]): { valid: boolean; error?: string } {
+  // 1. Check for start node
+  const startNodes = nodes.filter((n) => n.type === "startNode" || n.id === "start");
+  if (startNodes.length === 0) return { valid: false, error: "流程缺少开始节点" };
+  if (startNodes.length > 1) return { valid: false, error: "流程只能有一个开始节点" };
+
+  // 2. Check for end node
+  const endNodes = nodes.filter((n) => n.type === "endNode" || n.id === "end");
+  if (endNodes.length === 0) return { valid: false, error: "流程缺少结束节点" };
+
+  // 3. Reachability to end node
+  const graph = new Map<string, string[]>();
+  nodes.forEach((n) => graph.set(n.id, []));
+  edges.forEach((e) => {
+    if (graph.has(e.source)) {
+      graph.get(e.source)!.push(e.target);
+    }
+  });
+
+  for (const node of nodes) {
+    if (node.type === "endNode" || node.id === "end") continue;
+
+    const visited = new Set<string>();
+    const stack = [node.id];
+    let canReachEnd = false;
+
+    while (stack.length > 0) {
+      const curr = stack.pop()!;
+      if (endNodes.some((n) => n.id === curr)) {
+        canReachEnd = true;
+        break;
+      }
+      if (!visited.has(curr)) {
+        visited.add(curr);
+        const neighbors = graph.get(curr) || [];
+        for (const neighbor of neighbors) {
+          stack.push(neighbor);
+        }
+      }
+    }
+
+    if (!canReachEnd) {
+      const label = (node.data as any).label || node.id;
+      return { valid: false, error: `节点 "${label}" 无法连通到结束节点，存在死胡同或未连接` };
+    }
+  }
+
+  return { valid: true };
+}
+
 function WorkflowDesignerInner({
   projectId,
   roles,
@@ -796,7 +908,7 @@ function WorkflowDesignerInner({
           invoke("add_project_workflow", {
             req: {
               projectId,
-              fromRoleId: null,
+              fromRoleId: "start",
               toRoleId: targetRole.data.roleId,
               artifactType: undefined,
               transitionType: "auto_push",
@@ -888,11 +1000,11 @@ function WorkflowDesignerInner({
     setEdgeEditorOpen(false);
 
     const sourceRole = sourceNode as RoleNodeType | StartNodeType | undefined;
-    const targetNode = nodes.find((n) => n.id === target) as RoleNodeType | undefined;
+    const targetNode = nodes.find((n) => n.id === target) as RoleNodeType | EndNodeType | undefined;
 
     if (
       (sourceRole?.type === "roleNode" || sourceRole?.type === "startNode") &&
-      targetNode?.type === "roleNode"
+      (targetNode?.type === "roleNode" || targetNode?.type === "endNode")
     ) {
       let conditionExpr = "";
       let branchLabel = "";
@@ -911,13 +1023,16 @@ function WorkflowDesignerInner({
       }
 
       const fromRoleId =
-        sourceRole.type === "startNode" ? null : (sourceRole as RoleNodeType).data.roleId;
+        sourceRole.type === "startNode" ? "start" : (sourceRole as RoleNodeType).data.roleId;
+
+      const toRoleId =
+        targetNode.type === "endNode" ? "end" : (targetNode as RoleNodeType).data.roleId;
 
       invoke("add_project_workflow", {
         req: {
           projectId,
           fromRoleId,
-          toRoleId: targetNode.data.roleId,
+          toRoleId,
           artifactType: artifactType || undefined,
           transitionType: transitionType || undefined,
           conditionExpr: conditionExpr || undefined,
@@ -979,14 +1094,13 @@ function WorkflowDesignerInner({
 
       if (
         (sourceNode?.type === "roleNode" || sourceNode?.type === "startNode") &&
-        targetNode?.type === "roleNode"
+        (targetNode?.type === "roleNode" || targetNode?.type === "endNode")
       ) {
-        const targetData = (targetNode as RoleNodeType).data;
+        const toRoleId =
+          targetNode.type === "endNode" ? "end" : (targetNode as RoleNodeType).data.roleId;
         const fromRoleId =
-          sourceNode.type === "startNode" ? null : (sourceNode as RoleNodeType).data.roleId;
-        const wf = workflows.find(
-          (w) => w.fromRoleId === fromRoleId && w.toRoleId === targetData.roleId
-        );
+          sourceNode.type === "startNode" ? "start" : (sourceNode as RoleNodeType).data.roleId;
+        const wf = workflows.find((w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId);
         if (wf) {
           try {
             await invoke("remove_project_workflow", { id: wf.id });
@@ -1035,8 +1149,9 @@ function WorkflowDesignerInner({
           const sourceNode = edge ? nodes.find((n) => n.id === edge.source) : null;
           const targetNode = edge ? nodes.find((n) => n.id === edge.target) : null;
           const fromRoleId =
-            sourceNode?.type === "startNode" ? null : (sourceNode as RoleNodeType)?.data?.roleId;
-          const toRoleId = (targetNode as RoleNodeType)?.data?.roleId;
+            sourceNode?.type === "startNode" ? "start" : (sourceNode as RoleNodeType)?.data?.roleId;
+          const toRoleId =
+            targetNode?.type === "endNode" ? "end" : (targetNode as RoleNodeType)?.data?.roleId;
           const wf = workflows.find((w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId);
           if (wf?.isPrimary) {
             return [{ label: "🔒 主流程不可删除", action: () => {}, danger: false }];
@@ -1205,32 +1320,43 @@ function WorkflowDesignerInner({
             <button
               className={styles.wfToolbarBtn}
               onClick={async () => {
+                const validation = validateWorkflow(nodes, edges);
+                if (!validation.valid) {
+                  alert("流程校验失败：\n" + validation.error);
+                  return;
+                }
+
                 try {
                   const roleEdges = edges.filter((e) => {
                     const src = nodes.find((n) => n.id === e.source);
                     const tgt = nodes.find((n) => n.id === e.target);
                     return (
                       (src?.type === "roleNode" || src?.type === "startNode") &&
-                      tgt?.type === "roleNode"
+                      (tgt?.type === "roleNode" || tgt?.type === "endNode")
                     );
                   });
                   for (const edge of roleEdges) {
                     const srcNode = nodes.find((n) => n.id === edge.source);
                     const tgtNode = nodes.find((n) => n.id === edge.target) as
                       | RoleNodeType
+                      | EndNodeType
                       | undefined;
                     if (!srcNode || !tgtNode) continue;
                     const fromRoleId =
-                      srcNode.type === "startNode" ? null : (srcNode as RoleNodeType).data.roleId;
+                      srcNode.type === "startNode"
+                        ? "start"
+                        : (srcNode as RoleNodeType).data.roleId;
+                    const toRoleId =
+                      tgtNode.type === "endNode" ? "end" : (tgtNode as RoleNodeType).data.roleId;
                     const existing = workflows.find(
-                      (w) => w.fromRoleId === fromRoleId && w.toRoleId === tgtNode.data.roleId
+                      (w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId
                     );
                     if (existing) continue;
                     await invoke("add_project_workflow", {
                       req: {
                         projectId,
                         fromRoleId,
-                        toRoleId: tgtNode.data.roleId,
+                        toRoleId,
                         artifactType:
                           (edge.data as { artifactType?: string })?.artifactType || undefined,
                         transitionType:
@@ -1288,13 +1414,15 @@ function WorkflowDesignerInner({
                     .map((w) => (
                       <div key={w.id} className={styles.wfDetailWfItem}>
                         <span>
-                          {w.fromRoleId
+                          {w.fromRoleId && w.fromRoleId !== "start" && w.fromRoleId !== "end"
                             ? roleMap.get(w.fromRoleId)?.icon +
                               " " +
                               roleMap.get(w.fromRoleId)?.name
                             : t("studio.workflowStart")}
-                          → [{w.artifactType || "-"}] →{roleMap.get(w.toRoleId)?.icon}{" "}
-                          {roleMap.get(w.toRoleId)?.name}
+                          → [{w.artifactType || "-"}] →
+                          {w.toRoleId === "end"
+                            ? "🏁 结束"
+                            : `${roleMap.get(w.toRoleId)?.icon} ${roleMap.get(w.toRoleId)?.name}`}
                           {w.isPrimary && (
                             <span style={{ marginLeft: 4, fontSize: 11, color: "#e67e22" }}>
                               🔒 主流程

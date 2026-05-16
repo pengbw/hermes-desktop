@@ -177,7 +177,7 @@ export interface ProjectMember {
 export interface ProjectWorkflow {
   id: string;
   projectId: string;
-  fromRoleId: string | null;
+  fromRoleId: string;
   toRoleId: string;
   artifactType: string;
   transitionType: string;
@@ -531,7 +531,7 @@ export interface InstallProgress {
 export interface WorkflowData {
   id: string;
   projectId: string;
-  fromRoleId: string | null;
+  fromRoleId: string;
   toRoleId: string;
   artifactType: string;
   transitionType: string;
@@ -621,7 +621,7 @@ export interface MemberState {
 export type IdleAction = "coffee" | "book" | "stretch" | "chat" | "wander" | "none";
 
 export interface WorkflowStep {
-  fromRoleId: string | null;
+  fromRoleId: string;
   toRoleId: string;
   artifactType: string;
   transitionType: string;

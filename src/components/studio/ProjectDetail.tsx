@@ -240,10 +240,20 @@ function ProjectDetail({
     const roleOrder = new Map<string, number>();
     let order = 0;
     for (const wf of projectWorkflows) {
-      if (wf.fromRoleId && !roleOrder.has(wf.fromRoleId)) {
+      if (
+        wf.fromRoleId &&
+        wf.fromRoleId !== "start" &&
+        wf.fromRoleId !== "end" &&
+        !roleOrder.has(wf.fromRoleId)
+      ) {
         roleOrder.set(wf.fromRoleId, order++);
       }
-      if (wf.toRoleId && !roleOrder.has(wf.toRoleId)) {
+      if (
+        wf.toRoleId &&
+        wf.toRoleId !== "start" &&
+        wf.toRoleId !== "end" &&
+        !roleOrder.has(wf.toRoleId)
+      ) {
         roleOrder.set(wf.toRoleId, order++);
       }
     }
@@ -931,13 +941,21 @@ function ProjectDetail({
                           onSendMessage(text);
                         }}
                         onDeliverComplete={(fromRoleId, toRoleId, artifactType) => {
-                          if (fromRoleId && toRoleId) {
+                          if (
+                            fromRoleId &&
+                            toRoleId &&
+                            fromRoleId !== "start" &&
+                            fromRoleId !== "end" &&
+                            toRoleId !== "start" &&
+                            toRoleId !== "end"
+                          ) {
                             invoke("auto_delegate_chat", {
                               projectId: project.id,
                               fromRoleId,
                               toRoleId,
                               contextMessage: `产物「${artifactType || "工作产出"}」已交付，请基于上游产出继续工作。`,
                               eventId: `deliver-${Date.now()}`,
+                              taskId: null,
                             })
                               .then(async () => {
                                 const msgs = await invoke<ProjectMessage[]>(

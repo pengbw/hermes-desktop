@@ -392,8 +392,17 @@ pub async fn get_hermes_config(app: AppHandle) -> Result<serde_json::Value, Stri
 
 #[tauri::command]
 pub async fn set_hermes_config(key: String, value: String) -> Result<String, String> {
-    let output = hermes_command()
-        .args(&["config", "set", &key, &value])
+    let mut cmd = hermes_command();
+    cmd.args(&["config", "set", &key, &value]);
+
+    #[cfg(unix)]
+    {
+        let hermes_tmp = format!("{}/.hermes", home_dir());
+        let _ = std::fs::create_dir_all(&hermes_tmp);
+        cmd.env("TMPDIR", &hermes_tmp);
+    }
+
+    let output = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

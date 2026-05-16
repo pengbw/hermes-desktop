@@ -21,12 +21,12 @@ interface VirtualOfficeProps {
   officeTheme?: string;
   officeLayout?: string;
   onSpeak: (memberId: string, text: string) => void;
-  onDeliverComplete?: (fromRoleId: string | null, toRoleId: string, artifactType: string) => void;
+  onDeliverComplete?: (fromRoleId: string, toRoleId: string, artifactType: string) => void;
 }
 
 export interface VirtualOfficeHandle {
   deliverArtifact: (fromMemberId: string, toMemberId: string, artifactType: string) => void;
-  deliverByRoles: (fromRoleId: string | null, toRoleId: string, artifactType: string) => void;
+  deliverByRoles: (fromRoleId: string, toRoleId: string, artifactType: string) => void;
   setMemberStatusByRoleId: (roleId: string, status: MemberStatus) => void;
 }
 
@@ -63,7 +63,7 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
         deliverArtifact(fromMemberId: string, toMemberId: string, artifactType: string) {
           sceneRef.current?.deliverArtifact(fromMemberId, toMemberId, artifactType);
         },
-        deliverByRoles(fromRoleId: string | null, toRoleId: string, artifactType: string) {
+        deliverByRoles(fromRoleId: string, toRoleId: string, artifactType: string) {
           sceneRef.current?.deliverByRoles(fromRoleId, toRoleId, artifactType);
         },
         setMemberStatusByRoleId(roleId: string, status: MemberStatus) {

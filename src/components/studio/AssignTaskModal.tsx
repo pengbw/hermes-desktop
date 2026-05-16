@@ -207,22 +207,10 @@ export default function AssignTaskModal({
           </div>
 
           <div style={{ marginBottom: 8 }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 6,
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#333",
-              }}
-            >
-              💬 任务说明
-              <span style={{ fontWeight: 400, color: "#999", marginLeft: 4 }}>（可选）</span>
-            </label>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="输入给受理人的说明..."
+              placeholder="请详细描述任务需求、目标和验收标准（必须）"
               rows={3}
               className={styles.studioFormTextarea}
               style={{ width: "100%", resize: "vertical" }}

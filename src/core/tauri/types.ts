@@ -163,7 +163,7 @@ export interface KnowledgeConfig {
 export interface TemplateWorkflow {
   id: string;
   templateId: string;
-  fromRoleId: string | null;
+  fromRoleId: string;
   toRoleId: string;
   artifactType: string;
   transitionType: string;

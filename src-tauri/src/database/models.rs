@@ -57,6 +57,8 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             title TEXT NOT NULL,
             hermes_session_id TEXT,
             status TEXT NOT NULL DEFAULT 'active',
+            source TEXT NOT NULL DEFAULT 'main',
+            kb_ids TEXT,
             last_active_at INTEGER NOT NULL,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
@@ -78,6 +80,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             thinking TEXT,
+            files TEXT,
             timestamp INTEGER NOT NULL,
             FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
         )
@@ -97,21 +100,13 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)")
+        .execute(pool)
+        .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -189,13 +184,17 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         CREATE TABLE IF NOT EXISTS ai_roles (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
+            nickname TEXT NOT NULL DEFAULT '',
             icon TEXT NOT NULL DEFAULT '',
             description TEXT NOT NULL DEFAULT '',
             responsibilities TEXT NOT NULL DEFAULT '',
             soul_content TEXT NOT NULL DEFAULT '',
             avatar_url TEXT NOT NULL DEFAULT '',
+            avatar_type TEXT NOT NULL DEFAULT 'default',
             avatar_preset TEXT NOT NULL DEFAULT '',
             avatar_color TEXT NOT NULL DEFAULT '',
+            energy INTEGER NOT NULL DEFAULT 100,
+            mood TEXT NOT NULL DEFAULT 'neutral',
             sort_order INTEGER NOT NULL DEFAULT 0,
             is_builtin INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL,
@@ -219,6 +218,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             is_favorite INTEGER NOT NULL DEFAULT 0,
             cover_image TEXT NOT NULL DEFAULT '',
             project_rule TEXT NOT NULL DEFAULT '',
+            project_guidelines TEXT NOT NULL DEFAULT '',
+            office_theme TEXT NOT NULL DEFAULT 'cozy',
+            office_layout TEXT NOT NULL DEFAULT '',
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         )
@@ -236,6 +238,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             profile_name TEXT NOT NULL DEFAULT '',
             custom_soul TEXT NOT NULL DEFAULT '',
             custom_responsibilities TEXT NOT NULL DEFAULT '',
+            equipment_level INTEGER NOT NULL DEFAULT 1,
             sort_order INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
@@ -256,6 +259,12 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             to_role_id TEXT NOT NULL,
             artifact_type TEXT NOT NULL DEFAULT '',
             transition_type TEXT NOT NULL DEFAULT 'auto_push',
+            task_id TEXT NOT NULL DEFAULT '',
+            condition_expr TEXT NOT NULL DEFAULT '',
+            branch_label TEXT NOT NULL DEFAULT '',
+            parallel_group TEXT NOT NULL DEFAULT '',
+            is_primary BOOLEAN NOT NULL DEFAULT 0,
+            group_id TEXT,
             sort_order INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -277,6 +286,10 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             file_path TEXT NOT NULL DEFAULT '',
             content TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'draft',
+            review_comment TEXT NOT NULL DEFAULT '',
+            run_step_id TEXT NOT NULL DEFAULT '',
+            workflow_run_id TEXT,
+            step_index INTEGER,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -286,29 +299,17 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_project_members_project ON project_members(project_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_project_members_project ON project_members(project_id)")
+        .execute(pool)
+        .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_project_workflows_project ON project_workflows(project_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_project_workflows_project ON project_workflows(project_id)")
+        .execute(pool)
+        .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_project_artifacts_project ON project_artifacts(project_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_project_artifacts_project ON project_artifacts(project_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -318,6 +319,8 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             role_id TEXT NOT NULL,
             content TEXT NOT NULL,
             message_type TEXT NOT NULL DEFAULT 'text',
+            prompt_tokens INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         )
@@ -326,13 +329,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_project_messages_project ON project_messages(project_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_project_messages_project ON project_messages(project_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -357,6 +356,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             workspace_kind TEXT NOT NULL DEFAULT '',
             workspace_path TEXT NOT NULL DEFAULT '',
             board_id TEXT NOT NULL DEFAULT '',
+            workflow_group_id TEXT,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -366,13 +366,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_project_tasks_project ON project_tasks(project_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_project_tasks_project ON project_tasks(project_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -418,13 +414,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_knowledge_files_kb ON knowledge_files(knowledge_base_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_knowledge_files_kb ON knowledge_files(knowledge_base_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -446,47 +438,18 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_kb ON knowledge_chunks(knowledge_base_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_kb ON knowledge_chunks(knowledge_base_id)")
+        .execute(pool)
+        .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_file ON knowledge_chunks(file_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_file ON knowledge_chunks(file_id)")
+        .execute(pool)
+        .await?;
 
     let builtin_gestures = [
-        (
-            "silent",
-            0_i64,
-            0.0_f64,
-            0.0_f64,
-            0.0_f64,
-            load_gesture_json("silent"),
-        ),
-        (
-            "greeting",
-            8000_i64,
-            0.0_f64,
-            0.0_f64,
-            0.0_f64,
-            load_gesture_json("greeting"),
-        ),
-        (
-            "think",
-            5000_i64,
-            0.3_f64,
-            -0.3_f64,
-            -0.08_f64,
-            load_gesture_json("think"),
-        ),
+        ("silent", 0_i64, 0.0_f64, 0.0_f64, 0.0_f64, load_gesture_json("silent")),
+        ("greeting", 8000_i64, 0.0_f64, 0.0_f64, 0.0_f64, load_gesture_json("greeting")),
+        ("think", 5000_i64, 0.3_f64, -0.3_f64, -0.08_f64, load_gesture_json("think")),
     ];
 
     for (name, duration, look_at_x, look_at_y, tilt, target_json) in builtin_gestures.iter() {
@@ -545,13 +508,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -569,21 +528,13 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_task_links_from ON task_links(from_task_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_task_links_from ON task_links(from_task_id)")
+        .execute(pool)
+        .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_task_links_to ON task_links(to_task_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_task_links_to ON task_links(to_task_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -601,13 +552,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -618,6 +565,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             current_step INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'running',
             context TEXT NOT NULL DEFAULT '{}',
+            task_id TEXT NOT NULL DEFAULT '',
             started_at INTEGER NOT NULL,
             completed_at INTEGER,
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
@@ -627,13 +575,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_workflow_runs_project ON workflow_runs(project_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflow_runs_project ON workflow_runs(project_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -655,13 +599,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_workflow_run_steps_run ON workflow_run_steps(run_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflow_run_steps_run ON workflow_run_steps(run_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -679,13 +619,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_artifact_versions_artifact ON artifact_versions(artifact_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_artifact_versions_artifact ON artifact_versions(artifact_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -702,13 +638,9 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_role_skills_role ON role_skills(role_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_role_skills_role ON role_skills(role_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -727,21 +659,13 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_pms_project ON project_member_skills(project_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_pms_project ON project_member_skills(project_id)")
+        .execute(pool)
+        .await?;
 
-    sqlx::query(
-        r#"
-        CREATE INDEX IF NOT EXISTS idx_pms_member ON project_member_skills(member_id)
-        "#,
-    )
-    .execute(pool)
-    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_pms_member ON project_member_skills(member_id)")
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
@@ -761,9 +685,126 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_project_activities_project ON project_activities(project_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_project_activities_created ON project_activities(created_at)")
+        .execute(pool)
+        .await?;
+
     sqlx::query(
         r#"
-        CREATE INDEX IF NOT EXISTS idx_project_activities_project ON project_activities(project_id)
+        CREATE TABLE IF NOT EXISTS project_memories (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            role_id TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'general',
+            content TEXT NOT NULL,
+            importance INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_project_memories_project ON project_memories(project_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_project_memories_role_category ON project_memories(role_id, category)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS project_file_records (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            role_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_ext TEXT NOT NULL DEFAULT '',
+            file_size INTEGER NOT NULL DEFAULT 0,
+            description TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_file_records_project ON project_file_records(project_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_file_records_role ON project_file_records(project_id, role_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS task_dispatches (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            role_id TEXT NOT NULL,
+            dispatch_type TEXT NOT NULL DEFAULT 'manual',
+            message TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (task_id) REFERENCES project_tasks(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_task_dispatches_task ON task_dispatches(task_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS project_boards (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_project_boards_project ON project_boards(project_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS project_templates (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            icon TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT '',
+            project_rule TEXT NOT NULL DEFAULT '',
+            project_guidelines TEXT NOT NULL DEFAULT '',
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
         "#,
     )
     .execute(pool)
@@ -771,11 +812,75 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
 
     sqlx::query(
         r#"
-        CREATE INDEX IF NOT EXISTS idx_project_activities_created ON project_activities(created_at)
+        CREATE TABLE IF NOT EXISTS template_workflows (
+            id TEXT PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            from_role_id TEXT,
+            to_role_id TEXT NOT NULL,
+            artifact_type TEXT NOT NULL DEFAULT '',
+            transition_type TEXT NOT NULL DEFAULT 'auto_push',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE CASCADE
+        )
         "#,
     )
     .execute(pool)
     .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_template_workflows_template ON template_workflows(template_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS project_workflow_groups (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT '默认流程',
+            is_primary BOOLEAN NOT NULL DEFAULT 0,
+            parent_group_id TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS skill_catalog (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            identifier TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT '',
+            category_label TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT 'hub',
+            trust TEXT NOT NULL DEFAULT '',
+            version TEXT NOT NULL DEFAULT '',
+            tags TEXT NOT NULL DEFAULT '[]',
+            config_schema TEXT NOT NULL DEFAULT '{}',
+            user_config TEXT NOT NULL DEFAULT '{}',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(identifier)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_skill_catalog_category ON skill_catalog(category)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_skill_catalog_source ON skill_catalog(source)")
+        .execute(pool)
+        .await?;
 
     crate::database::migrations::run_migrations(pool).await?;
 
@@ -1609,19 +1714,4 @@ pub struct SkillCatalogItem {
     pub sort_order: i32,
     pub created_at: i64,
     pub updated_at: i64,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct CatalogSkillInput {
-    pub name: String,
-    pub identifier: String,
-    pub category: Option<String>,
-    pub category_label: Option<String>,
-    pub description: Option<String>,
-    pub source: Option<String>,
-    pub trust: Option<String>,
-    pub tags: Option<Vec<String>>,
-    pub config_schema: Option<serde_json::Value>,
-    pub sort_order: Option<i32>,
 }

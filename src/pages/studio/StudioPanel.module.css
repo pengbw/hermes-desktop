@@ -2992,6 +2992,41 @@
   margin-top: 2px;
 }
 
+.wfEndNode {
+  background: linear-gradient(135deg, #d63031 0%, #ff7675 100%);
+  border: 2px solid #d63031;
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(214, 48, 49, 0.3);
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.wfEndNode.selected {
+  border-color: #ff7675;
+  box-shadow:
+    0 0 0 3px rgba(214, 48, 49, 0.25),
+    0 4px 16px rgba(214, 48, 49, 0.3);
+}
+
+.wfEndIcon {
+  font-size: 18px;
+  color: #fff;
+  line-height: 1;
+}
+
+.wfEndLabel {
+  font-weight: 600;
+  font-size: 10px;
+  color: #fff;
+  margin-top: 2px;
+}
+
 .wfConditionNode {
   background: #fffde7;
   border: 2px solid #f39c12;

@@ -97,8 +97,7 @@ export const PROJECT_TEMPLATES: Record<
       { fromIdx: null, toIdx: 0, artifactType: "需求文档", transitionType: "auto_push" },
       { fromIdx: 0, toIdx: 1, artifactType: "需求规格", transitionType: "need_confirm" },
       { fromIdx: 1, toIdx: 2, artifactType: "代码实现", transitionType: "auto_push" },
-      { fromIdx: 2, toIdx: 3, artifactType: "测试报告", transitionType: "auto_push" },
-      { fromIdx: 3, toIdx: 1, artifactType: "审查反馈", transitionType: "need_confirm" },
+      { fromIdx: 2, toIdx: 3, artifactType: "测试报告", transitionType: "need_confirm" },
     ],
   },
   content_creation: {

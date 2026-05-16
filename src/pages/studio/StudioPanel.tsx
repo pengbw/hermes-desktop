@@ -238,26 +238,35 @@ function StudioPanel() {
 
   if (selectedProject) {
     return (
-      <ProjectDetail
-        project={selectedProject}
-        projectMembers={projectMembers}
-        projectArtifacts={projectArtifacts}
-        projectWorkflows={projectWorkflows}
-        projectTasks={projectTasks}
-        projectMessages={projectMessages}
-        allRoles={allRoles}
-        onBack={() => setSelectedProject(null)}
-        onMembersUpdate={setProjectMembers}
-        onArtifactsUpdate={setProjectArtifacts}
-        onTasksUpdate={setProjectTasks}
-        onMessagesUpdate={setProjectMessages}
-        onSendMessage={handleSendMessage}
-        onPreviewFile={(path, name) => setPreviewFile({ path, name })}
-        getRoleName={getRoleName}
-        getTagLabel={getTagLabel}
-        getTagClass={getTagClass}
-        t={t}
-      />
+      <>
+        <ProjectDetail
+          project={selectedProject}
+          projectMembers={projectMembers}
+          projectArtifacts={projectArtifacts}
+          projectWorkflows={projectWorkflows}
+          projectTasks={projectTasks}
+          projectMessages={projectMessages}
+          allRoles={allRoles}
+          onBack={() => setSelectedProject(null)}
+          onMembersUpdate={setProjectMembers}
+          onArtifactsUpdate={setProjectArtifacts}
+          onTasksUpdate={setProjectTasks}
+          onMessagesUpdate={setProjectMessages}
+          onSendMessage={handleSendMessage}
+          onPreviewFile={(path, name) => setPreviewFile({ path, name })}
+          getRoleName={getRoleName}
+          getTagLabel={getTagLabel}
+          getTagClass={getTagClass}
+          t={t}
+        />
+        {previewFile && (
+          <FilePreviewModal
+            filePath={previewFile.path}
+            fileName={previewFile.name}
+            onClose={() => setPreviewFile(null)}
+          />
+        )}
+      </>
     );
   }
 

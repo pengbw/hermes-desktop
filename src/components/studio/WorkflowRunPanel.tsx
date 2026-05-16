@@ -138,6 +138,10 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
   };
 
   const handleConfirmStep = async (runId: string, approved: boolean) => {
+    if (!approved && !confirmComment.trim()) {
+      alert("请先填写驳回意见");
+      return;
+    }
     try {
       await invoke("confirm_workflow_step", {
         runId,
@@ -412,8 +416,6 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
                           <button
                             className={styles.wfRunConfirmReject}
                             onClick={() => handleConfirmStep(runStatus.run.id, false)}
-                            disabled={!confirmComment.trim()}
-                            style={{ opacity: confirmComment.trim() ? 1 : 0.5 }}
                           >
                             ❌ 驳回
                           </button>

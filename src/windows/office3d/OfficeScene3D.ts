@@ -197,7 +197,7 @@ export interface MemberState {
 export type IdleAction = "coffee" | "book" | "stretch" | "chat" | "wander" | "none";
 
 export interface WorkflowStep {
-  fromRoleId: string | null;
+  fromRoleId: string;
   toRoleId: string;
   artifactType: string;
   transitionType: string;
@@ -248,7 +248,7 @@ interface DeliveryAnim {
   fromMemberId: string;
   toMemberId: string;
   artifactType: string;
-  fromRoleId: string | null;
+  fromRoleId: string;
   toRoleId: string;
   phase: "walk_to" | "face_target" | "hand_over" | "transfer" | "receive" | "walk_back";
   transferT: number;
@@ -303,7 +303,7 @@ export class OfficeScene3D {
 
   onZoneClick?: (z: Zone) => void;
   onSpeak?: (id: string, txt: string) => void;
-  onDeliverComplete?: (fromRoleId: string | null, toRoleId: string, artifactType: string) => void;
+  onDeliverComplete?: (fromRoleId: string, toRoleId: string, artifactType: string) => void;
 
   tod = 0.3;
   nightOverlay!: THREE.Mesh;
@@ -2542,8 +2542,8 @@ export class OfficeScene3D {
       fromMemberId,
       toMemberId,
       artifactType: artifactType || "文档",
-      fromRoleId: fromMember?.roleId || null,
-      toRoleId: toMember?.roleId || "",
+      fromRoleId: fromMember?.roleId || "start",
+      toRoleId: toMember?.roleId || "end",
       phase: "walk_to",
       transferT: 0,
       homeCol: home.col,
@@ -2555,11 +2555,13 @@ export class OfficeScene3D {
     this.deliveryAnims.push(delivery);
   }
 
-  deliverByRoles(fromRoleId: string | null, toRoleId: string, artifactType: string) {
-    const fromMember = fromRoleId
-      ? this.members.find((m) => m.roleId === fromRoleId)
-      : this.members[0];
-    const toMember = this.members.find((m) => m.roleId === toRoleId);
+  deliverByRoles(fromRoleId: string, toRoleId: string, artifactType: string) {
+    const fromMember =
+      fromRoleId && fromRoleId !== "start"
+        ? this.members.find((m) => m.roleId === fromRoleId)
+        : this.members[0];
+    const toMember =
+      toRoleId && toRoleId !== "end" ? this.members.find((m) => m.roleId === toRoleId) : undefined;
     if (!fromMember || !toMember) return;
     this.deliverArtifact(fromMember.id, toMember.id, artifactType);
   }

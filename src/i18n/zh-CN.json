@@ -238,7 +238,7 @@
   "studio.newProject": "新建项目",
   "studio.createProject": "创建项目",
   "studio.projectNamePlaceholder": "请输入项目名称",
-  "studio.projectDescPlaceholder": "请输入项目描述（可选）",
+  "studio.projectDescPlaceholder": "请详细描述项目背景、目标和关键需求（必须）",
   "studio.create": "创建",
   "studio.cancel": "取消",
   "studio.save": "保存",

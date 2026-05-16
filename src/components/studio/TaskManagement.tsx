@@ -215,7 +215,7 @@ function TaskManagement({
               className={styles.taskMgmtFormTextarea}
               value={newBody}
               onChange={(e) => setNewBody(e.target.value)}
-              placeholder="任务描述（可选）"
+              placeholder="请详细描述任务需求、目标和验收标准（必须）"
               rows={3}
             />
           </div>

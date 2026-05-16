@@ -1,5 +1,5 @@
 use crate::commands::helpers::{hermes_command, strip_ansi, AppState};
-use crate::database::models::CatalogSkillInput;
+use crate::database::models::SkillCatalogItem;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
@@ -690,31 +690,26 @@ pub async fn list_skill_catalog(
 }
 
 #[tauri::command]
-pub async fn add_skill_to_catalog(app: AppHandle, input: CatalogSkillInput) -> Result<(), String> {
+pub async fn add_skill_to_catalog(app: AppHandle, input: SkillCatalogItem) -> Result<(), String> {
     let pool = get_pool(&app)?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
-    let category = input.category.unwrap_or_default();
-    let category_label = input.category_label.unwrap_or_default();
-    let description = input.description.unwrap_or_default();
-    let source = input.source.unwrap_or_else(|| "hub".to_string());
-    let trust = input.trust.unwrap_or_default();
-    let tags = serde_json::to_string(&input.tags.unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
-    let config_schema = input.config_schema.unwrap_or(serde_json::Value::Null).to_string();
-    let sort_order = input.sort_order.unwrap_or(0);
+    let source = if input.source.is_empty() { "hub".to_string() } else { input.source };
+    let tags = if input.tags.is_empty() { "[]".to_string() } else { input.tags };
+    let config_schema = if input.config_schema.is_empty() { "null".to_string() } else { input.config_schema };
 
     sqlx::query("INSERT OR REPLACE INTO skill_catalog (id, name, identifier, category, category_label, description, source, trust, version, tags, config_schema, user_config, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, '{}', ?, ?, ?)")
         .bind(&id)
         .bind(&input.name)
         .bind(&input.identifier)
-        .bind(&category)
-        .bind(&category_label)
-        .bind(&description)
+        .bind(&input.category)
+        .bind(&input.category_label)
+        .bind(&input.description)
         .bind(&source)
-        .bind(&trust)
+        .bind(&input.trust)
         .bind(&tags)
         .bind(&config_schema)
-        .bind(sort_order)
+        .bind(input.sort_order)
         .bind(now)
         .bind(now)
         .execute(&pool)
@@ -736,29 +731,24 @@ pub async fn remove_skill_from_catalog(app: AppHandle, id: String) -> Result<(),
 }
 
 #[tauri::command]
-pub async fn update_skill_in_catalog(app: AppHandle, id: String, input: CatalogSkillInput) -> Result<(), String> {
+pub async fn update_skill_in_catalog(app: AppHandle, id: String, input: SkillCatalogItem) -> Result<(), String> {
     let pool = get_pool(&app)?;
     let now = chrono::Utc::now().timestamp_millis();
-    let category = input.category.unwrap_or_default();
-    let category_label = input.category_label.unwrap_or_default();
-    let description = input.description.unwrap_or_default();
-    let source = input.source.unwrap_or_else(|| "hub".to_string());
-    let trust = input.trust.unwrap_or_default();
-    let tags = serde_json::to_string(&input.tags.unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
-    let config_schema = input.config_schema.unwrap_or(serde_json::Value::Null).to_string();
-    let sort_order = input.sort_order.unwrap_or(0);
+    let source = if input.source.is_empty() { "hub".to_string() } else { input.source };
+    let tags = if input.tags.is_empty() { "[]".to_string() } else { input.tags };
+    let config_schema = if input.config_schema.is_empty() { "null".to_string() } else { input.config_schema };
 
     sqlx::query("UPDATE skill_catalog SET name=?, identifier=?, category=?, category_label=?, description=?, source=?, trust=?, tags=?, config_schema=?, sort_order=?, updated_at=? WHERE id=?")
         .bind(&input.name)
         .bind(&input.identifier)
-        .bind(&category)
-        .bind(&category_label)
-        .bind(&description)
+        .bind(&input.category)
+        .bind(&input.category_label)
+        .bind(&input.description)
         .bind(&source)
-        .bind(&trust)
+        .bind(&input.trust)
         .bind(&tags)
         .bind(&config_schema)
-        .bind(sort_order)
+        .bind(input.sort_order)
         .bind(now)
         .bind(&id)
         .execute(&pool)
@@ -769,34 +759,29 @@ pub async fn update_skill_in_catalog(app: AppHandle, id: String, input: CatalogS
 }
 
 #[tauri::command]
-pub async fn batch_import_skills(app: AppHandle, skills: Vec<CatalogSkillInput>) -> Result<usize, String> {
+pub async fn batch_import_skills(app: AppHandle, skills: Vec<SkillCatalogItem>) -> Result<usize, String> {
     let pool = get_pool(&app)?;
     let now = chrono::Utc::now().timestamp_millis();
     let mut count = 0usize;
 
     for input in skills {
         let id = uuid::Uuid::new_v4().to_string();
-        let category = input.category.unwrap_or_default();
-        let category_label = input.category_label.unwrap_or_default();
-        let description = input.description.unwrap_or_default();
-        let source = input.source.unwrap_or_else(|| "hub".to_string());
-        let trust = input.trust.unwrap_or_default();
-        let tags = serde_json::to_string(&input.tags.unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
-        let config_schema = input.config_schema.unwrap_or(serde_json::Value::Null).to_string();
-        let sort_order = input.sort_order.unwrap_or(0);
+        let source = if input.source.is_empty() { "hub".to_string() } else { input.source };
+        let tags = if input.tags.is_empty() { "[]".to_string() } else { input.tags };
+        let config_schema = if input.config_schema.is_empty() { "null".to_string() } else { input.config_schema };
 
         let result = sqlx::query("INSERT OR IGNORE INTO skill_catalog (id, name, identifier, category, category_label, description, source, trust, version, tags, config_schema, user_config, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, '{}', ?, ?, ?)")
             .bind(&id)
             .bind(&input.name)
             .bind(&input.identifier)
-            .bind(&category)
-            .bind(&category_label)
-            .bind(&description)
+            .bind(&input.category)
+            .bind(&input.category_label)
+            .bind(&input.description)
             .bind(&source)
-            .bind(&trust)
+            .bind(&input.trust)
             .bind(&tags)
             .bind(&config_schema)
-            .bind(sort_order)
+            .bind(input.sort_order)
             .bind(now)
             .bind(now)
             .execute(&pool)
@@ -947,29 +932,49 @@ struct CatalogSkillDef {
 
 fn default_source() -> String { "hub".to_string() }
 
+fn find_skill_catalog_json(app: &AppHandle) -> Result<(std::path::PathBuf, String), String> {
+    let resource_json = app.path().resource_dir()
+        .map(|p| p.join("resources").join("skill-catalog.json"))
+        .map_err(|e| format!("获取资源目录失败: {}", e))?;
+    log::info!("Trying resource_dir path: {}", resource_json.display());
+    if resource_json.exists() {
+        let content = std::fs::read_to_string(&resource_json)
+            .map_err(|e| format!("读取 resources/skill-catalog.json 失败: {}", e))?;
+        log::info!("Loaded skill catalog from resource_dir");
+        return Ok((resource_json, content));
+    }
+
+    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("skill-catalog.json");
+    log::info!("Trying dev path: {}", dev_path.display());
+    if dev_path.exists() {
+        let content = std::fs::read_to_string(&dev_path)
+            .map_err(|e| format!("读取开发目录 skill-catalog.json 失败: {}", e))?;
+        log::info!("Loaded skill catalog from dev path (CARGO_MANIFEST_DIR)");
+        return Ok((dev_path, content));
+    }
+
+    let local_data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("hermes-desktop");
+    let local_json = local_data_dir.join("skill-catalog.json");
+    log::info!("Trying local data path: {}", local_json.display());
+    if local_json.exists() {
+        let content = std::fs::read_to_string(&local_json)
+            .map_err(|e| format!("读取本地 skill-catalog.json 失败: {}", e))?;
+        log::info!("Loaded skill catalog from local data dir");
+        return Ok((local_json, content));
+    }
+
+    Err("找不到 skill-catalog.json 文件".to_string())
+}
+
 #[tauri::command]
 pub async fn load_skill_catalog_from_file(app: AppHandle) -> Result<usize, String> {
     let pool = get_pool(&app)?;
 
-    let resource_json = app.path().resource_dir()
-        .map(|p| p.join("resources").join("skill-catalog.json"))
-        .map_err(|e| format!("获取资源目录失败: {}", e))?;
-
-    let content = if resource_json.exists() {
-        std::fs::read_to_string(&resource_json)
-            .map_err(|e| format!("读取 resources/skill-catalog.json 失败: {}", e))?
-    } else {
-        let local_data_dir = dirs::data_local_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("hermes-desktop");
-        let local_json = local_data_dir.join("skill-catalog.json");
-        if local_json.exists() {
-            std::fs::read_to_string(&local_json)
-                .map_err(|e| format!("读取本地 skill-catalog.json 失败: {}", e))?
-        } else {
-            return Err("找不到 skill-catalog.json 文件".to_string());
-        }
-    };
+    let (_path, content) = find_skill_catalog_json(&app)?;
 
     let catalog: CatalogFile = serde_json::from_str(&content)
         .map_err(|e| format!("解析 skill-catalog.json 失败: {}", e))?;

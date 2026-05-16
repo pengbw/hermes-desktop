@@ -162,7 +162,9 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
             </div>
 
             <div className={styles.studioFormGroup}>
-              <label className={styles.studioFormLabel}>{t("studio.projectDesc")}</label>
+              <label className={styles.studioFormLabel}>
+                {t("studio.projectDesc")} <span className={styles.studioRequired}>*</span>
+              </label>
               <textarea
                 className={styles.studioFormTextarea}
                 placeholder={t("studio.projectDescPlaceholder")}
@@ -345,13 +347,14 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
                   <div className={styles.studioTemplatePreviewContent}>
                     {selectedTmpl.workflows.map((wf) => {
                       const fromName =
-                        wf.fromRoleId !== null
+                        wf.fromRoleId !== "start" && wf.fromRoleId !== "end"
                           ? (() => {
                               const r = selectedTmpl.roles.find((r) => r.id === wf.fromRoleId);
                               return r ? r.name : "?";
                             })()
                           : "启动";
                       const toName = (() => {
+                        if (wf.toRoleId === "end" || wf.toRoleId === "start") return "结束";
                         const r = selectedTmpl.roles.find((r) => r.id === wf.toRoleId);
                         return r ? r.name : "?";
                       })();
