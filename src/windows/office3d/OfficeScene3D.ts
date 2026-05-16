@@ -201,6 +201,7 @@ export interface WorkflowStep {
   toRoleId: string;
   artifactType: string;
   transitionType: string;
+  rejectToRoleId: string;
 }
 
 export interface Zone {

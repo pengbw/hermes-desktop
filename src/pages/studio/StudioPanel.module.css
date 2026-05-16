@@ -6717,6 +6717,31 @@
   font-weight: 500;
 }
 
+.studioTemplatePreviewWfReject {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 24px;
+  padding: 3px 8px 3px 0;
+  font-size: 10px;
+  color: #e67e22;
+  border-left: 2px dashed #e67e22;
+  padding-left: 8px;
+}
+
+.studioTemplatePreviewWfRejectLabel {
+  color: #e67e22;
+  font-weight: 600;
+}
+
+.studioTemplatePreviewWfRejectTo {
+  color: #e67e22;
+  font-weight: 600;
+  background: rgba(230, 126, 34, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
 .studioNewThemeIcon {
   font-size: 12px;
 }

@@ -2,7 +2,8 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Mutex};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(target_os = "windows")]
@@ -680,6 +681,22 @@ pub(crate) fn ensure_gateway_config(app: &AppHandle) {
         } else {
             let _ = app.emit("install-progress", InstallProgress {
                 line: "Local API Server enabled (port 8642)".to_string(), done: false, success: false,
+            });
+        }
+    }
+
+    if !config_content.contains("max_iterations") {
+        let agent_block = if !config_content.contains("agent:") {
+            "\n\nagent:\n  max_iterations: 10\n  gateway_timeout: 300\n  gateway_notify_interval: 0\n"
+        } else {
+            "\n  max_iterations: 10\n  gateway_timeout: 300\n  gateway_notify_interval: 0\n"
+        };
+        config_content.push_str(agent_block);
+        if let Err(e) = std::fs::write(&config_path, &config_content) {
+            log::warn!("Failed to write gateway agent config: {}", e);
+        } else {
+            let _ = app.emit("install-progress", InstallProgress {
+                line: "Gateway agent max_iterations=10 configured".to_string(), done: false, success: false,
             });
         }
     }
@@ -1429,4 +1446,93 @@ pub(crate) static DEBOUNCED_EMITTER: OnceLock<DebouncedEmitter> = OnceLock::new(
 pub(crate) fn debounced_emit(app: &AppHandle, project_id: &str, data_type: &str) {
     let emitter = DEBOUNCED_EMITTER.get_or_init(DebouncedEmitter::new);
     emitter.add_change(app, project_id, data_type);
+}
+
+fn shared_hermes_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .pool_max_idle_per_host(5)
+            .pool_idle_timeout(Duration::from_secs(90))
+            .timeout(Duration::from_secs(600))
+            .build()
+            .expect("Failed to build shared reqwest client")
+    })
+}
+
+pub(crate) async fn call_hermes_api_streaming(
+    api_base: &str,
+    api_key: &str,
+    project_id: &str,
+    body: serde_json::Value,
+) -> Result<reqwest::Response, String> {
+    call_hermes_api_inner(api_base, api_key, project_id, body, true).await
+}
+
+pub(crate) async fn call_hermes_api_non_streaming(
+    api_base: &str,
+    api_key: &str,
+    project_id: &str,
+    body: serde_json::Value,
+) -> Result<reqwest::Response, String> {
+    call_hermes_api_inner(api_base, api_key, project_id, body, false).await
+}
+
+async fn call_hermes_api_inner(
+    api_base: &str,
+    api_key: &str,
+    project_id: &str,
+    body: serde_json::Value,
+    use_stream: bool,
+) -> Result<reqwest::Response, String> {
+    let mut body = body;
+    body["stream"] = serde_json::Value::Bool(use_stream);
+    let client = shared_hermes_client();
+    let max_retries: u32 = 3;
+    let mut last_err = String::new();
+
+    for attempt in 1..=max_retries {
+        let mut req = client
+            .post(format!("{}/chat/completions", api_base))
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json");
+        if !project_id.is_empty() {
+            req = req.header("X-Hermes-Session-Key", format!("project-{}", project_id));
+        }
+        let result = req.json(&body).send().await;
+
+        match result {
+            Ok(response) => {
+                if response.status().is_server_error() && attempt < max_retries {
+                    let delay = Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                    log::warn!("call_hermes_api: server error {} on attempt {}/{}, retrying in {:?}",
+                        response.status(), attempt, max_retries, delay);
+                    last_err = format!("server error: {}", response.status());
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                return Ok(response);
+            }
+            Err(e) => {
+                last_err = e.to_string();
+                if attempt < max_retries && (e.is_timeout() || e.is_connect()) {
+                    let delay = Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                    log::warn!("call_hermes_api: {} on attempt {}/{}, retrying in {:?}",
+                        last_err, attempt, max_retries, delay);
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                if attempt < max_retries {
+                    let delay = Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                    log::warn!("call_hermes_api: {} on attempt {}/{}, retrying in {:?}",
+                        last_err, attempt, max_retries, delay);
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                return Err(format!("call_hermes_api failed after {} retries: {}", max_retries, last_err));
+            }
+        }
+    }
+
+    Err(format!("call_hermes_api failed after {} retries: {}", max_retries, last_err))
 }

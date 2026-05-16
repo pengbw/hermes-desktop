@@ -167,6 +167,7 @@ export interface TemplateWorkflow {
   toRoleId: string;
   artifactType: string;
   transitionType: string;
+  rejectToRoleId: string;
   sortOrder: number;
 }
 

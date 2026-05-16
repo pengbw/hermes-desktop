@@ -259,6 +259,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             to_role_id TEXT NOT NULL,
             artifact_type TEXT NOT NULL DEFAULT '',
             transition_type TEXT NOT NULL DEFAULT 'auto_push',
+            reject_to_role_id TEXT NOT NULL DEFAULT '',
             task_id TEXT NOT NULL DEFAULT '',
             condition_expr TEXT NOT NULL DEFAULT '',
             branch_label TEXT NOT NULL DEFAULT '',
@@ -819,6 +820,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             to_role_id TEXT NOT NULL,
             artifact_type TEXT NOT NULL DEFAULT '',
             transition_type TEXT NOT NULL DEFAULT 'auto_push',
+            reject_to_role_id TEXT NOT NULL DEFAULT '',
             sort_order INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (template_id) REFERENCES project_templates(id) ON DELETE CASCADE
         )
@@ -1156,6 +1158,7 @@ pub struct ProjectWorkflow {
     pub to_role_id: String,
     pub artifact_type: String,
     pub transition_type: String,
+    pub reject_to_role_id: String,
     pub task_id: String,
     pub condition_expr: String,
     pub branch_label: String,
@@ -1174,6 +1177,7 @@ pub struct CreateProjectWorkflowRequest {
     pub to_role_id: String,
     pub artifact_type: Option<String>,
     pub transition_type: Option<String>,
+    pub reject_to_role_id: Option<String>,
     pub task_id: Option<String>,
     pub condition_expr: Option<String>,
     pub branch_label: Option<String>,
@@ -1665,6 +1669,7 @@ pub struct TemplateWorkflow {
     pub to_role_id: String,
     pub artifact_type: String,
     pub transition_type: String,
+    pub reject_to_role_id: String,
     pub sort_order: i64,
 }
 

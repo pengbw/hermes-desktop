@@ -181,6 +181,7 @@ export interface ProjectWorkflow {
   toRoleId: string;
   artifactType: string;
   transitionType: string;
+  rejectToRoleId: string;
   taskId: string;
   conditionExpr: string;
   branchLabel: string;

@@ -934,6 +934,7 @@ function ProjectDetail({
                           toRoleId: wf.toRoleId,
                           artifactType: wf.artifactType || "",
                           transitionType: wf.transitionType || "auto_push",
+                          rejectToRoleId: wf.rejectToRoleId || "",
                         }))}
                         officeTheme={project?.officeTheme || "cozy"}
                         officeLayout={project?.officeLayout || "standard"}

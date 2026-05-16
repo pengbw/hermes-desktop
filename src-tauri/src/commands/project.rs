@@ -1,4 +1,4 @@
-use crate::commands::helpers::{self, AppState};
+use crate::commands::helpers::{self, AppState, call_hermes_api_streaming, call_hermes_api_non_streaming};
 use crate::database::models as db;
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
@@ -128,6 +128,18 @@ async fn mark_auto_delegate_failure(
 
     crate::commands::helpers::debounced_emit(app, project_id, "tasks");
     crate::commands::helpers::debounced_emit(app, project_id, "workflow_steps");
+    crate::commands::helpers::debounced_emit(app, project_id, "artifacts");
+
+    // 将角色 in_progress 状态的产物标记为失败，让角色状态恢复空闲
+    let _ = sqlx::query(
+        "UPDATE project_artifacts SET status = 'failed', review_comment = ?, updated_at = ? WHERE project_id = ? AND role_id = ? AND status = 'in_progress'"
+    )
+    .bind(error_message)
+    .bind(now)
+    .bind(project_id)
+    .bind(role_id)
+    .execute(&pool)
+    .await;
 
     for task_id in running_task_ids {
         let _ = app.emit("task_status_changed", serde_json::json!({
@@ -312,43 +324,48 @@ pub async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     }
 
-    let template_workflows: Vec<(&str, &str, Option<&str>, &str, &str, &str)> = vec![
-        ("software_dev_wf0", "software_dev", Some("start"), "builtin_software_dev_pm", "需求文档", "auto_push"),
-        ("software_dev_wf1", "software_dev", Some("builtin_software_dev_pm"), "builtin_software_dev_dev", "需求规格", "need_confirm"),
-        ("software_dev_wf2", "software_dev", Some("builtin_software_dev_dev"), "builtin_software_dev_qa", "代码实现", "auto_push"),
-        ("software_dev_wf3", "software_dev", Some("builtin_software_dev_qa"), "builtin_software_dev_reviewer", "测试报告", "need_confirm"),
-        ("software_dev_wf4", "software_dev", Some("builtin_software_dev_reviewer"), "end", "完成", "auto_push"),
-        ("content_creation_wf0", "content_creation", Some("start"), "builtin_content_creation_planner", "选题方向", "auto_push"),
-        ("content_creation_wf1", "content_creation", Some("builtin_content_creation_planner"), "builtin_content_creation_writer", "内容大纲", "need_confirm"),
-        ("content_creation_wf2", "content_creation", Some("builtin_content_creation_writer"), "builtin_content_creation_editor", "初稿", "auto_push"),
-        ("content_creation_wf3", "content_creation", Some("builtin_content_creation_editor"), "builtin_content_creation_auditor", "修改稿", "auto_push"),
-        ("content_creation_wf4", "content_creation", Some("builtin_content_creation_auditor"), "builtin_content_creation_editor", "审核意见", "need_confirm"),
-        ("content_creation_wf5", "content_creation", Some("builtin_content_creation_editor"), "end", "完成", "auto_push"),
-        ("data_analysis_wf0", "data_analysis", Some("start"), "builtin_data_analysis_ba", "分析需求", "auto_push"),
-        ("data_analysis_wf1", "data_analysis", Some("builtin_data_analysis_ba"), "builtin_data_analysis_de", "数据需求", "auto_push"),
-        ("data_analysis_wf2", "data_analysis", Some("builtin_data_analysis_de"), "builtin_data_analysis_ds", "数据集", "need_confirm"),
-        ("data_analysis_wf3", "data_analysis", Some("builtin_data_analysis_ds"), "builtin_data_analysis_ba", "分析报告", "auto_push"),
-        ("data_analysis_wf4", "data_analysis", Some("builtin_data_analysis_ba"), "end", "完成", "auto_push"),
-        ("marketing_wf0", "marketing_campaign", Some("start"), "builtin_marketing_strategist", "营销需求", "auto_push"),
-        ("marketing_wf1", "marketing_campaign", Some("builtin_marketing_strategist"), "builtin_marketing_creative", "策略方案", "need_confirm"),
-        ("marketing_wf2", "marketing_campaign", Some("builtin_marketing_creative"), "builtin_marketing_executor", "创意素材", "auto_push"),
-        ("marketing_wf3", "marketing_campaign", Some("builtin_marketing_executor"), "builtin_marketing_analyst", "执行数据", "auto_push"),
-        ("marketing_wf4", "marketing_campaign", Some("builtin_marketing_analyst"), "builtin_marketing_strategist", "效果报告", "need_confirm"),
-        ("marketing_wf5", "marketing_campaign", Some("builtin_marketing_strategist"), "end", "完成", "auto_push"),
-        ("game_dev_wf0", "game_dev", Some("start"), "builtin_game_dev_designer", "游戏概念", "auto_push"),
-        ("game_dev_wf1", "game_dev", Some("builtin_game_dev_designer"), "builtin_game_dev_artist", "设计文档", "need_confirm"),
-        ("game_dev_wf2", "game_dev", Some("builtin_game_dev_artist"), "builtin_game_dev_coder", "美术资源", "auto_push"),
-        ("game_dev_wf3", "game_dev", Some("builtin_game_dev_coder"), "builtin_game_dev_tester", "可玩版本", "auto_push"),
-        ("game_dev_wf4", "game_dev", Some("builtin_game_dev_tester"), "builtin_game_dev_designer", "测试报告", "need_confirm"),
-        ("game_dev_wf5", "game_dev", Some("builtin_game_dev_designer"), "end", "完成", "auto_push"),
-        ("research_wf0", "research_project", Some("start"), "builtin_research_pi", "研究选题", "auto_push"),
-        ("research_wf1", "research_project", Some("builtin_research_pi"), "builtin_research_lr", "研究计划", "need_confirm"),
-        ("research_wf2", "research_project", Some("builtin_research_lr"), "builtin_research_er", "文献综述", "auto_push"),
-        ("research_wf3", "research_project", Some("builtin_research_er"), "builtin_research_pi", "实验结果", "need_confirm"),
-        ("research_wf4", "research_project", Some("builtin_research_pi"), "end", "完成", "auto_push"),
+    let template_workflows: Vec<(&str, &str, Option<&str>, &str, &str, &str, &str)> = vec![
+        // 软件开发流程
+        ("software_dev_wf0", "software_dev", Some("start"), "builtin_software_dev_pm", "需求文档", "auto_push", ""),
+        ("software_dev_wf1", "software_dev", Some("builtin_software_dev_pm"), "builtin_software_dev_dev", "需求规格", "need_confirm", ""),
+        ("software_dev_wf2", "software_dev", Some("builtin_software_dev_dev"), "builtin_software_dev_qa", "代码实现", "auto_push", ""),
+        ("software_dev_wf3", "software_dev", Some("builtin_software_dev_qa"), "builtin_software_dev_reviewer", "测试报告", "need_confirm", "builtin_software_dev_dev"),
+        ("software_dev_wf4", "software_dev", Some("builtin_software_dev_reviewer"), "end", "结束", "auto_push", ""),
+       
+        // 内容创作流程
+        ("content_creation_wf0", "content_creation", Some("start"), "builtin_content_creation_planner", "选题方向", "auto_push", ""),
+        ("content_creation_wf1", "content_creation", Some("builtin_content_creation_planner"), "builtin_content_creation_writer", "内容大纲", "need_confirm", ""),
+        ("content_creation_wf2", "content_creation", Some("builtin_content_creation_writer"), "builtin_content_creation_editor", "初稿", "auto_push", ""),
+        ("content_creation_wf3", "content_creation", Some("builtin_content_creation_editor"), "builtin_content_creation_auditor", "修改稿", "auto_push", ""),
+        ("content_creation_wf4", "content_creation", Some("builtin_content_creation_auditor"), "end", "结束", "need_confirm", ""),
+
+        // 数据分析流程
+        ("data_analysis_wf0", "data_analysis", Some("start"), "builtin_data_analysis_ba", "分析需求", "auto_push", ""),
+        ("data_analysis_wf1", "data_analysis", Some("builtin_data_analysis_ba"), "builtin_data_analysis_de", "数据需求", "auto_push", ""),
+        ("data_analysis_wf2", "data_analysis", Some("builtin_data_analysis_de"), "builtin_data_analysis_ds", "数据集", "need_confirm", ""),
+        ("data_analysis_wf3", "data_analysis", Some("builtin_data_analysis_ds"), "builtin_data_analysis_ba", "分析报告", "auto_push", ""),
+        ("data_analysis_wf4", "data_analysis", Some("builtin_data_analysis_ba"), "end", "结束", "auto_push", ""),
+        // 营销流程
+        ("marketing_wf0", "marketing_campaign", Some("start"), "builtin_marketing_strategist", "营销需求", "auto_push", ""),
+        ("marketing_wf1", "marketing_campaign", Some("builtin_marketing_strategist"), "builtin_marketing_creative", "策略方案", "need_confirm", ""),
+        ("marketing_wf2", "marketing_campaign", Some("builtin_marketing_creative"), "builtin_marketing_executor", "创意素材", "auto_push", ""),
+        ("marketing_wf3", "marketing_campaign", Some("builtin_marketing_executor"), "builtin_marketing_analyst", "执行数据", "auto_push", ""),
+        ("marketing_wf4", "marketing_campaign", Some("builtin_marketing_analyst"), "end", "结束", "need_confirm", ""),
+     
+        // 游戏开发流程
+        ("game_dev_wf0", "game_dev", Some("start"), "builtin_game_dev_designer", "游戏概念", "auto_push", ""),
+        ("game_dev_wf1", "game_dev", Some("builtin_game_dev_designer"), "builtin_game_dev_artist", "设计文档", "need_confirm", ""),
+        ("game_dev_wf2", "game_dev", Some("builtin_game_dev_artist"), "builtin_game_dev_coder", "美术资源", "auto_push", ""),
+        ("game_dev_wf3", "game_dev", Some("builtin_game_dev_coder"), "builtin_game_dev_tester", "可玩版本", "auto_push", ""),
+        ("game_dev_wf4", "game_dev", Some("builtin_game_dev_tester"), "end", "结束", "need_confirm", "builtin_game_dev_coder"),
+        // 研究流程
+        ("research_wf0", "research_project", Some("start"), "builtin_research_pi", "研究计划", "auto_push", ""),
+        ("research_wf1", "research_project", Some("builtin_research_pi"), "builtin_research_lr", "文献综述", "need_confirm", ""),
+        ("research_wf2", "research_project", Some("builtin_research_lr"), "builtin_research_er", "实验报告", "auto_push", ""),
+        ("research_wf3", "research_project", Some("builtin_research_er"), "end", "结束", "need_confirm", ""),
     ];
 
-    for (wf_id, tmpl_id, from_role, to_role, artifact, transition) in &template_workflows {
+    for (wf_id, tmpl_id, from_role, to_role, artifact, transition, reject_to) in &template_workflows {
         let id = format!("builtin_{}", wf_id);
         let template_id = format!("builtin_{}", tmpl_id);
         let sort_order: i64 = wf_id.rsplit('_').next()
@@ -356,7 +373,7 @@ pub async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), String> {
             .unwrap_or(0);
 
         sqlx::query(
-            "INSERT INTO template_workflows (id, template_id, from_role_id, to_role_id, artifact_type, transition_type, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET from_role_id=excluded.from_role_id, to_role_id=excluded.to_role_id, artifact_type=excluded.artifact_type, transition_type=excluded.transition_type, sort_order=excluded.sort_order"
+            "INSERT INTO template_workflows (id, template_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET from_role_id=excluded.from_role_id, to_role_id=excluded.to_role_id, artifact_type=excluded.artifact_type, transition_type=excluded.transition_type, reject_to_role_id=excluded.reject_to_role_id, sort_order=excluded.sort_order"
         )
         .bind(&id)
         .bind(&template_id)
@@ -364,6 +381,7 @@ pub async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), String> {
         .bind(to_role)
         .bind(artifact)
         .bind(transition)
+        .bind(*reject_to)
         .bind(sort_order)
         .execute(pool)
         .await
@@ -394,7 +412,7 @@ pub async fn list_project_templates(app: AppHandle) -> Result<Vec<db::ProjectTem
     let mut result = Vec::new();
     for tmpl in templates {
         let workflows = sqlx::query_as::<_, db::TemplateWorkflow>(
-            "SELECT id, template_id, from_role_id, to_role_id, artifact_type, transition_type, sort_order FROM template_workflows WHERE template_id = ? ORDER BY sort_order ASC"
+            "SELECT id, template_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, sort_order FROM template_workflows WHERE template_id = ? ORDER BY sort_order ASC"
         )
         .bind(&tmpl.id)
         .fetch_all(&pool)
@@ -453,7 +471,7 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
     .ok_or("Template not found")?;
 
     let template_workflows = sqlx::query_as::<_, db::TemplateWorkflow>(
-        "SELECT id, template_id, from_role_id, to_role_id, artifact_type, transition_type, sort_order FROM template_workflows WHERE template_id = ? ORDER BY sort_order ASC"
+        "SELECT id, template_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, sort_order FROM template_workflows WHERE template_id = ? ORDER BY sort_order ASC"
     )
     .bind(&req.template_id)
     .fetch_all(&pool)
@@ -557,7 +575,7 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
         let from_role_id_for_insert = twf.from_role_id.as_ref().filter(|s| !s.is_empty());
 
         sqlx::query(
-            "INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, '', '', '', '', 1, ?, ?, ?)"
+            "INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', '', '', '', 1, ?, ?, ?)"
         )
         .bind(&wf_id)
         .bind(&project_id)
@@ -565,6 +583,7 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
         .bind(&twf.to_role_id)
         .bind(&twf.artifact_type)
         .bind(&twf.transition_type)
+        .bind(&twf.reject_to_role_id)
         .bind(&primary_group_id)
         .bind(twf.sort_order)
         .bind(now)
@@ -649,21 +668,18 @@ async fn extract_and_save_memory(app: AppHandle, project_id: String, role_id: St
         对话内容：\n{}", combined
     );
 
-    let client = reqwest::Client::new();
-    let body = serde_json::json!({
-        "model": "default",
-        "messages": [{"role": "user", "content": extract_prompt}],
-        "stream": false,
-    });
+        let body = serde_json::json!({
+            "model": "default",
+            "messages": [{"role": "user", "content": extract_prompt}],
+        });
 
-    let response = client
-        .post(format!("{}/chat/completions", api_base))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+        let response = match call_hermes_api_non_streaming(&api_base, &api_key, &project_id, body).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                log::warn!("extract_and_save_memory: API call failed: {}", e);
+                return Ok(());
+            }
+        };
 
     if !response.status().is_success() {
         return Ok(());
@@ -1279,16 +1295,16 @@ pub async fn export_project(app: AppHandle, project_id: String) -> Result<serde_
     };
 
     let workflows: Vec<db::ProjectWorkflow> = {
-        let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(
-            "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
+        let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(
+            "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
         )
         .bind(&project_id)
         .fetch_all(&pool)
         .await
         .map_err(|e| e.to_string())?;
 
-        rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
-            id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
+        rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
+            id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
         }).collect()
     };
 
@@ -1446,16 +1462,16 @@ pub async fn import_project(app: AppHandle, data: serde_json::Value) -> Result<d
 pub async fn list_project_workflows(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectWorkflow>, String> {
     let pool = get_pool(&app)?;
     repair_legacy_software_dev_workflow(&pool, Some(&project_id)).await?;
-    let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(
-        "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(
+        "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
     )
     .bind(&project_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
-        id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
+    Ok(rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
+        id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
     }).collect())
 }
 
@@ -1997,6 +2013,7 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
 
     let artifact_type = req.artifact_type.unwrap_or_default();
     let transition_type = req.transition_type.unwrap_or("auto_push".to_string());
+    let reject_to_role_id = req.reject_to_role_id.unwrap_or_default();
     let task_id = req.task_id.unwrap_or_default();
     let condition_expr = req.condition_expr.unwrap_or_default();
     let branch_label = req.branch_label.unwrap_or_default();
@@ -2015,13 +2032,14 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
         .map_err(|e| e.to_string())?
     };
 
-    sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)")
+    sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)")
         .bind(&id)
         .bind(&req.project_id)
         .bind(&req.from_role_id)
         .bind(&req.to_role_id)
         .bind(&artifact_type)
         .bind(&transition_type)
+        .bind(&reject_to_role_id)
         .bind(&task_id)
         .bind(&condition_expr)
         .bind(&branch_label)
@@ -2034,7 +2052,7 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
         .map_err(|e| e.to_string())?;
 
     Ok(db::ProjectWorkflow {
-        id, project_id: req.project_id, from_role_id: req.from_role_id, to_role_id: req.to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary: false, group_id: effective_group_id, sort_order, created_at: now,
+        id, project_id: req.project_id, from_role_id: req.from_role_id, to_role_id: req.to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary: false, group_id: effective_group_id, sort_order, created_at: now,
     })
 }
 
@@ -2494,7 +2512,17 @@ pub async fn approve_project_artifact(app: AppHandle, id: String, comment: Optio
             .await
             .map_err(|e| e.to_string())?;
 
-        if current_step == step_index.map(i64::from) {
+        let artifact_step = step_index.map(i64::from);
+
+        if let Some(step) = artifact_step {
+            if current_step != Some(step) {
+                log::info!("approve_project_artifact: current_step {:?} != artifact step {}, syncing", current_step, step);
+                let _ = sqlx::query("UPDATE workflow_runs SET current_step = ? WHERE id = ?")
+                    .bind(step)
+                    .bind(&run_id)
+                    .execute(&pool)
+                    .await;
+            }
             confirm_workflow_step(app.clone(), run_id, true, Some(review_comment.clone())).await?;
         }
     }
@@ -2639,76 +2667,114 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
         .await
         .map_err(|e| e.to_string())?;
 
-    if let Some((art_project_id, art_role_id, art_type, art_title, art_run_step_id, workflow_run_id, step_index, task_id)) = artifact_info {
+    if let Some((art_project_id, art_role_id, art_type, art_title, _art_run_step_id, workflow_run_id, step_index, task_id)) = artifact_info {
         let _ = record_activity(&app, &art_project_id, Some(&art_role_id), "artifact_rejected", Some("artifact"), Some(&id), &format!("打回了产物：{}，原因：{}", art_title, reason)).await;
 
         if !art_project_id.is_empty() && !art_role_id.is_empty() {
             let mut target_role_id = art_role_id.clone();
-            let mut target_step_index = step_index;
-            let mut target_artifact_type = art_type.clone();
+            let target_step_index = step_index;
+            let target_artifact_type = art_type.clone();
 
             if let Some(ref run_id) = workflow_run_id.clone().filter(|v| !v.is_empty()) {
                 let current_step = step_index.map(i64::from).unwrap_or_default();
 
-                let prev_step_info: Option<(String, String)> = if current_step > 0 {
-                    sqlx::query_as(
-                        "SELECT role_id, artifact_type FROM workflow_run_steps WHERE run_id = ? AND step_index = ?"
+                let explicit_reject: Option<String> = sqlx::query_scalar(
+                    "SELECT pw.reject_to_role_id FROM project_workflows pw \
+                     WHERE pw.project_id = ? AND pw.from_role_id = ? AND pw.transition_type = 'need_confirm' \
+                     AND pw.reject_to_role_id IS NOT NULL AND pw.reject_to_role_id != '' \
+                     LIMIT 1"
+                )
+                .bind(&art_project_id)
+                .bind(&art_role_id)
+                .fetch_optional(&pool)
+                .await
+                .unwrap_or(None);
+
+                let resolved_prev_step: i64;
+
+                if let Some(ref explicit_role) = explicit_reject {
+                    let explicit_step: Option<i64> = sqlx::query_scalar(
+                        "SELECT MIN(step_index) FROM workflow_run_steps WHERE run_id = ? AND role_id = ?"
                     )
                     .bind(run_id)
-                    .bind(current_step - 1)
+                    .bind(explicit_role)
                     .fetch_optional(&pool)
                     .await
-                    .unwrap_or(None)
+                    .unwrap_or(None);
+
+                    if let Some(es) = explicit_step {
+                        resolved_prev_step = es;
+                        target_role_id = explicit_role.clone();
+                        log::info!("reject_project_artifact: using explicit reject_to_role_id={}, step={}", target_role_id, es);
+                    } else {
+                        log::warn!("reject_project_artifact: reject_to_role_id={} not found in steps, falling back", explicit_role);
+                        let prev_need_step: Option<i64> = if current_step >= 1 {
+                            sqlx::query_scalar(
+                                "SELECT step_index FROM workflow_run_steps \
+                                 WHERE run_id = ? AND step_index < ? AND action = 'need_confirm' \
+                                 ORDER BY step_index DESC LIMIT 1"
+                            )
+                            .bind(run_id)
+                            .bind(current_step)
+                            .fetch_optional(&pool)
+                            .await
+                            .unwrap_or(None)
+                        } else { None };
+
+                        if let Some(ps) = prev_need_step {
+                            resolved_prev_step = ps;
+                        } else if current_step >= 1 {
+                            resolved_prev_step = current_step - 1;
+                        } else {
+                            resolved_prev_step = 0;
+                        }
+                    }
                 } else {
-                    None
-                };
-
-                if let Some((prev_role_id, prev_artifact_type)) = prev_step_info {
-                    let prev_step = current_step - 1;
-
-                    sqlx::query("UPDATE workflow_runs SET current_step = ?, status = 'running', completed_at = NULL WHERE id = ?")
-                        .bind(prev_step)
+                    let prev_need_step: Option<i64> = if current_step >= 1 {
+                        sqlx::query_scalar(
+                            "SELECT step_index FROM workflow_run_steps \
+                             WHERE run_id = ? AND step_index < ? AND action = 'need_confirm' \
+                             ORDER BY step_index DESC LIMIT 1"
+                        )
                         .bind(run_id)
-                        .execute(&pool)
+                        .bind(current_step)
+                        .fetch_optional(&pool)
                         .await
-                        .map_err(|e| e.to_string())?;
+                        .unwrap_or(None)
+                    } else { None };
 
-                    sqlx::query(
-                        "UPDATE workflow_run_steps SET status = 'running', completed_at = NULL, output = ? WHERE run_id = ? AND step_index = ?"
-                    )
-                    .bind(&reason)
+                    if let Some(ps) = prev_need_step {
+                        resolved_prev_step = ps;
+                    } else if current_step >= 1 {
+                        resolved_prev_step = current_step - 1;
+                    } else {
+                        resolved_prev_step = 0;
+                    }
+                }
+
+                sqlx::query("UPDATE workflow_runs SET current_step = ?, status = 'running', completed_at = NULL WHERE id = ?")
+                    .bind(resolved_prev_step)
                     .bind(run_id)
-                    .bind(prev_step)
                     .execute(&pool)
                     .await
                     .map_err(|e| e.to_string())?;
 
+                sqlx::query(
+                    "UPDATE workflow_run_steps SET status = 'running', completed_at = NULL, output = ? WHERE run_id = ? AND step_index = ?"
+                )
+                .bind(&reason)
+                .bind(run_id)
+                .bind(resolved_prev_step)
+                .execute(&pool)
+                .await
+                .map_err(|e| e.to_string())?;
+
+                for step_idx in (resolved_prev_step + 1)..=current_step {
                     sqlx::query(
                         "UPDATE workflow_run_steps SET status = 'pending', completed_at = NULL WHERE run_id = ? AND step_index = ?"
                     )
                     .bind(run_id)
-                    .bind(current_step)
-                    .execute(&pool)
-                    .await
-                    .map_err(|e| e.to_string())?;
-
-                    target_role_id = prev_role_id;
-                    target_step_index = Some(prev_step as i32);
-                    target_artifact_type = prev_artifact_type;
-                } else {
-                    sqlx::query("UPDATE workflow_runs SET current_step = ?, status = 'running', completed_at = NULL WHERE id = ?")
-                        .bind(current_step)
-                        .bind(run_id)
-                        .execute(&pool)
-                        .await
-                        .map_err(|e| e.to_string())?;
-
-                    sqlx::query(
-                        "UPDATE workflow_run_steps SET status = 'running', completed_at = NULL, output = ? WHERE run_id = ? AND step_index = ?"
-                    )
-                    .bind(&reason)
-                    .bind(run_id)
-                    .bind(current_step)
+                    .bind(step_idx)
                     .execute(&pool)
                     .await
                     .map_err(|e| e.to_string())?;
@@ -2718,14 +2784,13 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
             let new_artifact_id = uuid::Uuid::new_v4().to_string();
             let retry_title = format!("{} - 修改稿", art_title);
             sqlx::query(
-                "INSERT INTO project_artifacts (id, project_id, role_id, artifact_type, title, content, status, run_step_id, workflow_run_id, step_index, task_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', 'in_progress', ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO project_artifacts (id, project_id, role_id, artifact_type, title, content, status, run_step_id, workflow_run_id, step_index, task_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', 'in_progress', '', ?, ?, ?, ?, ?)"
             )
             .bind(&new_artifact_id)
             .bind(&art_project_id)
             .bind(&target_role_id)
             .bind(&target_artifact_type)
             .bind(&retry_title)
-            .bind(&art_run_step_id)
             .bind(&workflow_run_id)
             .bind(&target_step_index)
             .bind(&task_id)
@@ -3254,7 +3319,7 @@ pub async fn update_project_artifact(app: AppHandle, id: String, title: Option<S
 pub async fn execute_workflow_step(app: AppHandle, project_id: String, from_role_id: Option<String>, artifact_type: Option<String>) -> Result<Vec<db::ProjectWorkflow>, String> {
     let pool = get_pool(&app)?;
 
-    let mut query = String::from("SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ?");
+    let mut query = String::from("SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ?");
     let mut bind_from: Option<String> = None;
     let mut bind_artifact: Option<String> = None;
 
@@ -3268,7 +3333,7 @@ pub async fn execute_workflow_step(app: AppHandle, project_id: String, from_role
     }
     query.push_str(" ORDER BY sort_order ASC");
 
-    let mut q = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(&query)
+    let mut q = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(&query)
         .bind(&project_id);
     if let Some(ref fr) = bind_from {
         q = q.bind(fr);
@@ -3279,8 +3344,8 @@ pub async fn execute_workflow_step(app: AppHandle, project_id: String, from_role
 
     let rows = q.fetch_all(&pool).await.map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
-        id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
+    Ok(rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
+        id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
     }).collect())
 }
 
@@ -3359,8 +3424,8 @@ pub async fn get_project_role_context(app: AppHandle, project_id: String, role_i
         .unwrap_or_else(|| role_data.4.clone());
 
     let workflows: Vec<db::ProjectWorkflow> = {
-        let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(
-            "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ? AND (from_role_id = ? OR to_role_id = ?) ORDER BY sort_order ASC"
+        let rows = sqlx::query_as::<_, (String, String, Option<String>, String, String, String, String, String, String, String, String, bool, Option<String>, i64, i64)>(
+            "SELECT id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at FROM project_workflows WHERE project_id = ? AND (from_role_id = ? OR to_role_id = ?) ORDER BY sort_order ASC"
         )
         .bind(&project_id)
         .bind(&role_id)
@@ -3369,8 +3434,8 @@ pub async fn get_project_role_context(app: AppHandle, project_id: String, role_i
         .await
         .map_err(|e| e.to_string())?;
 
-        rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
-            id, project_id, from_role_id, to_role_id, artifact_type, transition_type, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
+        rows.into_iter().map(|(id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at)| db::ProjectWorkflow {
+            id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at,
         }).collect()
     };
 
@@ -3588,7 +3653,6 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
     let api_base = helpers::hermes_api_base_from_pool(&pool).await;
     let api_key = helpers::hermes_api_key_from_pool(&pool).await;
 
-    let client = reqwest::Client::new();
     let mut messages = vec![
         serde_json::json!({
             "role": "system",
@@ -3630,16 +3694,9 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
         let summary_body = serde_json::json!({
             "model": "default",
             "messages": [{"role": "user", "content": summary_prompt}],
-            "stream": false,
         });
 
-        let summary_response = client
-            .post(format!("{}/chat/completions", api_base))
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .json(&summary_body)
-            .send()
-            .await;
+        let summary_response = call_hermes_api_non_streaming(&api_base, &api_key, &project_id, summary_body).await;
 
         if let Ok(resp) = summary_response {
             if resp.status().is_success() {
@@ -3706,24 +3763,26 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
     log::info!("[chat_with_project_role] project={}, role={}, api_base={}", project_id, role_id, api_base);
     log::info!("[chat_with_project_role] request body: {}", serde_json::to_string_pretty(&body).unwrap_or_default());
 
-    let response = client
-        .post(format!("{}/chat/completions", api_base))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .header("X-Hermes-Session-Key", format!("project-{}", project_id))
-        .json(&body)
-        .send()
+    let response = call_hermes_api_streaming(&api_base, &api_key, &project_id, body)
         .await
-        .map_err(|e| format!("Failed to connect to AI service: {}", e))?;
+        .map_err(|e| {
+            let err_msg = format!("Failed to connect to AI service: {}", e);
+            let _ = mark_auto_delegate_failure(&app, &project_id, &role_id, Some(&event_id), &err_msg, None);
+            format!("Failed to connect to AI service: {}", e)
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        return Err(format!("AI service error: {} - {}", status, text));
+        let err_msg = format!("AI service error: {} - {}", status, text);
+        let _ = mark_auto_delegate_failure(&app, &project_id, &role_id, Some(&event_id), &err_msg, None);
+        return Err(err_msg);
     }
 
     let app_handle = app.clone();
     let event_id_clone = event_id.clone();
+    let project_id_clone = project_id.clone();
+    let role_id_clone = role_id.clone();
     tauri::async_runtime::spawn(async move {
         use futures_util::StreamExt;
         let mut stream = response.bytes_stream();
@@ -3794,6 +3853,7 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
                         "chunk": format!("\n\n[Error: {}]", e),
                         "done": true,
                     }));
+                    let _ = mark_auto_delegate_failure(&app_handle, &project_id_clone, &role_id_clone, Some(&event_id_clone), &format!("SSE stream error: {}", e), None);
                     break;
                 }
             }
@@ -3808,7 +3868,6 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
     let pool = get_pool(&app)?;
     let api_base = helpers::hermes_api_base_from_pool(&pool).await;
     let api_key = helpers::hermes_api_key_from_pool(&pool).await;
-    let client = reqwest::Client::new();
 
     let mut all_replies: Vec<(String, String, String)> = Vec::new();
 
@@ -3984,13 +4043,7 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
         log::info!("[chat_with_project_roles] project={}, role={}, api_base={}", project_id, role_id, api_base);
         log::info!("[chat_with_project_roles] request body: {}", serde_json::to_string_pretty(&body).unwrap_or_default());
 
-        let response = client
-            .post(format!("{}/chat/completions", api_base))
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .header("X-Hermes-Session-Key", format!("project-{}", project_id))
-            .json(&body)
-            .send()
+        let response = call_hermes_api_non_streaming(&api_base, &api_key, &project_id, body)
             .await
             .map_err(|e| format!("Failed to connect to AI service: {}", e))?;
 
@@ -4138,10 +4191,6 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
 
     let api_base = helpers::hermes_api_base_from_pool(&pool).await;
     let api_key = helpers::hermes_api_key_from_pool(&pool).await;
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(|e| e.to_string())?;
 
     let project = &to_context["project"];
     let project_name = project["name"].as_str().unwrap_or("");
@@ -4225,7 +4274,6 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
     let body = serde_json::json!({
         "model": "default",
         "messages": messages,
-        "stream": false,
     });
 
     let _ = app.emit(&event_id, serde_json::json!({
@@ -4240,15 +4288,7 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
     log::info!("[auto_delegate_chat] project={}, from={}, to={}, api_base={}", project_id, from_role_id, to_role_id, api_base);
     log::info!("[auto_delegate_chat] request body: {}", serde_json::to_string_pretty(&body).unwrap_or_default());
 
-    let response = match client
-        .post(format!("{}/chat/completions", api_base))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .header("X-Hermes-Session-Key", format!("project-{}", project_id))
-        .json(&body)
-        .send()
-        .await
-    {
+    let response = match call_hermes_api_non_streaming(&api_base, &api_key, &project_id, body).await {
         Ok(resp) => resp,
         Err(e) => {
             let error_message = format!("角色节点调用 AI 服务失败或超时: {}", e);
@@ -4561,6 +4601,39 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                         .bind(run_id)
                         .execute(&pool)
                         .await;
+                }
+
+                if running_steps.is_empty() {
+                    let pending_steps: Vec<(String, i64)> = sqlx::query_as(
+                        "SELECT wr.id, wrs.step_index FROM workflow_runs wr \
+                         JOIN workflow_run_steps wrs ON wr.id = wrs.run_id \
+                         WHERE wr.project_id = ? AND wr.status = 'running' \
+                         AND wrs.role_id = ? AND wrs.status = 'pending' \
+                         AND wrs.action = 'need_confirm' \
+                         ORDER BY wrs.step_index ASC"
+                    )
+                    .bind(&rec_project)
+                    .bind(&rec_role)
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+
+                    for (run_id, step_index) in &pending_steps {
+                        let _ = sqlx::query(
+                            "UPDATE workflow_run_steps SET status = 'pending_approval' WHERE run_id = ? AND step_index = ?"
+                        )
+                        .bind(run_id)
+                        .bind(step_index)
+                        .execute(&pool)
+                        .await;
+
+                        let _ = sqlx::query("UPDATE workflow_runs SET current_step = ? WHERE id = ?")
+                            .bind(step_index)
+                            .bind(run_id)
+                            .execute(&pool)
+                            .await;
+                    }
+                    log::info!("auto_delegate_chat: role {} completed need_confirm work, revived {} pending steps to pending_approval", rec_role, pending_steps.len());
                 }
 
                 let _ = rec_app.emit("need_confirm_submitted", serde_json::json!({

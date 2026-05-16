@@ -1,6 +1,6 @@
 use crate::commands::helpers::{
     command, default_shell, hermes_api_base_from_pool, hermes_api_key_from_pool, hermes_bin, path_with_local_bin, tool_label,
-    ChatStreamEvent,
+    ChatStreamEvent, call_hermes_api_streaming,
 };
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -391,15 +391,7 @@ pub async fn chat_with_hermes_api(
         request_body["hermes_session_id"] = serde_json::json!(sid);
     }
 
-    let client = reqwest::Client::new();
-    let response = match client
-        .post(format!("{}/chat/completions", api_base))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&request_body)
-        .send()
-        .await
-    {
+    let response = match call_hermes_api_streaming(&api_base, &api_key, "", request_body).await {
         Ok(r) => r,
         Err(e) => {
             log::error!("[chat_api] HTTP request failed: {}", e);

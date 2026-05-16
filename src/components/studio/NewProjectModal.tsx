@@ -361,19 +361,41 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
                       const tType =
                         TRANSITION_TYPE_LABELS[wf.transitionType] ||
                         TRANSITION_TYPE_LABELS.auto_push;
+                      const hasReject =
+                        wf.transitionType === "need_confirm" &&
+                        wf.rejectToRoleId &&
+                        wf.rejectToRoleId.length > 0;
+                      const rejectToName = hasReject
+                        ? (() => {
+                            const r = selectedTmpl.roles.find((r) => r.id === wf.rejectToRoleId);
+                            return r ? r.name : "?";
+                          })()
+                        : "";
                       return (
-                        <div key={wf.id} className={styles.studioTemplatePreviewWf}>
-                          <span className={styles.studioTemplatePreviewWfFrom}>{fromName}</span>
-                          <span
-                            className={styles.studioTemplatePreviewWfArrow}
-                            style={{ color: tType.color }}
-                          >
-                            {tType.label}
-                          </span>
-                          <span className={styles.studioTemplatePreviewWfTo}>{toName}</span>
-                          <span className={styles.studioTemplatePreviewWfArtifact}>
-                            {wf.artifactType}
-                          </span>
+                        <div key={wf.id}>
+                          <div className={styles.studioTemplatePreviewWf}>
+                            <span className={styles.studioTemplatePreviewWfFrom}>{fromName}</span>
+                            <span
+                              className={styles.studioTemplatePreviewWfArrow}
+                              style={{ color: tType.color }}
+                            >
+                              {tType.label}
+                            </span>
+                            <span className={styles.studioTemplatePreviewWfTo}>{toName}</span>
+                            <span className={styles.studioTemplatePreviewWfArtifact}>
+                              {wf.artifactType}
+                            </span>
+                          </div>
+                          {hasReject && (
+                            <div className={styles.studioTemplatePreviewWfReject}>
+                              <span className={styles.studioTemplatePreviewWfRejectLabel}>
+                                驳回 →
+                              </span>
+                              <span className={styles.studioTemplatePreviewWfRejectTo}>
+                                {rejectToName}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

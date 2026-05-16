@@ -275,6 +275,9 @@ function buildFlowFromWorkflows(
 
     if (toId && toId !== "end") addRoleNode(toId, wf);
     if (fromId && fromId !== "start" && fromId !== "end") addRoleNode(fromId, null);
+    const noTargetRoleId = wf.rejectToRoleId || "";
+    if (noTargetRoleId && noTargetRoleId !== "start" && noTargetRoleId !== "end")
+      addRoleNode(noTargetRoleId, null);
 
     if (wf.transitionType === "need_confirm" && fromId && toId) {
       const condId = `cond_${conditionCounter.val++}`;
@@ -318,20 +321,22 @@ function buildFlowFromWorkflows(
         markerEnd: { type: MarkerType.ArrowClosed, color: "#27ae60" },
       });
 
-      edges.push({
-        id: `e-${condId}-${fromId}-no`,
-        source: condId,
-        sourceHandle: "no",
-        target: fromId,
-        type: "smoothstep",
-        style: { stroke: "#e74c3c", strokeWidth: 2, strokeDasharray: "5 3" },
-        label: "❌ 打回修改",
-        labelStyle: { fill: "#e74c3c", fontWeight: 600, fontSize: 11 },
-        labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
-        labelBgPadding: [4, 6] as [number, number],
-        labelBgBorderRadius: 4,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#e74c3c" },
-      });
+      if (noTargetRoleId) {
+        edges.push({
+          id: `e-${condId}-${noTargetRoleId}-no`,
+          source: condId,
+          sourceHandle: "no",
+          target: noTargetRoleId,
+          type: "smoothstep",
+          style: { stroke: "#e74c3c", strokeWidth: 2, strokeDasharray: "5 3" },
+          label: "❌ 打回修改",
+          labelStyle: { fill: "#e74c3c", fontWeight: 600, fontSize: 11 },
+          labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
+          labelBgPadding: [4, 6] as [number, number],
+          labelBgBorderRadius: 4,
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#e74c3c" },
+        });
+      }
     } else if (fromId && toId) {
       edges.push({
         id: `e-${fromId}-${toId}`,
@@ -559,16 +564,22 @@ function EdgeEditorModal({
   open,
   artifactType,
   transitionType,
+  rejectToRoleId,
+  roles,
   onArtifactTypeChange,
   onTransitionTypeChange,
+  onRejectToRoleIdChange,
   onConfirm,
   onCancel,
 }: {
   open: boolean;
   artifactType: string;
   transitionType: string;
+  rejectToRoleId: string;
+  roles: AiRoleItem[];
   onArtifactTypeChange: (v: string) => void;
   onTransitionTypeChange: (v: string) => void;
+  onRejectToRoleIdChange: (v: string) => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -632,7 +643,24 @@ function EdgeEditorModal({
           </div>
         </div>
         {transitionType === "need_confirm" && (
-          <div className={styles.wfAddHint}>产出物需确认后才流转给下一角色</div>
+          <>
+            <div className={styles.wfAddHint}>产出物需确认后才流转给下一角色</div>
+            <div className={styles.wfAddField}>
+              <label>驳回目标</label>
+              <select
+                value={rejectToRoleId}
+                onChange={(e) => onRejectToRoleIdChange(e.target.value)}
+              >
+                <option value="">不驳回</option>
+                {roles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.icon} {role.name}
+                  </option>
+                ))}
+              </select>
+              <div className={styles.wfAddHint}>选择驳回时回退到哪个角色，留空则不驳回</div>
+            </div>
+          </>
         )}
         {transitionType === "condition" && (
           <div className={styles.wfAddHint}>根据条件判断结果选择分支（通过/打回）</div>
@@ -769,12 +797,16 @@ function WorkflowDesignerInner({
     sourceHandle: string | null;
     artifactType: string;
     transitionType: string;
+    rejectToRoleId: string;
+    workflowId: string;
   }>({
     source: "",
     target: "",
     sourceHandle: null,
     artifactType: "",
     transitionType: "auto_push",
+    rejectToRoleId: "",
+    workflowId: "",
   });
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -832,10 +864,60 @@ function WorkflowDesignerInner({
     setSelectedEdge(null);
   }, []);
 
-  const onEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
-    setSelectedEdge(edge);
-    setSelectedNode(null);
-  }, []);
+  const onEdgeClick = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      setSelectedEdge(edge);
+      setSelectedNode(null);
+
+      const sourceNode = nodes.find((n) => n.id === edge.source);
+      const targetNode = nodes.find((n) => n.id === edge.target);
+
+      if (
+        (sourceNode?.type === "roleNode" || sourceNode?.type === "startNode") &&
+        (targetNode?.type === "roleNode" || targetNode?.type === "endNode")
+      ) {
+        const fromRoleId =
+          sourceNode.type === "startNode" ? "start" : (sourceNode as RoleNodeType).data.roleId;
+        const toRoleId =
+          targetNode.type === "endNode" ? "end" : (targetNode as RoleNodeType).data.roleId;
+
+        const wf = workflows.find((w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId);
+
+        if (wf) {
+          setEdgeEditorData({
+            source: edge.source,
+            target: edge.target,
+            sourceHandle: (edge.sourceHandle as string) ?? null,
+            artifactType: wf.artifactType || "",
+            transitionType: wf.transitionType || "auto_push",
+            rejectToRoleId: wf.rejectToRoleId || "",
+            workflowId: wf.id,
+          });
+          setEdgeEditorOpen(true);
+        }
+      }
+
+      if (sourceNode?.type === "roleNode" && targetNode?.type === "conditionNode") {
+        const fromRoleId = (sourceNode as RoleNodeType).data.roleId;
+        const wf = workflows.find(
+          (w) => w.fromRoleId === fromRoleId && w.transitionType === "need_confirm"
+        );
+        if (wf) {
+          setEdgeEditorData({
+            source: fromRoleId,
+            target: wf.toRoleId,
+            sourceHandle: null,
+            artifactType: wf.artifactType || "",
+            transitionType: wf.transitionType,
+            rejectToRoleId: wf.rejectToRoleId || "",
+            workflowId: wf.id,
+          });
+          setEdgeEditorOpen(true);
+        }
+      }
+    },
+    [nodes, workflows]
+  );
 
   const onPaneClick = useCallback(() => {
     setSelectedNode(null);
@@ -930,6 +1012,8 @@ function WorkflowDesignerInner({
         sourceHandle: params.sourceHandle ?? null,
         artifactType: "",
         transitionType: isConditionNode ? "auto_push" : "auto_push",
+        rejectToRoleId: "",
+        workflowId: "",
       });
       setEdgeEditorOpen(true);
     },
@@ -937,7 +1021,15 @@ function WorkflowDesignerInner({
   );
 
   const handleEdgeEditorConfirm = useCallback(() => {
-    const { source, target, sourceHandle, artifactType, transitionType } = edgeEditorData;
+    const {
+      source,
+      target,
+      sourceHandle,
+      artifactType,
+      transitionType,
+      rejectToRoleId,
+      workflowId,
+    } = edgeEditorData;
 
     const sourceNode = nodes.find((n) => n.id === source);
     const isConditionYes = sourceNode?.type === "conditionNode" && sourceHandle === "yes";
@@ -1035,13 +1127,21 @@ function WorkflowDesignerInner({
           toRoleId,
           artifactType: artifactType || undefined,
           transitionType: transitionType || undefined,
+          rejectToRoleId: rejectToRoleId || undefined,
           conditionExpr: conditionExpr || undefined,
           branchLabel: branchLabel || undefined,
           parallelGroup: parallelGroup || undefined,
           groupId: activeGroupId || undefined,
         },
       })
-        .then(() => {
+        .then(async () => {
+          if (workflowId) {
+            try {
+              await invoke("remove_project_workflow", { id: workflowId });
+            } catch (err) {
+              console.error("Failed to remove old workflow:", err);
+            }
+          }
           loadWorkflows();
           invoke("sync_workflow_to_file", { projectId }).catch(console.error);
         })
@@ -1500,9 +1600,14 @@ function WorkflowDesignerInner({
         open={edgeEditorOpen}
         artifactType={edgeEditorData.artifactType}
         transitionType={edgeEditorData.transitionType}
+        rejectToRoleId={edgeEditorData.rejectToRoleId}
+        roles={roles}
         onArtifactTypeChange={(v) => setEdgeEditorData((prev) => ({ ...prev, artifactType: v }))}
         onTransitionTypeChange={(v) =>
           setEdgeEditorData((prev) => ({ ...prev, transitionType: v }))
+        }
+        onRejectToRoleIdChange={(v) =>
+          setEdgeEditorData((prev) => ({ ...prev, rejectToRoleId: v }))
         }
         onConfirm={handleEdgeEditorConfirm}
         onCancel={() => setEdgeEditorOpen(false)}

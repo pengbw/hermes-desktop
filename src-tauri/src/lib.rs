@@ -201,11 +201,10 @@ pub fn run() {
                                         "SELECT wr.id, wrs.step_index FROM workflow_runs wr \
                                          JOIN workflow_run_steps wrs ON wr.id = wrs.run_id \
                                          WHERE wr.project_id = ? AND wr.status = 'running' \
-                                         AND wrs.role_id = ? AND wrs.status IN ('running', 'pending') \
-                                         ORDER BY wrs.step_index DESC LIMIT 1"
+                                         AND wrs.status = 'running' \
+                                         ORDER BY wrs.step_index ASC LIMIT 1"
                                     )
                                     .bind(&project_trigger)
-                                    .bind(&role_trigger)
                                     .fetch_optional(&pool)
                                     .await
                                     .unwrap_or(None);
