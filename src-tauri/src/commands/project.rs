@@ -1,4 +1,4 @@
-use crate::commands::helpers::{self, AppState, call_hermes_api_streaming, call_hermes_api_non_streaming};
+use crate::commands::helpers::{self, AppState, build_role_constraint_rules, call_hermes_api_streaming, call_hermes_api_non_streaming};
 use crate::database::models as db;
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
@@ -3539,6 +3539,7 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
     if !project_guidelines.is_empty() {
         system_prompt.push_str(&format!("\n\n项目执行规则：\n{}", project_guidelines));
     }
+    system_prompt.push_str(build_role_constraint_rules());
 
     let workflows = &context["workflows"];
     if let Some(wf_arr) = workflows.as_array() {
@@ -3931,6 +3932,7 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
         if !project_guidelines.is_empty() {
             system_prompt.push_str(&format!("\n\n项目执行规则：\n{}", project_guidelines));
         }
+        system_prompt.push_str(build_role_constraint_rules());
 
         if !other_mentioned.is_empty() {
             system_prompt.push_str(&format!("\n\n当前正在与 {} 进行讨论。", other_mentioned.join("、")));
@@ -4242,6 +4244,7 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
     if !project_guidelines.is_empty() {
         system_prompt.push_str(&format!("\n\n项目执行规则：\n{}", project_guidelines));
     }
+    system_prompt.push_str(build_role_constraint_rules());
 
     system_prompt.push_str(&format!("\n\n请以「{}」的身份回答，保持角色一致性。完成工作后请说明你产出了哪些文件以及文件路径。", to_name));
 

@@ -47,6 +47,16 @@ pub(crate) async fn hermes_api_key_from_pool(pool: &SqlitePool) -> String {
     hermes_api_key()
 }
 
+pub(crate) fn build_role_constraint_rules() -> &'static str {
+    "\n\n【角色行为约束 - 不可违反】\n\
+     1. 只做你职责范围内的工作，不主动做其他角色的事。\n\
+     2. 不要对非职责范围内的事务发表任何意见。\n\
+     3. 不要提供超出你职责范围的建议、分析或解释。\n\
+     4. 如果用户需求的超出职责范围，必须统一回复：「抱歉，这超出我的职责范围！」\n\
+     5. 严格遵守产出物格式和输出位置要求，不得擅自更改文件路径或另起新文件。\n\
+     6. 角色对话回复中不要人为的输出 [解析上下文标签格式]"
+}
+
 pub(crate) fn command(program: &str) -> Command {
     #[allow(unused_mut)]
     let mut cmd = Command::new(program);
