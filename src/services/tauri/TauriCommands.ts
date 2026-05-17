@@ -29,6 +29,8 @@ import type {
   KnowledgeConfig,
   ProjectTemplateDetail,
   CreateProjectFromTemplateRequest,
+  ChannelStatusResult,
+  QrCodeResult,
 } from "@core/tauri/types";
 
 export const TauriCommands = {
@@ -540,5 +542,37 @@ export const TauriCommands = {
 
   async createProjectFromTemplate(req: CreateProjectFromTemplateRequest): Promise<ProjectItem> {
     return invoke<ProjectItem>("create_project_from_template", { req });
+  },
+
+  async listChannelStatuses(): Promise<ChannelStatusResult[]> {
+    return invoke<ChannelStatusResult[]>("list_channel_statuses");
+  },
+
+  async channelSetupQr(channelType: string): Promise<QrCodeResult> {
+    return invoke<QrCodeResult>("channel_setup_qr", { channelType });
+  },
+
+  async channelSetupToken(channelType: string, config: Record<string, unknown>): Promise<void> {
+    return invoke("channel_setup_token", { channelType, config });
+  },
+
+  async channelDisconnect(channelType: string): Promise<void> {
+    return invoke("channel_disconnect", { channelType });
+  },
+
+  async channelSetHome(channelType: string): Promise<void> {
+    return invoke("channel_set_home", { channelType });
+  },
+
+  async channelCheckStatus(channelType: string): Promise<ChannelStatusResult> {
+    return invoke<ChannelStatusResult>("channel_check_status", { channelType });
+  },
+
+  async channelConfirmQr(channelType: string): Promise<void> {
+    return invoke("channel_confirm_qr", { channelType });
+  },
+
+  async restartGateway(): Promise<void> {
+    return invoke("restart_gateway");
   },
 };

@@ -635,6 +635,39 @@ pub struct AppState {
 
 pub(crate) struct AgentProcess(pub(crate) Mutex<Option<std::process::Child>>);
 
+pub(crate) fn get_ssl_cert_file() -> Option<String> {
+    // Resolve certifi via hermes venv Python — works cross-platform and any Python version
+    let venv_python = {
+        let home = home_dir();
+        #[cfg(windows)]
+        let py = format!("{}\\.hermes\\hermes-agent\\venv\\Scripts\\python.exe", home);
+        #[cfg(not(windows))]
+        let py = format!("{}/.hermes/hermes-agent/venv/bin/python", home);
+        if std::path::Path::new(&py).exists() {
+            py
+        } else {
+            // Fallback: try to find any Python with certifi
+            #[cfg(windows)]
+            { "python".to_string() }
+            #[cfg(not(windows))]
+            { "python3".to_string() }
+        }
+    };
+
+    let output = command(&venv_python)
+        .args(["-c", "import certifi; print(certifi.where())"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !path.is_empty() && std::path::Path::new(&path).exists() {
+        return Some(path);
+    }
+    None
+}
+
 #[derive(Serialize, Clone)]
 pub(crate) struct ChatStreamEvent {
     pub chunk: String,

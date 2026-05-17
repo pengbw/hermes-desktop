@@ -886,6 +886,25 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
 
     crate::database::migrations::run_migrations(pool).await?;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS channel_configs (
+            id TEXT PRIMARY KEY,
+            channel_type TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            config_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'disconnected',
+            is_home INTEGER NOT NULL DEFAULT 0,
+            error_message TEXT,
+            connected_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
     Ok(())
 }
 

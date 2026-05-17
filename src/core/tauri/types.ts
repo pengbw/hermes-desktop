@@ -200,3 +200,22 @@ export interface CreateEmptyProjectRequest {
   icon?: string;
   officeTheme?: string;
 }
+
+export interface ChannelStatusResult {
+  id: string;
+  channelType: string;
+  displayName: string;
+  status: "disconnected" | "connecting" | "connected" | "error";
+  isHome: boolean;
+  errorMessage?: string;
+  connectedAt?: number;
+  configJson: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface QrCodeResult {
+  qrData: string;
+  qrType: string;
+  expiresIn?: number;
+}

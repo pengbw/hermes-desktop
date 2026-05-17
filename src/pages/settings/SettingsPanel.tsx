@@ -12,6 +12,7 @@ import SystemSettings from "@components/settings/SystemSettings";
 import GestureSettingsComponent from "@components/settings/GestureSettings";
 import AiRolesSettingsSection from "@components/settings/AiRolesSettings";
 import KnowledgeSettingsSection from "@components/settings/KnowledgeSettings";
+import ChannelSettings from "@components/settings/ChannelSettings";
 import ProviderModal from "@components/settings/ProviderModal";
 import styles from "./SettingsPanel.module.css";
 
@@ -386,6 +387,7 @@ function SettingsPanel() {
                 dirty: sectionDirtyCount("model"),
               },
               { key: "knowledge", icon: "📚", labelKey: "nav.knowledge" as const, dirty: 0 },
+              { key: "channel", icon: "📡", labelKey: "nav.channel" as const, dirty: 0 },
               { key: "gesture", icon: "💃", labelKey: "nav.gesture" as const, dirty: 0 },
               { key: "cardManager", icon: "🃏", labelKey: "nav.cardManager" as const, dirty: 0 },
               { key: "aiRoles", icon: "👥", labelKey: "nav.aiRoles" as const, dirty: 0 },
@@ -563,6 +565,8 @@ function SettingsPanel() {
           )}
 
           {activeSection === "knowledge" && <KnowledgeSettingsSection t={t} />}
+
+          {activeSection === "channel" && <ChannelSettings t={t} />}
         </div>
       </div>
 

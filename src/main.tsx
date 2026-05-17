@@ -6,14 +6,19 @@ import "./styles/themes.css";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { I18nProvider } from "./contexts/I18nContext";
 import MainWindow from "./windows/MainWindow";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 async function bootstrap() {
+  let label = "main";
   try {
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
     const win = getCurrentWindow();
-    const label = win.label;
+    label = win.label;
     console.log("[Hermes] Window label:", label);
+  } catch (e) {
+    console.warn("[Hermes] Could not get window label, using default:", e);
+  }
 
+  try {
     const root = document.getElementById("root") as HTMLElement;
 
     if (label === "avatar") {

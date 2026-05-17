@@ -5,7 +5,7 @@ mod services;
 use commands::helpers::{
     hermes_command, ensure_gateway_config, kill_hermes_process,
     show_error_dialog, sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
-    AppState, AgentProcess, home_dir, path_with_local_bin,
+    AppState, AgentProcess, home_dir, path_with_local_bin, get_ssl_cert_file,
 };
 use sqlx::SqlitePool;
 use std::process::Stdio;
@@ -158,14 +158,23 @@ pub fn run() {
                 let _ = std::fs::create_dir_all(&workspace_root);
 
                 let new_path = path_with_local_bin();
+                let hermes_home = format!("{}/.hermes", home_dir());
+                let hermes_env = format!("{}/.env", hermes_home);
                 let mut gateway_cmd = hermes_command();
                 gateway_cmd
                     .args(["gateway", "run", "--accept-hooks"])
                     .env("PATH", &new_path)
+                    .env("HERMES_HOME", &hermes_home)
+                    .env("HERMES_ENV_FILE", &hermes_env)
                     .current_dir(&workspace_root)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::null());
+
+                // Resolve SSL cert bundle for hermes Python (cross-platform, any Python version)
+                if let Some(cert) = get_ssl_cert_file() {
+                    gateway_cmd.env("SSL_CERT_FILE", &cert);
+                }
 
                 match gateway_cmd.spawn() {
                     Ok(child) => {
@@ -402,6 +411,14 @@ pub fn run() {
             commands::knowledge::install_onnx_model,
             commands::knowledge::test_cloud_embedding,
             commands::knowledge::test_ollama_embedding,
+            commands::channel::list_channel_statuses,
+            commands::channel::channel_setup_qr,
+            commands::channel::channel_setup_token,
+            commands::channel::channel_disconnect,
+            commands::channel::channel_set_home,
+            commands::channel::channel_check_status,
+            commands::channel::channel_confirm_qr,
+            commands::channel::restart_gateway,
         ])
         .run(tauri::generate_context!())
         .expect("Hermes Desktop failed to start");
