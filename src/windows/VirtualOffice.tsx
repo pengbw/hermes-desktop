@@ -1,6 +1,7 @@
 import styles from "@pages/studio/StudioPanel.module.css";
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import { OfficeScene3D, GameMember, WorkflowStep, MemberStatus } from "./office3d/OfficeScene3D";
+import * as THREE from "three";
 import { ErrorBoundary } from "../components/common/ErrorBoundary";
 import { useI18n } from "../contexts/I18nContext";
 
@@ -43,6 +44,7 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
     const [speakingMember, setSpeakingMember] = useState<string | null>(null);
     const [speakText, setSpeakText] = useState("");
     const [zoneInfo, setZoneInfo] = useState<string | null>(null);
+    const [panelCollapsed, setPanelCollapsed] = useState(false);
 
     const toGM = useCallback(
       (ms: OfficeMember[]): GameMember[] =>
@@ -129,6 +131,18 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
       }
     }, [workflows]);
 
+    const handleFocusMember = useCallback((memberId: string) => {
+      const scene = sceneRef.current;
+      if (!scene) return;
+      const group = scene.charGroups.get(memberId);
+      if (!group) return;
+      const pos = new THREE.Vector3();
+      group.getWorldPosition(pos);
+      scene.camera.position.set(pos.x + 3, 8, pos.z + 6);
+      scene.controls.target.set(pos.x, 1, pos.z);
+      scene.controls.update();
+    }, []);
+
     const handleSpeak = useCallback(() => {
       if (!speakText.trim()) return;
       const u = members[0];
@@ -143,6 +157,53 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
     return (
       <div className={styles.virtualOffice3d}>
         <div className={styles.office3dContainer} ref={containerRef} />
+
+        <div className={`${styles.memberPanel} ${panelCollapsed ? styles.memberPanelCollapsed : ""}`}>
+          <div className={styles.memberPanelHeader} onClick={() => setPanelCollapsed(!panelCollapsed)}>
+            <span>👥</span>
+            <span className={styles.memberPanelTitle}>人员</span>
+            <span className={styles.memberPanelCount}>{members.length}</span>
+            <span className={styles.memberPanelToggle}>{panelCollapsed ? "▾" : "▴"}</span>
+          </div>
+          {!panelCollapsed && (
+            <div className={styles.memberPanelList}>
+              {members.map((m) => (
+                <div
+                  key={m.id}
+                  className={styles.memberPanelItem}
+                  onClick={() => handleFocusMember(m.id)}
+                  title={m.name}
+                >
+                  <div
+                    className={styles.memberPanelAvatar}
+                    style={{ background: m.color || "#6c5ce7" }}
+                  >
+                    {m.icon || "🤖"}
+                  </div>
+                  <div className={styles.memberPanelInfo}>
+                    <span className={styles.memberPanelName}>{m.name}</span>
+                    <span
+                      className={styles.memberPanelStatus}
+                      data-status={
+                        m.status === "working"
+                          ? "working"
+                          : m.status === "waiting_approval"
+                            ? "waiting"
+                            : "idle"
+                      }
+                    >
+                      {m.status === "working"
+                        ? "忙碌"
+                        : m.status === "waiting_approval"
+                          ? "待审批"
+                          : "空闲"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {zoneInfo && (
           <div className={styles.office3dZoneToast}>
             <span>📍 {zoneInfo}</span>

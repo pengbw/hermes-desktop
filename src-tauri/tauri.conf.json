@@ -45,7 +45,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/**/*"]
+      }
     }
   },
   "plugins": {
@@ -68,6 +72,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "entitlements": "entitlements.plist"
+    },
     "windows": {
       "nsis": {
         "installMode": "currentUser",

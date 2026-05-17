@@ -16,6 +16,8 @@ import ChannelSettings from "@components/settings/ChannelSettings";
 import ProviderModal from "@components/settings/ProviderModal";
 import styles from "./SettingsPanel.module.css";
 
+declare const __APP_VERSION__: string;
+
 function SettingsPanel() {
   const { theme, setTheme } = useTheme();
   const { locale, setLocale, t } = useI18n();
@@ -31,20 +33,18 @@ function SettingsPanel() {
   const [provider, setProvider] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [maxTurns, setMaxTurns] = useState(90);
-  const [personality, setPersonality] = useState("default");
   const [showReasoning, setShowReasoning] = useState(false);
-  const [terminalBackend, setTerminalBackend] = useState("local");
-  const [terminalTimeout, setTerminalTimeout] = useState(180);
   const [compressionEnabled, setCompressionEnabled] = useState(true);
   const [memoryEnabled, setMemoryEnabled] = useState(true);
-  const [ttsProvider, setTtsProvider] = useState("edge");
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [hermesApiBase, setHermesApiBase] = useState("http://127.0.0.1:8642/v1");
   const [hermesApiKey, setHermesApiKey] = useState(
     "94ea2475d7544b6e8020a530c9c7bdb58d456803f3409ba3a5458b22999e6c40"
   );
 
   const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set());
-  const [activeSection, setActiveSection] = useState("agent");
+  const [activeSection, setActiveSection] = useState("provider");
 
   const [providers, setProviders] = useState<Provider[]>([]);
   const [providerSearch, setProviderSearch] = useState("");
@@ -68,6 +68,14 @@ function SettingsPanel() {
     tilt: 0,
     targetJson: "{}",
   });
+
+  const [updateInfo, setUpdateInfo] = useState<{
+    has_update: boolean;
+    latest_version: string;
+    current_version: string;
+    download_url: string;
+    release_notes: string;
+  } | null>(null);
 
   const markDirty = (field: string) => {
     setDirtyFields((prev) => new Set(prev).add(field));
@@ -187,14 +195,12 @@ function SettingsPanel() {
       "hermesApiBase",
       "hermesApiKey",
     ],
-    display: ["personality", "showReasoning", "ttsProvider"],
-    terminal: ["terminalBackend", "terminalTimeout", "compressionEnabled", "memoryEnabled"],
+    display: ["showReasoning", "ttsEnabled", "voiceEnabled"],
+    context: ["compressionEnabled", "memoryEnabled"],
     system: [
-      "personality",
       "showReasoning",
-      "ttsProvider",
-      "terminalBackend",
-      "terminalTimeout",
+      "ttsEnabled",
+      "voiceEnabled",
       "compressionEnabled",
       "memoryEnabled",
     ],
@@ -222,26 +228,22 @@ function SettingsPanel() {
         provider: "model.provider",
         baseUrl: "model.base_url",
         maxTurns: "agent.max_turns",
-        personality: "display.personality",
         showReasoning: "display.show_reasoning",
-        terminalBackend: "terminal.backend",
-        terminalTimeout: "terminal.timeout",
         compressionEnabled: "compression.enabled",
         memoryEnabled: "memory.memory_enabled",
-        ttsProvider: "tts.provider",
+        ttsEnabled: "tts.enabled",
+        voiceEnabled: "voice.enabled",
       };
       const fieldValueMap: Record<string, string> = {
         model,
         provider,
         baseUrl,
         maxTurns: String(maxTurns),
-        personality,
         showReasoning: String(showReasoning),
-        terminalBackend,
-        terminalTimeout: String(terminalTimeout),
         compressionEnabled: String(compressionEnabled),
         memoryEnabled: String(memoryEnabled),
-        ttsProvider,
+        ttsEnabled: String(ttsEnabled),
+        voiceEnabled: String(voiceEnabled),
       };
 
       let needRestartGateway = false;
@@ -254,10 +256,12 @@ function SettingsPanel() {
         }
         if (field === "hermesApiBase") {
           await invoke("set_config", { key: "hermes_api_base", value: hermesApiBase });
+          needRestartGateway = true;
           continue;
         }
         if (field === "hermesApiKey") {
           await invoke("set_config", { key: "hermes_api_key", value: hermesApiKey });
+          needRestartGateway = true;
           continue;
         }
         const configKey = configKeyMap[field];
@@ -319,13 +323,11 @@ function SettingsPanel() {
       }
       setBaseUrl(url);
       setMaxTurns(result.max_turns || 90);
-      setPersonality(result.personality);
       setShowReasoning(result.show_reasoning);
-      setTerminalBackend(result.terminal_backend);
-      setTerminalTimeout(result.terminal_timeout);
       setCompressionEnabled(result.compression_enabled);
       setMemoryEnabled(result.memory_enabled);
-      setTtsProvider(result.tts_provider);
+      setTtsEnabled(result.tts_enabled);
+      setVoiceEnabled(result.voice_enabled);
       try {
         const wsRoot = await invoke<string>("get_config", { key: "workspace_root" });
         const cfg: HermesConfigData = { ...result };
@@ -482,36 +484,26 @@ function SettingsPanel() {
             <SystemSettings
               theme={theme}
               locale={locale}
-              personality={personality}
               showReasoning={showReasoning}
-              ttsProvider={ttsProvider}
-              terminalBackend={terminalBackend}
-              terminalTimeout={terminalTimeout}
+              ttsEnabled={ttsEnabled}
+              voiceEnabled={voiceEnabled}
               compressionEnabled={compressionEnabled}
               memoryEnabled={memoryEnabled}
               dirtyFields={dirtyFields}
               saving={saving}
               onThemeChange={setTheme}
               onLocaleChange={setLocale}
-              onPersonalityChange={(v) => {
-                setPersonality(v);
-                markDirty("personality");
-              }}
               onShowReasoningChange={(v) => {
                 setShowReasoning(v);
                 markDirty("showReasoning");
               }}
-              onTtsProviderChange={(v) => {
-                setTtsProvider(v);
-                markDirty("ttsProvider");
+              onTtsEnabledChange={(v) => {
+                setTtsEnabled(v);
+                markDirty("ttsEnabled");
               }}
-              onTerminalBackendChange={(v) => {
-                setTerminalBackend(v);
-                markDirty("terminalBackend");
-              }}
-              onTerminalTimeoutChange={(v) => {
-                setTerminalTimeout(v);
-                markDirty("terminalTimeout");
+              onVoiceEnabledChange={(v) => {
+                setVoiceEnabled(v);
+                markDirty("voiceEnabled");
               }}
               onCompressionChange={(v) => {
                 setCompressionEnabled(v);
@@ -550,14 +542,77 @@ function SettingsPanel() {
                 <h3>{t("about.title")}</h3>
                 <div className={styles.aboutInfo}>
                   <div className={styles.aboutLogo}>
-                    <img src="/bot.svg" alt="Hermes" />
+                    <img src="/logo.svg" alt="Hermes" />
                   </div>
                   <div className={styles.aboutName}>{t("app.name")}</div>
-                  <div className={styles.aboutVersion}>{t("about.version")}</div>
+                  <div className={styles.aboutVersion}>
+                    {t("about.version")} {__APP_VERSION__}
+                  </div>
                   <div className={styles.aboutDesc}>{t("app.desc")}</div>
                   <div className={styles.aboutMeta}>
                     <div className={styles.aboutAuthor}>{t("about.author")}</div>
                     <div className={styles.aboutEmail}>{t("about.email")}</div>
+                  </div>
+                  <div className={styles.aboutUpdateSection}>
+                    <button
+                      className={styles.aboutUpdateBtn}
+                      onClick={async () => {
+                        try {
+                          const result = await invoke<{
+                            has_update: boolean;
+                            latest_version: string;
+                            current_version: string;
+                            download_url: string;
+                            release_notes: string;
+                          }>("check_for_update");
+                          if (result.has_update) {
+                            setUpdateInfo(result);
+                          } else {
+                            setUpdateInfo({ ...result, has_update: false });
+                          }
+                        } catch (err) {
+                          setUpdateInfo({
+                            has_update: false,
+                            latest_version: "",
+                            current_version: "",
+                            download_url: "",
+                            release_notes: String(err),
+                          });
+                        }
+                      }}
+                    >
+                      {t("about.checkUpdate")}
+                    </button>
+                    {updateInfo && (
+                      <div className={styles.aboutUpdateResult}>
+                        {updateInfo.has_update ? (
+                          <>
+                            <div className={styles.aboutUpdateAvailable}>
+                              {t("about.newVersionAvailable")} v{updateInfo.latest_version}
+                            </div>
+                            <div className={styles.aboutUpdateNotes}>
+                              {updateInfo.release_notes}
+                            </div>
+                            {updateInfo.download_url && (
+                              <a
+                                className={styles.aboutUpdateLink}
+                                href={updateInfo.download_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {t("about.downloadUpdate")}
+                              </a>
+                            )}
+                          </>
+                        ) : (
+                          <div className={styles.aboutUpdateCurrent}>
+                            {updateInfo.release_notes
+                              ? t("about.updateCheckFailed")
+                              : t("about.alreadyLatest")}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

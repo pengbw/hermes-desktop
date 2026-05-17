@@ -311,6 +311,8 @@ export class OfficeScene3D {
   aiTimer = 0;
   receptionistGroup: THREE.Group | null = null;
   receptionistLabel: HTMLElement | null = null;
+  private resizeHandler: (() => void) | null = null;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(
     container: HTMLElement,
@@ -384,9 +386,10 @@ export class OfficeScene3D {
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h);
     };
+    this.resizeHandler = onResize;
     window.addEventListener("resize", onResize);
-    const obs = new ResizeObserver(onResize);
-    obs.observe(container);
+    this.resizeObserver = new ResizeObserver(onResize);
+    this.resizeObserver.observe(container);
   }
 
   initPathGrid() {
@@ -3304,12 +3307,32 @@ export class OfficeScene3D {
   }
 
   updateMembers(members: GameMember[]) {
+    for (const m of members) {
+      const existing = this.members.find((old) => old.id === m.id);
+      if (existing && existing.status !== m.status) {
+        this.setMemberStatus(m.id, m.status || "idle");
+      } else if (!existing) {
+        const state = this.memberStates.get(m.id);
+        if (state && m.status) {
+          this.setMemberStatus(m.id, m.status);
+        }
+      }
+    }
     this.members = members;
   }
 
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.animId);
+
+    if (this.resizeHandler) {
+      window.removeEventListener("resize", this.resizeHandler);
+      this.resizeHandler = null;
+    }
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
 
     for (const da of this.deliveryAnims) {
       if (da.artifactMesh) {

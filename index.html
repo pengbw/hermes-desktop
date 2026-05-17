@@ -5,6 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hermes Desktop</title>
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('hermes-theme');
+          var theme = stored || 'system';
+          var resolved = theme;
+          if (theme === 'system') {
+            resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', resolved);
+          document.documentElement.style.backgroundColor = resolved === 'dark' ? '#0f0f1a' : '#f5f5f7';
+        } catch(e) {}
+      })();
+    </script>
   </head>
 
   <body>

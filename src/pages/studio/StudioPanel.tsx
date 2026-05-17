@@ -195,6 +195,11 @@ function StudioPanel() {
     return role ? `${role.icon} ${role.name}` : roleId;
   };
 
+  const getRoleNamePure = (roleId: string) => {
+    const role = allRoles.find((r) => r.id === roleId);
+    return role ? role.name : roleId;
+  };
+
   const handleSendMessage = async (content: string) => {
     if (!selectedProject) return;
     try {
@@ -255,6 +260,7 @@ function StudioPanel() {
           onSendMessage={handleSendMessage}
           onPreviewFile={(path, name) => setPreviewFile({ path, name })}
           getRoleName={getRoleName}
+          getRoleNamePure={getRoleNamePure}
           getTagLabel={getTagLabel}
           getTagClass={getTagClass}
           t={t}

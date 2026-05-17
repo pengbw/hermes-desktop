@@ -68,6 +68,8 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
   const [showSkillPicker, setShowSkillPicker] = useState(false);
   const [skillSearch, setSkillSearch] = useState("");
 
+  const [newRoleSkills, setNewRoleSkills] = useState<string[]>([]);
+
   const loadRoles = async () => {
     try {
       const list = await invoke<AiRoleItem[]>("list_ai_roles");
@@ -106,7 +108,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
   const handleCreate = async () => {
     if (!editForm.name.trim()) return;
     try {
-      await invoke("create_ai_role", {
+      const created = await invoke<AiRoleItem>("create_ai_role", {
         req: {
           name: editForm.name.trim(),
           nickname: editForm.nickname.trim() || undefined,
@@ -120,7 +122,15 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
           avatarColor: editForm.avatarColor || undefined,
         },
       });
+      for (const skillName of newRoleSkills) {
+        try {
+          await invoke("bind_role_skill", { roleId: created.id, skillName });
+        } catch (err) {
+          console.error("Failed to bind skill:", skillName, err);
+        }
+      }
       setEditForm({ ...EMPTY_FORM });
+      setNewRoleSkills([]);
       setShowNewRole(false);
       loadRoles();
       showToast("✅ 角色创建成功");
@@ -190,6 +200,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
     setShowNewRole(false);
     setEditForm({ ...EMPTY_FORM });
     setEditRoleSkills([]);
+    setNewRoleSkills([]);
     setShowSkillPicker(false);
     setSkillSearch("");
   };
@@ -516,6 +527,124 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                                     } catch (err) {
                                       console.error("Failed to bind skill:", err);
                                     }
+                                  }}
+                                >
+                                  <div className={studioStyles.skillPickerItemName}>
+                                    {s.name}
+                                    {s.category && (
+                                      <span className={studioStyles.skillPickerItemCat}>
+                                        {s.category}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {s.description && (
+                                    <div className={studioStyles.skillPickerItemDesc}>
+                                      {s.description}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+                {showNewRole && (
+                  <>
+                    <div className={studioStyles.aiRoleFormDivider} />
+                    <div className={studioStyles.aiRoleFormSectionTitle}>🛠️ 技能绑定</div>
+                    <div className={studioStyles.aiRoleFormRow}>
+                      <label>已选择技能</label>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                        {newRoleSkills.length === 0 && (
+                          <span style={{ color: "#999", fontSize: 12 }}>暂未选择技能，创建后自动绑定</span>
+                        )}
+                        {newRoleSkills.map((skillName) => (
+                          <span
+                            key={skillName}
+                            className={studioStyles.roleSkillTag}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                          >
+                            {skillName}
+                            <button
+                              style={{
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                color: "#999",
+                                fontSize: 12,
+                                padding: 0,
+                                lineHeight: 1,
+                              }}
+                              onClick={() =>
+                                setNewRoleSkills((prev) => prev.filter((n) => n !== skillName))
+                              }
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                        <button
+                          className={studioStyles.roleSkillAddBtn}
+                          onClick={() => setShowSkillPicker(true)}
+                        >
+                          + 添加技能
+                        </button>
+                      </div>
+                    </div>
+                    {showSkillPicker && (
+                      <div
+                        className={studioStyles.skillPickerOverlay}
+                        onClick={() => setShowSkillPicker(false)}
+                      >
+                        <div
+                          className={studioStyles.skillPickerPanel}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className={studioStyles.skillPickerHeader}>
+                            <h4>技能库</h4>
+                            <button
+                              className={studioStyles.taskDetailClose}
+                              onClick={() => setShowSkillPicker(false)}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <input
+                            className={studioStyles.skillPickerSearch}
+                            value={skillSearch}
+                            onChange={(e) => setSkillSearch(e.target.value)}
+                            placeholder="搜索技能名称..."
+                            autoFocus
+                          />
+                          <div className={studioStyles.skillPickerList}>
+                            {availableSkills
+                              .filter((s) => !newRoleSkills.includes(s.name))
+                              .filter(
+                                (s) =>
+                                  !skillSearch.trim() ||
+                                  s.name.toLowerCase().includes(skillSearch.toLowerCase()) ||
+                                  (s.description &&
+                                    s.description.toLowerCase().includes(skillSearch.toLowerCase()))
+                              ).length === 0 && (
+                              <div className={studioStyles.skillPickerEmpty}>无匹配技能</div>
+                            )}
+                            {availableSkills
+                              .filter((s) => !newRoleSkills.includes(s.name))
+                              .filter(
+                                (s) =>
+                                  !skillSearch.trim() ||
+                                  s.name.toLowerCase().includes(skillSearch.toLowerCase()) ||
+                                  (s.description &&
+                                    s.description.toLowerCase().includes(skillSearch.toLowerCase()))
+                              )
+                              .map((s) => (
+                                <div
+                                  key={s.name}
+                                  className={studioStyles.skillPickerItem}
+                                  onClick={() => {
+                                    setNewRoleSkills((prev) => [...prev, s.name]);
                                   }}
                                 >
                                   <div className={studioStyles.skillPickerItemName}>

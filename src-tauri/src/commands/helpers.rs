@@ -1,6 +1,6 @@
 use serde::Serialize;
 use sqlx::SqlitePool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex};
 use std::time::Duration;
@@ -16,7 +16,7 @@ pub(crate) fn hermes_api_base() -> String {
 
 pub(crate) fn hermes_api_key() -> String {
     std::env::var("HERMES_API_KEY")
-        .unwrap_or_else(|_| "94ea2475d7544b6e8020a530c9c7bdb58d456803f3409ba3a5458b22999e6c40".to_string())
+        .unwrap_or_default()
 }
 
 pub(crate) async fn hermes_api_base_from_pool(pool: &SqlitePool) -> String {
@@ -1440,7 +1440,7 @@ mod tests {
 
 /// Debounced event emitter: aggregates data change types per project and emits after 500ms
 pub(crate) struct DebouncedEmitter {
-    pending: Mutex<HashMap<String, Vec<String>>>,
+    pending: Mutex<HashMap<String, (HashSet<String>, bool)>>,
 }
 
 impl DebouncedEmitter {
@@ -1454,12 +1454,16 @@ impl DebouncedEmitter {
     pub(crate) fn add_change(&self, app: &AppHandle, project_id: &str, data_type: &str) {
         let should_schedule = {
             let mut pending = self.pending.lock().unwrap();
-            let changes = pending.entry(project_id.to_string()).or_default();
-            let is_new = !changes.contains(&data_type.to_string());
-            if is_new {
-                changes.push(data_type.to_string());
+            let (changes, scheduled) = pending
+                .entry(project_id.to_string())
+                .or_insert_with(|| (HashSet::new(), false));
+            changes.insert(data_type.to_string());
+            if *scheduled {
+                false
+            } else {
+                *scheduled = true;
+                true
             }
-            is_new
         };
         if should_schedule {
             let app_clone = app.clone();
@@ -1469,12 +1473,23 @@ impl DebouncedEmitter {
                 let changes = {
                     let emitter = DEBOUNCED_EMITTER.get_or_init(DebouncedEmitter::new);
                     let mut pending = emitter.pending.lock().unwrap();
-                    pending.remove(&project_id_clone).unwrap_or_default()
+                    if let Some((chs, scheduled)) = pending.get_mut(&project_id_clone) {
+                        *scheduled = false;
+                        if chs.is_empty() {
+                            pending.remove(&project_id_clone);
+                            HashSet::new()
+                        } else {
+                            std::mem::take(chs)
+                        }
+                    } else {
+                        HashSet::new()
+                    }
                 };
                 if !changes.is_empty() {
+                    let changes_vec: Vec<String> = changes.into_iter().collect();
                     let _ = app_clone.emit("project_data_changed", serde_json::json!({
                         "projectId": project_id_clone,
-                        "changes": changes,
+                        "changes": changes_vec,
                     }));
                 }
             });
@@ -1497,7 +1512,7 @@ fn shared_hermes_client() -> &'static reqwest::Client {
         reqwest::Client::builder()
             .pool_max_idle_per_host(5)
             .pool_idle_timeout(Duration::from_secs(90))
-            .timeout(Duration::from_secs(600))
+            .timeout(Duration::from_secs(300))
             .build()
             .expect("Failed to build shared reqwest client")
     })
@@ -1558,14 +1573,8 @@ async fn call_hermes_api_inner(
             }
             Err(e) => {
                 last_err = e.to_string();
-                if attempt < max_retries && (e.is_timeout() || e.is_connect()) {
-                    let delay = Duration::from_millis(500 * 2u64.pow(attempt - 1));
-                    log::warn!("call_hermes_api: {} on attempt {}/{}, retrying in {:?}",
-                        last_err, attempt, max_retries, delay);
-                    tokio::time::sleep(delay).await;
-                    continue;
-                }
-                if attempt < max_retries {
+                let is_retryable = e.is_timeout() || e.is_connect();
+                if attempt < max_retries && is_retryable {
                     let delay = Duration::from_millis(500 * 2u64.pow(attempt - 1));
                     log::warn!("call_hermes_api: {} on attempt {}/{}, retrying in {:?}",
                         last_err, attempt, max_retries, delay);

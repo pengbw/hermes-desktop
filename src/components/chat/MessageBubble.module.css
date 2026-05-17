@@ -63,6 +63,47 @@
   font-style: italic;
 }
 
+.messageActions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.messageBubbleAssistant:hover .messageActions {
+  opacity: 1;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary, #999);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.actionBtn:hover:not(:disabled) {
+  background: rgba(79, 195, 247, 0.1);
+  color: var(--color-primary, #4fc3f7);
+}
+
+.actionBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.actionBtnActive {
+  color: var(--color-primary, #4fc3f7);
+  background: rgba(79, 195, 247, 0.1);
+}
+
 .messageText p {
   margin: 0 0 8px;
 }
@@ -448,4 +489,70 @@
   100% {
     opacity: 0;
   }
+}
+
+.voiceMessage {
+  margin-bottom: 6px;
+}
+
+.voiceMessageOnly {
+  display: flex;
+  flex-direction: column;
+  max-width: 260px;
+}
+
+.voiceTranscriptBtn {
+  display: none;
+}
+
+.contextMenuOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+}
+
+.contextMenu {
+  position: fixed;
+  background: var(--color-bg-secondary, #2a2a2a);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 120px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+}
+
+.contextMenuItem {
+  display: block;
+  width: 100%;
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  color: var(--color-text-primary, #e0e0e0);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.contextMenuItem:hover {
+  background: rgba(79, 195, 247, 0.12);
+  color: var(--color-primary, #4fc3f7);
+}
+
+.voiceTranscriptText {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.75;
+  line-height: 1.5;
+  word-break: break-word;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.messageBubbleUser .voiceTranscriptText {
+  border-top-color: rgba(255, 255, 255, 0.15);
 }

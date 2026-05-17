@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "@contexts/I18nContext";
+import { useVoiceInput } from "@hooks/common";
 import type { AttachedFile } from "@core/types";
 import styles from "./MessageInput.module.css";
 
@@ -8,14 +9,18 @@ interface MessageInputProps {
   input: string;
   setInput: (v: string) => void;
   onSend: (params: {
+    content?: string;
     filesJson?: string;
     model?: string;
     provider?: string;
     imagePath?: string;
     forceKbRetrieve?: boolean;
     kbIds?: string[];
+    voiceInfo?: { audioPath: string; audioDuration: number };
   }) => void;
+  onSttComplete?: (text: string, audioPath: string, audioDuration?: number) => void;
   isStreaming: boolean;
+  voiceEnabled: boolean;
   kbGlobalAutoRetrieve: boolean;
   kbList: { id: string; name: string; icon: string; status: string }[];
   pendingKbIds: string[];
@@ -26,7 +31,9 @@ export default function MessageInput({
   input,
   setInput,
   onSend,
+  onSttComplete,
   isStreaming,
+  voiceEnabled,
   kbGlobalAutoRetrieve,
   kbList,
   pendingKbIds,
@@ -34,6 +41,39 @@ export default function MessageInput({
 }: MessageInputProps) {
   const { t } = useI18n();
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+
+  const { voiceState, installError, progressText, micError, toggleRecording, installStt } = useVoiceInput({
+    onResult: () => {},
+    onRecordingComplete: (audioPath) => {
+      console.log("[MessageInput] onRecordingComplete, audioPath:", audioPath);
+      const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
+      onSend({
+        voiceInfo: { audioPath, audioDuration: 0 },
+        forceKbRetrieve: shouldKbRetrieve,
+        kbIds: shouldKbRetrieve ? pendingKbIds : undefined,
+      });
+      setInput("");
+    },
+    onSttComplete: (text, audioPath, audioDuration) => {
+      if (onSttComplete) {
+        onSttComplete(text, audioPath, audioDuration);
+      }
+    },
+    onFinalResult: (text, audioPath, audioDuration) => {
+      if (audioPath) {
+        const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
+        onSend({
+          content: text.trim(),
+          voiceInfo: { audioPath, audioDuration: audioDuration ?? 0 },
+          forceKbRetrieve: shouldKbRetrieve,
+          kbIds: shouldKbRetrieve ? pendingKbIds : undefined,
+        });
+        setInput("");
+      } else {
+        setInput(text);
+      }
+    },
+  });
   const [isDragging, setIsDragging] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [modelList, setModelList] = useState<{ id: string; ownedBy?: string }[]>([]);
@@ -173,6 +213,7 @@ export default function MessageInput({
     const filesJson = attachedFiles.length > 0 ? JSON.stringify(attachedFiles) : undefined;
     const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
     onSend({
+      content: input.trim(),
       filesJson,
       model: currentModel || undefined,
       provider: currentProvider || undefined,
@@ -367,6 +408,51 @@ export default function MessageInput({
                 )}
               </div>
             )}
+            {voiceEnabled && (
+              <button
+                className={`${styles.toolbarBtn} ${styles.micBtn} ${voiceState === "recording" ? styles.micBtnActive : ""} ${voiceState === "mic-error" ? styles.micBtnError : ""}`}
+                title={
+                  voiceState === "checking"
+                    ? "..."
+                    : voiceState === "transcribing"
+                      ? t("chat.voiceTranscribing") || "Sending..."
+                      : voiceState === "installing"
+                        ? progressText || t("chat.voiceInstalling") || "Installing..."
+                        : voiceState === "install-error"
+                          ? (installError || t("chat.voiceInstallHint") || "Click to retry")
+                          : voiceState === "not-installed"
+                            ? t("chat.voiceInstallHint") || "Click to install voice recognition"
+                            : voiceState === "mic-error"
+                              ? micError || "Microphone error - click to retry"
+                              : voiceState === "recording"
+                                ? t("chat.voiceStop")
+                                : t("chat.voiceStart")
+                }
+                disabled={isStreaming || voiceState === "checking" || voiceState === "transcribing" || voiceState === "installing"}
+                onClick={voiceState === "not-installed" || voiceState === "install-error" ? installStt : toggleRecording}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              </button>
+            )}
+            {voiceEnabled && progressText && (voiceState === "installing" || voiceState === "transcribing") && (
+              <span style={{ fontSize: 11, color: "#888", whiteSpace: "nowrap" }}>
+                {progressText}
+              </span>
+            )}
           </div>
           <div className={styles.toolbarRight}>
             <div className={styles.modelSelector} ref={modelDropdownRef}>
@@ -438,27 +524,6 @@ export default function MessageInput({
                 </div>
               )}
             </div>
-            <button
-              className={`${styles.toolbarBtn} ${styles.micBtn}`}
-              title="语音输入（即将推出）"
-              disabled
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="23" />
-                <line x1="8" y1="23" x2="16" y2="23" />
-              </svg>
-            </button>
             <button
               className={styles.sendBtn}
               onClick={handleSend}

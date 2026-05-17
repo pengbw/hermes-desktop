@@ -1,6 +1,9 @@
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
 
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const GITHUB_REPO: &str = "hermes-desktop/hermes-desktop";
+
 fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
     let state = app.state::<crate::commands::helpers::AppState>();
     Ok(state.db_pool.clone())
@@ -132,4 +135,87 @@ pub async fn list_models(
         .unwrap_or_default();
 
     Ok(models)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCheckResult {
+    pub has_update: bool,
+    pub latest_version: String,
+    pub current_version: String,
+    pub download_url: String,
+    pub release_notes: String,
+}
+
+#[tauri::command]
+pub async fn check_for_update() -> Result<UpdateCheckResult, String> {
+    let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("User-Agent", "Hermes-Desktop-Update-Checker")
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to check for updates: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Update check failed with status: {}", response.status()));
+    }
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse update response: {}", e))?;
+
+    let latest_version = body
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim_start_matches('v')
+        .to_string();
+
+    let release_notes = body
+        .get("body")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let download_url = body
+        .get("html_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let has_update = is_newer_version(&latest_version, CURRENT_VERSION);
+
+    Ok(UpdateCheckResult {
+        has_update,
+        latest_version,
+        current_version: CURRENT_VERSION.to_string(),
+        download_url,
+        release_notes,
+    })
+}
+
+fn is_newer_version(remote: &str, local: &str) -> bool {
+    let parse_parts = |v: &str| -> Vec<u32> {
+        v.split('.')
+            .filter_map(|s| s.parse::<u32>().ok())
+            .collect()
+    };
+    let remote_parts = parse_parts(remote);
+    let local_parts = parse_parts(local);
+
+    for i in 0..remote_parts.len().max(local_parts.len()) {
+        let r = remote_parts.get(i).unwrap_or(&0);
+        let l = local_parts.get(i).unwrap_or(&0);
+        if r > l {
+            return true;
+        }
+        if r < l {
+            return false;
+        }
+    }
+    false
 }

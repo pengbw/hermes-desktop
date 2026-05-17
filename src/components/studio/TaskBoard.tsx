@@ -94,24 +94,6 @@ function TaskDetailPanel({
     loadEvents();
   }, [loadComments, loadLinks, loadEvents]);
 
-  const handleClaim = async () => {
-    try {
-      await invoke("claim_project_task", { taskId: task.id, roleId: "builtin_user" });
-      onTaskUpdate();
-    } catch (err) {
-      console.error("Failed to claim task:", err);
-    }
-  };
-
-  const handleRelease = async () => {
-    try {
-      await invoke("release_task_claim", { taskId: task.id });
-      onTaskUpdate();
-    } catch (err) {
-      console.error("Failed to release task:", err);
-    }
-  };
-
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
     try {
@@ -166,12 +148,6 @@ function TaskDetailPanel({
     return roleId;
   };
 
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30000);
-    return () => clearInterval(timer);
-  }, []);
-
   const formatTime = (ts: number) => {
     if (!ts) return "-";
     return new Date(ts).toLocaleString("zh-CN", {
@@ -181,10 +157,6 @@ function TaskDetailPanel({
       minute: "2-digit",
     });
   };
-
-  const claimerRole = task.claimLock ? allRoles.find((r) => r.id === task.claimLock) : null;
-  const isExpired = task.claimExpireAt > 0 && task.claimExpireAt < now;
-  const isClaimedByMe = task.claimLock === "builtin_user";
 
   return (
     <div className={styles.taskDetailOverlay} onClick={onClose}>
@@ -232,29 +204,6 @@ function TaskDetailPanel({
               <div className={styles.taskDetailField}>
                 <label>负责人</label>
                 <span>{getRoleName(task.assignee)}</span>
-              </div>
-
-              {task.claimLock && (
-                <div className={styles.taskDetailField}>
-                  <label>认领</label>
-                  <span>
-                    {claimerRole ? `${claimerRole.icon} ${claimerRole.name}` : task.claimLock}
-                    {isExpired && <span style={{ color: "#e17055", marginLeft: 4 }}>(已过期)</span>}
-                  </span>
-                </div>
-              )}
-
-              <div className={styles.taskDetailClaimActions}>
-                {!task.claimLock && task.status !== "done" && (
-                  <button className={styles.taskDetailClaimBtn} onClick={handleClaim}>
-                    🤚 认领任务
-                  </button>
-                )}
-                {isClaimedByMe && (
-                  <button className={styles.taskDetailReleaseBtn} onClick={handleRelease}>
-                    🔓 释放认领
-                  </button>
-                )}
               </div>
 
               {task.startedAt && (
@@ -539,9 +488,6 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
               >
                 {colTasks.map((task) => {
                   const assigneeRole = allRoles.find((r) => r.id === task.assignee);
-                  const claimerRole = task.claimLock
-                    ? allRoles.find((r) => r.id === task.claimLock)
-                    : null;
                   return (
                     <div
                       key={task.id}
@@ -565,11 +511,6 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
                         {assigneeRole && (
                           <span className={styles.studioKanbanCardRole}>
                             {assigneeRole.icon} {assigneeRole.name}
-                          </span>
-                        )}
-                        {claimerRole && (
-                          <span className={styles.studioKanbanCardClaimer}>
-                            🤚 {claimerRole.name}
                           </span>
                         )}
                       </div>

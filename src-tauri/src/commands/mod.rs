@@ -9,4 +9,6 @@ pub mod knowledge;
 pub mod project;
 pub mod provider;
 pub mod skill;
+pub mod stt;
+pub mod tts;
 pub mod window;

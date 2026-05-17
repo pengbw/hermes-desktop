@@ -1,5 +1,6 @@
-import { useState } from "react";
-import type { QuickCard } from "@core/types";
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import type { QuickCard, HermesConfigData } from "@core/types";
 import { BUILTIN_CARDS } from "@constants/builtinCards";
 import { CARDS_STORAGE_KEY } from "@constants/config";
 import HermesStatus from "@components/home/HermesStatus";
@@ -22,16 +23,24 @@ interface HomePanelProps {
     cardPrompt: string,
     userText: string,
     homeFiles?: import("@core/types").AttachedFile[],
-    kbIds?: string[]
+    kbIds?: string[],
+    voiceInfo?: { audioPath: string; audioDuration: number }
   ) => Promise<void>;
   isStreaming: boolean;
 }
 
 function HomePanel({ t, sendMessage, isStreaming }: HomePanelProps) {
   const [cardIndex, setCardIndex] = useState(0);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const customCards = loadCustomCards();
   const allCards = [...BUILTIN_CARDS, ...customCards];
   const cardsPerRow = 4;
+
+  useEffect(() => {
+    invoke<HermesConfigData>("get_hermes_config")
+      .then((cfg) => setVoiceEnabled(cfg.voice_enabled))
+      .catch(() => {});
+  }, []);
 
   const handleCardClick = (card: QuickCard) => {
     sendMessage(card.prompt, "");
@@ -61,6 +70,7 @@ function HomePanel({ t, sendMessage, isStreaming }: HomePanelProps) {
         sendMessage={sendMessage}
         isStreaming={isStreaming}
         placeholder={t("home.cardInputPlaceholder")}
+        voiceEnabled={voiceEnabled}
         t={t}
       />
     </div>

@@ -23,9 +23,30 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_mic_recorder::init())
         .manage(AgentProcess(Mutex::new(None)))
         .setup(|app| {
             log::info!("Hermes Desktop started");
+
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(main_win) = app.get_webview_window("main") {
+                    if let Ok(hwnd_value) = main_win.hwnd() {
+                        use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE};
+                        use windows_sys::Win32::Foundation::HWND;
+                        let hwnd = hwnd_value.0 as HWND;
+                        let value: i32 = 1;
+                        let _ = unsafe {
+                            DwmSetWindowAttribute(
+                                hwnd,
+                                DWMWA_USE_IMMERSIVE_DARK_MODE as u32,
+                                &value as *const i32 as *const _,
+                                std::mem::size_of::<i32>() as u32,
+                            )
+                        };
+                    }
+                }
+            }
 
             if let Some(avatar_win) = app.get_webview_window("avatar") {
                 let _ = avatar_win.set_decorations(false);
@@ -241,6 +262,7 @@ pub fn run() {
             commands::window::sync_chat_window,
             commands::window::close_chat_window,
             commands::window::hide_avatar_window,
+            commands::window::set_titlebar_theme,
             commands::hermes_chat::chat_with_hermes_stream,
             commands::hermes_chat::chat_with_hermes_api,
             commands::install::open_log_dir,
@@ -278,12 +300,16 @@ pub fn run() {
             commands::chat::list_messages,
             commands::chat::update_message,
             commands::chat::delete_message,
+            commands::chat::read_audio_file,
             commands::config::get_config,
             commands::config::set_config,
             commands::config::list_models,
             commands::config::save_temp_file,
             commands::config::read_text_file,
             commands::config::read_binary_file,
+            commands::stt::transcribe_audio,
+            commands::stt::check_stt_available,
+            commands::stt::install_stt,
             commands::avatar::get_avatar_conversation,
             commands::avatar::create_avatar_conversation,
             commands::avatar::get_avatar_messages,
@@ -346,9 +372,6 @@ pub fn run() {
             commands::project::create_project_task,
             commands::project::update_project_task,
             commands::project::delete_project_task,
-            commands::project::claim_project_task,
-            commands::project::heartbeat_task_claim,
-            commands::project::release_task_claim,
             commands::project::add_task_comment,
             commands::project::list_task_comments,
             commands::project::link_tasks,
@@ -379,6 +402,7 @@ pub fn run() {
             commands::project::list_project_file_records,
             commands::project::create_project_file_record,
             commands::project::delete_project_file_record,
+            commands::project::cleanup_invalid_file_records,
             commands::project::scan_project_files,
             commands::project::record_chat_files,
             commands::project::list_project_boards,
@@ -419,6 +443,10 @@ pub fn run() {
             commands::channel::channel_check_status,
             commands::channel::channel_confirm_qr,
             commands::channel::restart_gateway,
+            commands::config::check_for_update,
+            commands::tts::text_to_speech,
+            commands::tts::text_to_speech_file,
+            commands::tts::check_tts_available,
         ])
         .run(tauri::generate_context!())
         .expect("Hermes Desktop failed to start");

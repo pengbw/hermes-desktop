@@ -16,6 +16,9 @@ export interface Message {
   timestamp: number;
   knowledgeSources?: KnowledgeSource[];
   emotion?: string;
+  audioPath?: string;
+  audioDuration?: number;
+  messageType?: "text" | "voice";
 }
 
 export interface ChatMessage {
@@ -71,7 +74,8 @@ export interface HermesConfigData {
   terminal_timeout: number;
   compression_enabled: boolean;
   memory_enabled: boolean;
-  tts_provider: string;
+  tts_enabled: boolean;
+  voice_enabled: boolean;
   workspaceRoot?: string;
   hermesApiBase?: string;
   hermesApiKey?: string;
@@ -235,6 +239,7 @@ export interface ProjectFileRecord {
   id: string;
   projectId: string;
   roleId: string;
+  taskId: string;
   filePath: string;
   fileName: string;
   fileExt: string;
@@ -256,8 +261,6 @@ export interface ProjectTask {
   parentTaskId: string;
   artifactId: string;
   result: string;
-  claimLock: string;
-  claimExpireAt: number;
   startedAt: number | null;
   completedAt: number | null;
   skills: string;

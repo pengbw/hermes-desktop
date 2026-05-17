@@ -1,22 +1,18 @@
 interface SystemSettingsProps {
   theme: "light" | "dark" | "system";
   locale: "zh-CN" | "zh-XG" | "en";
-  personality: string;
   showReasoning: boolean;
-  ttsProvider: string;
-  terminalBackend: string;
-  terminalTimeout: number;
+  ttsEnabled: boolean;
+  voiceEnabled: boolean;
   compressionEnabled: boolean;
   memoryEnabled: boolean;
   dirtyFields: Set<string>;
   saving: boolean;
   onThemeChange: (theme: "light" | "dark" | "system") => void;
   onLocaleChange: (locale: "zh-CN" | "zh-XG" | "en") => void;
-  onPersonalityChange: (p: string) => void;
   onShowReasoningChange: (v: boolean) => void;
-  onTtsProviderChange: (v: string) => void;
-  onTerminalBackendChange: (v: string) => void;
-  onTerminalTimeoutChange: (v: number) => void;
+  onTtsEnabledChange: (v: boolean) => void;
+  onVoiceEnabledChange: (v: boolean) => void;
   onCompressionChange: (v: boolean) => void;
   onMemoryChange: (v: boolean) => void;
   onSave: () => void;
@@ -28,22 +24,18 @@ import styles from "@pages/settings/SettingsPanel.module.css";
 export default function SystemSettings({
   theme,
   locale,
-  personality,
   showReasoning,
-  ttsProvider,
-  terminalBackend,
-  terminalTimeout,
+  ttsEnabled,
+  voiceEnabled,
   compressionEnabled,
   memoryEnabled,
   dirtyFields,
   saving,
   onThemeChange,
   onLocaleChange,
-  onPersonalityChange,
   onShowReasoningChange,
-  onTtsProviderChange,
-  onTerminalBackendChange,
-  onTerminalTimeoutChange,
+  onTtsEnabledChange,
+  onVoiceEnabledChange,
   onCompressionChange,
   onMemoryChange,
   onSave,
@@ -110,21 +102,6 @@ export default function SystemSettings({
         <h3>{t("system.display")}</h3>
         <div className={styles.settingsForm}>
           <div className={styles.formGroup}>
-            <label>
-              {t("system.display.personality")}
-              {dirtyFields.has("personality") && (
-                <span className={styles.dirtyBadge}>{t("common.modified")}</span>
-              )}
-            </label>
-            <select value={personality} onChange={(e) => onPersonalityChange(e.target.value)}>
-              <option value="default">{t("system.display.personalityDefault")}</option>
-              <option value="kawaii">{t("system.display.personalityKawaii")}</option>
-              <option value="professional">{t("system.display.personalityProfessional")}</option>
-              <option value="pirate">{t("system.display.personalityPirate")}</option>
-              <option value="zen">{t("system.display.personalityZen")}</option>
-            </select>
-          </div>
-          <div className={styles.formGroup}>
             <label className={styles.toggleLabel}>
               <span>
                 {t("system.display.showReasoning")}
@@ -140,58 +117,40 @@ export default function SystemSettings({
             </label>
           </div>
           <div className={styles.formGroup}>
-            <label>
-              {t("system.display.ttsProvider")}
-              {dirtyFields.has("ttsProvider") && (
-                <span className={styles.dirtyBadge}>{t("common.modified")}</span>
-              )}
+            <label className={styles.toggleLabel}>
+              <span>
+                {t("system.display.ttsEnabled")}
+                {dirtyFields.has("ttsEnabled") && (
+                  <span className={styles.dirtyBadge}>{t("common.modified")}</span>
+                )}
+              </span>
+              <input
+                type="checkbox"
+                checked={ttsEnabled}
+                onChange={(e) => onTtsEnabledChange(e.target.checked)}
+              />
             </label>
-            <select value={ttsProvider} onChange={(e) => onTtsProviderChange(e.target.value)}>
-              <option value="edge">Edge TTS</option>
-              <option value="elevenlabs">ElevenLabs</option>
-              <option value="openai">OpenAI TTS</option>
-              <option value="xai">xAI</option>
-              <option value="mistral">Mistral</option>
-            </select>
+          </div>
+          <div className={styles.formGroup}>
+            <label className={styles.toggleLabel}>
+              <span>
+                {t("system.display.voiceEnabled")}
+                {dirtyFields.has("voiceEnabled") && (
+                  <span className={styles.dirtyBadge}>{t("common.modified")}</span>
+                )}
+              </span>
+              <input
+                type="checkbox"
+                checked={voiceEnabled}
+                onChange={(e) => onVoiceEnabledChange(e.target.checked)}
+              />
+            </label>
           </div>
         </div>
       </div>
       <div className={styles.settingsSection}>
-        <h3>{t("system.terminal")}</h3>
+        <h3>{t("system.context.title")}</h3>
         <div className={styles.settingsForm}>
-          <div className={styles.formGroup}>
-            <label>
-              {t("system.terminal.backend")}
-              {dirtyFields.has("terminalBackend") && (
-                <span className={styles.dirtyBadge}>{t("common.modified")}</span>
-              )}
-            </label>
-            <select
-              value={terminalBackend}
-              onChange={(e) => onTerminalBackendChange(e.target.value)}
-            >
-              <option value="local">本地 (local)</option>
-              <option value="docker">Docker</option>
-              <option value="modal">Modal</option>
-              <option value="daytona">Daytona</option>
-            </select>
-          </div>
-          <div className={styles.formGroup}>
-            <label>
-              {t("system.terminal.timeout")}: {terminalTimeout}
-              {dirtyFields.has("terminalTimeout") && (
-                <span className={styles.dirtyBadge}>{t("common.modified")}</span>
-              )}
-            </label>
-            <input
-              type="range"
-              min="30"
-              max="600"
-              step="30"
-              value={terminalTimeout}
-              onChange={(e) => onTerminalTimeoutChange(parseInt(e.target.value))}
-            />
-          </div>
           <div className={styles.formGroup}>
             <label className={styles.toggleLabel}>
               <span>

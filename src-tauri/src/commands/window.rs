@@ -1,5 +1,47 @@
 use tauri::{AppHandle, Manager};
 
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE};
+#[cfg(target_os = "windows")]
+use windows_sys::Win32::Foundation::HWND;
+
+#[tauri::command]
+pub fn set_titlebar_theme(app: AppHandle, dark: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let label = "main";
+        let win = app.get_webview_window(label)
+            .ok_or_else(|| format!("Window '{}' not found", label))?;
+
+        let hwnd_value = win.hwnd()
+            .map_err(|e| format!("Failed to get hwnd: {}", e))?;
+
+        let hwnd = hwnd_value.0 as HWND;
+
+        let value: i32 = if dark { 1 } else { 0 };
+        let result = unsafe {
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_USE_IMMERSIVE_DARK_MODE as u32,
+                &value as *const i32 as *const _,
+                std::mem::size_of::<i32>() as u32,
+            )
+        };
+
+        if result != 0 {
+            log::warn!("DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE) failed: {}", result);
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, dark);
+        Ok(())
+    }
+}
+
 #[tauri::command]
 pub async fn toggle_avatar_window(app: AppHandle) -> Result<bool, String> {
     let avatar = app.get_webview_window("avatar")

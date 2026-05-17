@@ -8,6 +8,7 @@ export function useConversation() {
   const [messages, setMessages] = useState<Message[]>([]);
   const messagesMapRef = useRef<Map<string, Message[]>>(new Map());
   const currentConversationIdRef = useRef<string | null>(null);
+  const cacheVersionRef = useRef<Map<string, number>>(new Map());
 
   const loadConversations = async () => {
     try {
@@ -19,10 +20,19 @@ export function useConversation() {
   };
 
   const loadMessages = async (conversationId: string) => {
+    const versionBefore = cacheVersionRef.current.get(conversationId) || 0;
+    console.log("[loadMessages] start, convId:", conversationId, "versionBefore:", versionBefore);
     try {
       const result = await invoke<Message[]>("list_messages", { conversationId });
+      const versionAfter = cacheVersionRef.current.get(conversationId) || 0;
+      console.log("[loadMessages] done, convId:", conversationId, "versionAfter:", versionAfter, "dbMsgCount:", result.length, "skipped:", versionAfter > versionBefore);
+      if (versionAfter > versionBefore) {
+        return;
+      }
       messagesMapRef.current.set(conversationId, result);
-      setMessages(result);
+      if (conversationId === currentConversationIdRef.current) {
+        setMessages(result);
+      }
     } catch (err) {
       console.error("Failed to load messages:", err);
     }
@@ -102,6 +112,8 @@ export function useConversation() {
     const cached = messagesMapRef.current.get(convId) || [];
     const updated = [...cached, message];
     messagesMapRef.current.set(convId, updated);
+    cacheVersionRef.current.set(convId, (cacheVersionRef.current.get(convId) || 0) + 1);
+    console.log("[addMessageToCache] convId:", convId, "currentConvId:", currentConversationIdRef.current, "match:", convId === currentConversationIdRef.current, "msgCount:", updated.length, "messageType:", message.messageType);
     if (convId === currentConversationIdRef.current) {
       setMessages(updated);
     }
@@ -111,6 +123,7 @@ export function useConversation() {
     const prev = messagesMapRef.current.get(convId) || [];
     const next = updater(prev);
     messagesMapRef.current.set(convId, next);
+    cacheVersionRef.current.set(convId, (cacheVersionRef.current.get(convId) || 0) + 1);
     if (convId === currentConversationIdRef.current) {
       setMessages(next);
     }

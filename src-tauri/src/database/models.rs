@@ -1,18 +1,27 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
+static GESTURE_CACHE: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
 
 fn load_gesture_json(name: &str) -> &'static str {
-    let raw = match name {
-        "silent" => include_str!("../../../public/silent.json"),
-        "greeting" => include_str!("../../../public/greeting.json"),
-        "think" => include_str!("../../../public/think.json"),
-        _ => return "{}",
-    };
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
-        if let Some(pose) = v.get("pose") {
-            return Box::leak(pose.to_string().into_boxed_str());
+    let cache = GESTURE_CACHE.get_or_init(|| {
+        let mut map = HashMap::new();
+        for (n, raw) in [
+            ("silent", include_str!("../../../public/silent.json")),
+            ("greeting", include_str!("../../../public/greeting.json")),
+            ("think", include_str!("../../../public/think.json")),
+        ] {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
+                if let Some(pose) = v.get("pose") {
+                    let s: &'static str = Box::leak(pose.to_string().into_boxed_str());
+                    map.insert(n, s);
+                }
+            }
         }
-    }
-    "{}"
+        map
+    });
+    cache.get(name).copied().unwrap_or("{}")
 }
 
 pub fn db_path() -> std::path::PathBuf {
@@ -726,6 +735,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
             role_id TEXT NOT NULL,
+            task_id TEXT NOT NULL DEFAULT '',
             file_path TEXT NOT NULL,
             file_name TEXT NOT NULL,
             file_ext TEXT NOT NULL DEFAULT '',
@@ -884,6 +894,26 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await?;
 
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_artifacts_role_status ON project_artifacts(project_id, role_id, status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_tasks_assignee_status ON project_tasks(project_id, assignee, status)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflows_from_role ON project_workflows(project_id, from_role_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflows_to_role ON project_workflows(project_id, to_role_id)")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_run_steps_role_status ON workflow_run_steps(run_id, role_id, status)")
+        .execute(pool)
+        .await?;
+
     crate::database::migrations::run_migrations(pool).await?;
 
     sqlx::query(
@@ -931,6 +961,12 @@ pub struct Message {
     pub thinking: Option<String>,
     pub files: Option<String>,
     pub timestamp: i64,
+    #[serde(default)]
+    pub audio_path: Option<String>,
+    #[serde(default)]
+    pub audio_duration: Option<f64>,
+    #[serde(default)]
+    pub message_type: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -951,6 +987,12 @@ pub struct CreateMessageRequest {
     pub thinking: Option<String>,
     #[serde(default)]
     pub files: Option<String>,
+    #[serde(default)]
+    pub audio_path: Option<String>,
+    #[serde(default)]
+    pub audio_duration: Option<f64>,
+    #[serde(default)]
+    pub message_type: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -958,6 +1000,12 @@ pub struct CreateMessageRequest {
 pub struct UpdateMessageRequest {
     pub id: String,
     pub content: String,
+    #[serde(default)]
+    pub audio_path: Option<String>,
+    #[serde(default)]
+    pub audio_duration: Option<f64>,
+    #[serde(default)]
+    pub message_type: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1264,6 +1312,7 @@ pub struct ProjectFileRecord {
     pub id: String,
     pub project_id: String,
     pub role_id: String,
+    pub task_id: String,
     pub file_path: String,
     pub file_name: String,
     pub file_ext: String,
@@ -1279,6 +1328,7 @@ pub struct ProjectFileRecord {
 pub struct CreateFileRecordRequest {
     pub project_id: String,
     pub role_id: String,
+    pub task_id: Option<String>,
     pub file_path: String,
     pub file_name: String,
     pub file_ext: Option<String>,

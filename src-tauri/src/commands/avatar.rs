@@ -67,8 +67,8 @@ pub async fn get_avatar_messages(app: AppHandle) -> Result<Vec<db::Message>, Str
         None => return Ok(vec![]),
     };
 
-    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, i64)>(
-        "SELECT id, role, content, thinking, files, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
+    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, i64, Option<String>, Option<f64>, Option<String>)>(
+        "SELECT id, role, content, thinking, files, timestamp, audio_path, audio_duration, message_type FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
     )
     .bind(&conversation_id)
     .fetch_all(&pool)
@@ -77,13 +77,16 @@ pub async fn get_avatar_messages(app: AppHandle) -> Result<Vec<db::Message>, Str
 
     let messages = rows
         .into_iter()
-        .map(|(id, role, content, thinking, files, timestamp)| db::Message {
+        .map(|(id, role, content, thinking, files, timestamp, audio_path, audio_duration, message_type)| db::Message {
             id,
             role,
             content,
             thinking: thinking.filter(|s| !s.is_empty()),
             files: files.filter(|s| !s.is_empty()),
             timestamp,
+            audio_path: audio_path.filter(|s| !s.is_empty()),
+            audio_duration,
+            message_type: message_type.filter(|s| !s.is_empty()),
         })
         .collect();
 

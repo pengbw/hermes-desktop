@@ -53,6 +53,7 @@
     "react-markdown": "^10.1.0",
     "react-mentions": "^4.4.10",
     "remark-gfm": "^4.0.1",
+    "tauri-plugin-mic-recorder-api": "^2.0.0",
     "three": "^0.184.0",
     "zustand": "^5.0.13"
   },

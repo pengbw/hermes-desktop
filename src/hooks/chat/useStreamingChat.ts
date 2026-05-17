@@ -80,6 +80,7 @@ export function useStreamingChat() {
       eventId: string;
       forceKbRetrieve: boolean;
       conversationId: string | null;
+      isVoiceMessage?: boolean;
     },
     onMessage: (message: Message) => void,
     onDone: () => void
@@ -93,6 +94,7 @@ export function useStreamingChat() {
     });
 
     const { eventId } = invokeParams;
+    const isVoiceMessage = invokeParams.isVoiceMessage || false;
     let fullContent = "";
     let pendingSources: KnowledgeSource[] = [];
 
@@ -118,26 +120,87 @@ export function useStreamingChat() {
           content: fullContent,
           timestamp: Date.now(),
           knowledgeSources: pendingSources.length > 0 ? [...pendingSources] : undefined,
+          messageType: isVoiceMessage ? "voice" : "text",
         };
-        onMessage(assistantMsg);
-        updateChatState(convId, { isStreaming: false, isThinking: false, toolProgress: "" });
-        (async () => {
-          try {
-            await invoke("create_message", {
-              req: {
-                conversationId: convId,
-                role: "assistant",
-                content: fullContent,
-                thinking: null,
-              },
-            });
-          } catch (saveErr) {
-            console.error("Failed to save assistant message:", saveErr);
-          }
-        })();
-        unlisten();
-        unlistenSources();
-        onDone();
+
+        if (isVoiceMessage) {
+          updateChatState(convId, { isStreaming: true, isThinking: true, thinkingContent: "", streamedContent: "", toolProgress: "" });
+          (async () => {
+            try {
+              let audioPath: string | undefined;
+              let audioDuration: number | undefined;
+
+              if (fullContent.trim()) {
+                try {
+                  const ttsResult = await invoke<{
+                    success: boolean;
+                    audioPath: string | null;
+                    audioDuration: number | null;
+                    error: string | null;
+                  }>("text_to_speech_file", {
+                    req: { text: fullContent, voice: null },
+                  });
+                  if (ttsResult.success && ttsResult.audioPath) {
+                    audioPath = ttsResult.audioPath;
+                    audioDuration = ttsResult.audioDuration ?? undefined;
+                  }
+                } catch (ttsErr) {
+                  console.warn("Auto TTS generation failed:", ttsErr);
+                }
+              }
+
+              const voiceMsg: Message = {
+                ...assistantMsg,
+                audioPath,
+                audioDuration,
+                messageType: "voice",
+              };
+              onMessage(voiceMsg);
+
+              await invoke("create_message", {
+                req: {
+                  conversationId: convId,
+                  role: "assistant",
+                  content: fullContent,
+                  thinking: null,
+                  audioPath: audioPath ?? null,
+                  audioDuration: audioDuration ?? null,
+                  messageType: "voice",
+                },
+              });
+            } catch (saveErr) {
+              console.error("Failed to save voice message:", saveErr);
+              onMessage(assistantMsg);
+            }
+            updateChatState(convId, { isStreaming: false, isThinking: false, toolProgress: "" });
+            unlisten();
+            unlistenSources();
+            onDone();
+          })();
+        } else {
+          onMessage(assistantMsg);
+          updateChatState(convId, { isStreaming: false, isThinking: false, toolProgress: "" });
+          (async () => {
+            try {
+              await invoke("create_message", {
+                req: {
+                  conversationId: convId,
+                  role: "assistant",
+                  content: fullContent,
+                  thinking: null,
+                  audioPath: null,
+                  audioDuration: null,
+                  messageType: "text",
+                },
+              });
+            } catch (saveErr) {
+              console.error("Failed to save assistant message:", saveErr);
+            }
+          })();
+          unlisten();
+          unlistenSources();
+          onDone();
+        }
       } else if (event_type === "tool_progress") {
         updateChatState(convId, { toolProgress: tool_label || chunk, isThinking: true });
       } else if (event_type === "error") {
@@ -149,11 +212,13 @@ export function useStreamingChat() {
         });
       } else {
         fullContent += chunk;
-        updateChatState(convId, {
-          streamedContent: fullContent,
-          isThinking: false,
-          toolProgress: "",
-        });
+        if (!isVoiceMessage) {
+          updateChatState(convId, {
+            streamedContent: fullContent,
+            isThinking: false,
+            toolProgress: "",
+          });
+        }
       }
     });
 

@@ -6,7 +6,7 @@ import ConversationList from "@components/chat/ConversationList";
 import MessageBubble from "@components/chat/MessageBubble";
 import StreamingIndicator from "@components/chat/StreamingIndicator";
 import MessageInput from "@components/chat/MessageInput";
-import type { Conversation, Message } from "@core/types";
+import type { Conversation, Message, HermesConfigData } from "@core/types";
 import styles from "./ChatPanel.module.css";
 
 interface ChatPanelProps {
@@ -26,14 +26,23 @@ interface ChatPanelProps {
     provider?: string,
     image?: string,
     forceKbRetrieve?: boolean,
-    kbIds?: string[]
-  ) => void;
+    kbIds?: string[],
+    voiceInfo?: { audioPath: string; audioDuration: number },
+    contentOverride?: string
+  ) => Promise<{ conversationId: string; userMsgId: string } | undefined>;
   isStreaming: boolean;
   isThinking: boolean;
   thinkingContent: string;
   streamedContent: string;
   toolProgress: string;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  streamVoiceResponse: (
+    conversationId: string,
+    userMsgId: string,
+    sttText: string,
+    audioPath: string,
+    audioDuration?: number
+  ) => Promise<void>;
 }
 
 function ChatPanel({
@@ -53,6 +62,7 @@ function ChatPanel({
   streamedContent,
   toolProgress,
   messagesEndRef,
+  streamVoiceResponse,
 }: ChatPanelProps) {
   const { t } = useI18n();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -61,7 +71,18 @@ function ChatPanel({
     { id: string; name: string; icon: string; status: string }[]
   >([]);
   const [pendingKbIds, setPendingKbIds] = useState<string[]>([]);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const messagesListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    invoke<HermesConfigData>("get_hermes_config")
+      .then((cfg) => {
+        setTtsEnabled(cfg.tts_enabled);
+        setVoiceEnabled(cfg.voice_enabled);
+      })
+      .catch(() => {});
+  }, []);
 
   const virtualizer = useVirtualizer({
     count: messages.length,
@@ -122,25 +143,46 @@ function ChatPanel({
     setPendingKbIds(ids);
   }, [currentConversationId, conversations]);
 
+  const pendingVoiceRef = useRef<{ conversationId: string; userMsgId: string } | null>(null);
+
   const handleSend = useCallback(
-    (params: {
+    async (params: {
+      content?: string;
       filesJson?: string;
       model?: string;
       provider?: string;
       imagePath?: string;
       forceKbRetrieve?: boolean;
       kbIds?: string[];
+      voiceInfo?: { audioPath: string; audioDuration: number };
     }) => {
-      sendMessage(
+      console.log("[ChatPanel] handleSend, params:", { content: params.content, voiceInfo: params.voiceInfo });
+      const result = await sendMessage(
         params.filesJson,
         params.model,
         params.provider,
         params.imagePath,
         params.forceKbRetrieve,
-        params.kbIds
+        params.kbIds,
+        params.voiceInfo,
+        params.content
       );
+      console.log("[ChatPanel] handleSend result:", result);
+      if (result && params.voiceInfo && !params.content) {
+        pendingVoiceRef.current = result;
+      }
     },
     [sendMessage]
+  );
+
+  const handleSttComplete = useCallback(
+    async (text: string, audioPath: string, audioDuration?: number) => {
+      const pending = pendingVoiceRef.current;
+      if (!pending) return;
+      pendingVoiceRef.current = null;
+      await streamVoiceResponse(pending.conversationId, pending.userMsgId, text, audioPath, audioDuration);
+    },
+    [streamVoiceResponse]
   );
 
   const shouldUseVirtual = messages.length > 50;
@@ -188,13 +230,13 @@ function ChatPanel({
                       transform: `translateY(${virtualItem.start}px)`,
                     }}
                   >
-                    <MessageBubble message={msg} />
+                    <MessageBubble message={msg} ttsEnabled={ttsEnabled} />
                   </div>
                 );
               })}
             </div>
           ) : (
-            messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
+            messages.map((msg) => <MessageBubble key={msg.id} message={msg} ttsEnabled={ttsEnabled} />)
           )}
           <StreamingIndicator
             isStreaming={isStreaming}
@@ -209,7 +251,9 @@ function ChatPanel({
           input={input}
           setInput={setInput}
           onSend={handleSend}
+          onSttComplete={handleSttComplete}
           isStreaming={isStreaming}
+          voiceEnabled={voiceEnabled}
           kbGlobalAutoRetrieve={kbGlobalAutoRetrieve}
           kbList={kbList}
           pendingKbIds={pendingKbIds}

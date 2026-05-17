@@ -32,7 +32,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
     cardPrompt: string,
     userText: string,
     homeFiles?: AttachedFile[],
-    kbIds?: string[]
+    kbIds?: string[],
+    voiceInfo?: { audioPath: string; audioDuration: number }
   ) => {
     if (stream.isStreaming) return;
     const fullText = cardPrompt ? `${cardPrompt}\n\n${userText}` : userText;
@@ -83,6 +84,9 @@ export function useChat(t: (key: string, params?: Record<string, string | number
           content: displayContent,
           files: filesJson,
           timestamp: Date.now(),
+          audioPath: voiceInfo?.audioPath,
+          audioDuration: voiceInfo?.audioDuration,
+          messageType: voiceInfo ? "voice" : "text",
         };
         try {
           await invoke("create_message", {
@@ -92,6 +96,9 @@ export function useChat(t: (key: string, params?: Record<string, string | number
               content: userMsg.content,
               thinking: null,
               files: filesJson || null,
+              audioPath: voiceInfo?.audioPath ?? null,
+              audioDuration: voiceInfo?.audioDuration ?? null,
+              messageType: voiceInfo ? "voice" : "text",
             },
           });
         } catch (err) {
@@ -113,9 +120,16 @@ export function useChat(t: (key: string, params?: Record<string, string | number
             eventId,
             forceKbRetrieve: !!(kbIds && kbIds.length > 0),
             conversationId: convId,
+            isVoiceMessage: !!voiceInfo,
           },
           (assistantMsg) => {
-            conv.setMessagesForConversation(convId, (prev) => [...prev, assistantMsg]);
+            conv.setMessagesForConversation(convId, (prev) => {
+              const lastMsg = prev[prev.length - 1];
+              if (lastMsg && lastMsg.role === "assistant" && lastMsg.id === assistantMsg.id) {
+                return [...prev.slice(0, -1), assistantMsg];
+              }
+              return [...prev, assistantMsg];
+            });
           },
           () => {
             conv.loadConversations();
@@ -133,9 +147,14 @@ export function useChat(t: (key: string, params?: Record<string, string | number
     provider?: string,
     image?: string,
     forceKbRetrieve?: boolean,
-    kbIds?: string[]
+    kbIds?: string[],
+    voiceInfo?: { audioPath: string; audioDuration: number },
+    contentOverride?: string
   ) => {
-    if ((!input.trim() && !attachedFiles) || stream.isStreaming) return;
+    const effectiveContent = contentOverride || input.trim();
+    const isVoiceOnly = !!voiceInfo && !effectiveContent && !attachedFiles;
+    console.log("[sendMessage] effectiveContent:", JSON.stringify(effectiveContent), "isVoiceOnly:", isVoiceOnly, "voiceInfo:", voiceInfo, "attachedFiles:", attachedFiles, "isStreaming:", stream.isStreaming);
+    if ((!effectiveContent && !attachedFiles && !isVoiceOnly) || stream.isStreaming) return;
 
     let conversationId = conv.currentConversationId;
 
@@ -144,7 +163,7 @@ export function useChat(t: (key: string, params?: Record<string, string | number
         const conversation = await invoke<Conversation>("create_conversation", {
           req: {
             title:
-              input.trim().slice(0, 30) ||
+              effectiveContent.slice(0, 30) ||
               (attachedFiles ? t("chat.fileConversation") : t("chat.newConversation")),
           },
         });
@@ -163,7 +182,7 @@ export function useChat(t: (key: string, params?: Record<string, string | number
       await conv.updateConversationKbIds(conversationId, kbIdsJson);
     }
 
-    const messageContent = input.trim() || (attachedFiles ? "请分析附件中的文件" : "");
+    const messageContent = effectiveContent || (attachedFiles ? "请分析附件中的文件" : "");
     let sendContent = messageContent;
 
     if (attachedFiles) {
@@ -189,7 +208,14 @@ export function useChat(t: (key: string, params?: Record<string, string | number
       content: messageContent,
       files: attachedFiles,
       timestamp: Date.now(),
+      audioPath: voiceInfo?.audioPath,
+      audioDuration: voiceInfo?.audioDuration,
+      messageType: voiceInfo ? "voice" : "text",
     };
+
+    conv.addMessageToCache(conversationId!, userMsg);
+    console.log("[sendMessage] addMessageToCache called, convId:", conversationId, "userMsg:", { id: userMsg.id, content: userMsg.content, audioPath: userMsg.audioPath, audioDuration: userMsg.audioDuration, messageType: userMsg.messageType });
+    setInput("");
 
     try {
       await invoke("create_message", {
@@ -199,14 +225,19 @@ export function useChat(t: (key: string, params?: Record<string, string | number
           content: userMsg.content,
           thinking: null,
           files: attachedFiles || null,
+          audioPath: voiceInfo?.audioPath ?? null,
+          audioDuration: voiceInfo?.audioDuration ?? null,
+          messageType: voiceInfo ? "voice" : "text",
         },
       });
     } catch (err) {
       console.error("Failed to save user message:", err);
     }
 
-    conv.addMessageToCache(conversationId!, userMsg);
-    setInput("");
+    if (isVoiceOnly) {
+      console.log("[sendMessage] isVoiceOnly, returning early with convId:", conversationId, "userMsgId:", userMsg.id);
+      return { conversationId: conversationId!, userMsgId: userMsg.id };
+    }
 
     const eventId = `chat_stream_${conversationId}`;
     const currentConv = conv.conversations.find((c) => c.id === conversationId);
@@ -223,9 +254,86 @@ export function useChat(t: (key: string, params?: Record<string, string | number
         eventId,
         forceKbRetrieve: forceKbRetrieve || false,
         conversationId: conversationId || null,
+        isVoiceMessage: !!voiceInfo,
       },
       (assistantMsg) => {
-        conv.setMessagesForConversation(conversationId!, (prev) => [...prev, assistantMsg]);
+        conv.setMessagesForConversation(conversationId!, (prev) => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg && lastMsg.role === "assistant" && lastMsg.id === assistantMsg.id) {
+            return [...prev.slice(0, -1), assistantMsg];
+          }
+          return [...prev, assistantMsg];
+        });
+      },
+      () => {
+        conv.loadConversations();
+      }
+    );
+
+    return { conversationId: conversationId!, userMsgId: userMsg.id };
+  };
+
+  const streamVoiceResponse = async (
+    conversationId: string,
+    userMsgId: string,
+    sttText: string,
+    audioPath: string,
+    audioDuration?: number
+  ) => {
+    conv.setMessagesForConversation(conversationId, (prev) => {
+      const idx = prev.findIndex((m) => m.id === userMsgId);
+      if (idx === -1) return prev;
+      const updated = [...prev];
+      updated[idx] = {
+        ...updated[idx],
+        content: sttText,
+        audioPath,
+        audioDuration: audioDuration ?? updated[idx].audioDuration,
+      };
+      return updated;
+    });
+
+    try {
+      await invoke("update_message", {
+        req: {
+          id: userMsgId,
+          content: sttText,
+          audioPath,
+          audioDuration: audioDuration ?? null,
+          messageType: "voice",
+        },
+      });
+    } catch (err) {
+      console.warn("Failed to update voice message content:", err);
+    }
+
+    if (!sttText.trim()) return;
+
+    const currentConv = conv.conversations.find((c) => c.id === conversationId);
+    const hermesSessionId = currentConv?.hermesSessionId;
+    const eventId = `chat_stream_${conversationId}`;
+
+    await stream.startStreaming(
+      conversationId,
+      {
+        message: sttText,
+        sessionId: hermesSessionId || null,
+        model: null,
+        provider: null,
+        image: null,
+        eventId,
+        forceKbRetrieve: false,
+        conversationId,
+        isVoiceMessage: true,
+      },
+      (assistantMsg) => {
+        conv.setMessagesForConversation(conversationId, (prev) => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg && lastMsg.role === "assistant" && lastMsg.id === assistantMsg.id) {
+            return [...prev.slice(0, -1), assistantMsg];
+          }
+          return [...prev, assistantMsg];
+        });
       },
       () => {
         conv.loadConversations();
@@ -252,5 +360,6 @@ export function useChat(t: (key: string, params?: Record<string, string | number
     renameConversation: conv.renameConversation,
     sendMessage,
     sendMessageFromHome,
+    streamVoiceResponse,
   };
 }

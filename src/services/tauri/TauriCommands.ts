@@ -327,18 +327,6 @@ export const TauriCommands = {
     return invoke("toggle_skill", { name, enabled });
   },
 
-  async claimProjectTask(taskId: string, roleId: string): Promise<void> {
-    return invoke("claim_project_task", { taskId, roleId });
-  },
-
-  async heartbeatTaskClaim(taskId: string): Promise<void> {
-    return invoke("heartbeat_task_claim", { taskId });
-  },
-
-  async releaseTaskClaim(taskId: string): Promise<void> {
-    return invoke("release_task_claim", { taskId });
-  },
-
   async addTaskComment(taskId: string, roleId: string, content: string): Promise<void> {
     return invoke("add_task_comment", { req: { taskId, roleId, content } });
   },
@@ -468,6 +456,7 @@ export const TauriCommands = {
   async createProjectFileRecord(req: {
     projectId: string;
     roleId: string;
+    taskId?: string;
     filePath: string;
     fileName: string;
     fileExt?: string;
@@ -481,12 +470,16 @@ export const TauriCommands = {
     return invoke("delete_project_file_record", { id });
   },
 
+  async cleanupInvalidFileRecords(projectId: string): Promise<number> {
+    return invoke("cleanup_invalid_file_records", { projectId });
+  },
+
   async scanProjectFiles(projectId: string, roleId?: string): Promise<any[]> {
     return invoke("scan_project_files", { projectId, roleId });
   },
 
-  async recordChatFiles(projectId: string, roleId: string): Promise<void> {
-    return invoke("record_chat_files", { projectId, roleId });
+  async recordChatFiles(projectId: string, roleId: string, taskId?: string): Promise<void> {
+    return invoke("record_chat_files", { projectId, roleId, taskId: taskId || "" });
   },
 
   async listProjectBoards(projectId: string): Promise<any[]> {

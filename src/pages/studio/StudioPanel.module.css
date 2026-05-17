@@ -324,29 +324,42 @@
 }
 
 .studioBtnPrimary {
-  padding: 6px 14px;
+  padding: 8px 20px;
   border: none;
   border-radius: 8px;
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 85%, #000));
   color: #fff;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(79, 195, 247, 0.2);
 }
 
 .studioBtnPrimary:hover {
-  opacity: 0.85;
+  box-shadow: 0 4px 16px rgba(79, 195, 247, 0.3);
+  transform: translateY(-1px);
+}
+
+.studioBtnPrimary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(79, 195, 247, 0.15);
 }
 
 .studioBtnSecondary {
   padding: 8px 20px;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1.5px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
   background: transparent;
   color: var(--text-primary, #333);
   font-size: 14px;
   cursor: pointer;
+  transition: all 0.2s;
+}
+
+.studioBtnSecondary:hover {
+  border-color: var(--color-primary);
+  background: rgba(79, 195, 247, 0.05);
 }
 
 .studioBtnSm {
@@ -1015,6 +1028,7 @@
 .studioIconOption:hover {
   border-color: var(--color-primary);
   transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(79, 195, 247, 0.15);
 }
 
 .studioIconOption.selected {
@@ -1501,27 +1515,33 @@
 .studioNewThemeBtn {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 3px 10px;
+  gap: 5px;
+  padding: 6px 16px;
+  min-height: 36px;
   border: 1.5px solid var(--border-color, #e0e0e0);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--bg-primary, #fff);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-primary, #333);
   transition:
     border-color 0.2s,
-    background 0.2s;
+    background 0.2s,
+    box-shadow 0.2s,
+    transform 0.15s;
 }
 
 .studioNewThemeBtn:hover {
   border-color: var(--primary, #6c5ce7);
+  box-shadow: 0 2px 8px rgba(108, 92, 231, 0.1);
+  transform: translateY(-1px);
 }
 
 .studioNewThemeBtn.selected {
   border-color: var(--primary, #6c5ce7);
   background: rgba(108, 92, 231, 0.08);
   font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(108, 92, 231, 0.15);
 }
 
 .studioStatsSection {
@@ -2034,6 +2054,144 @@
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+}
+
+.artifactTree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 4px;
+}
+
+.artifactTreeTaskGroup {
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.artifactTreeNode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.artifactTreeNode:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.artifactTreeTask {
+  font-weight: 500;
+  background: var(--bg-hover, rgba(0, 0, 0, 0.02));
+}
+
+.artifactTreeRole {
+  padding-left: 16px;
+}
+
+.artifactTreeFile {
+  padding-left: 32px;
+}
+
+.artifactTreeToggle {
+  font-size: 10px;
+  color: var(--text-secondary, #999);
+  width: 12px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.artifactTreeTaskIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.artifactTreeTaskName {
+  font-size: 13px;
+  color: var(--text-primary, #333);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artifactTreeTaskStatus {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.artifactTreeTaskCount {
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+  flex-shrink: 0;
+}
+
+.artifactTreeTaskChildren {
+  padding-left: 8px;
+}
+
+.artifactTreeRoleGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.artifactTreeRoleIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.artifactTreeRoleName {
+  font-size: 12px;
+  color: var(--text-primary, #333);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artifactTreeRoleCount {
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0 5px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.artifactTreeRoleFiles {
+  padding-left: 12px;
+}
+
+.artifactTreeFileIcon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.artifactTreeFileName {
+  font-size: 12px;
+  color: var(--color-primary, #6c5ce7);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artifactTreeFileSize {
+  font-size: 10px;
+  color: var(--text-secondary, #999);
+  flex-shrink: 0;
+}
+
+.artifactTreeEmpty {
+  font-size: 12px;
+  color: var(--text-secondary, #999);
+  padding: 6px 16px;
+  font-style: italic;
 }
 
 .studioArtifactGroupList {
@@ -2880,6 +3038,7 @@
 }
 
 .wfDesigner {
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 400px;
@@ -2889,6 +3048,45 @@
 
 .wfDesigner .reactFlow__background {
   background: var(--card-bg, #fafbfc);
+}
+
+.wfGroupTabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: var(--bg-secondary, #fafafa);
+  font-size: 12px;
+}
+
+.wfGroupTab {
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #ddd);
+  background: var(--card-bg, #fff);
+  color: var(--text-primary, #333);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wfGroupTabActive {
+  background: var(--primary, #6c5ce7);
+  color: #fff;
+  border-color: var(--primary, #6c5ce7);
+}
+
+.wfGroupTabAdd {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px dashed var(--text-secondary, #bbb);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #999);
 }
 
 .wfRoleNode {
@@ -3192,13 +3390,24 @@
 }
 
 .wfDetailPanel {
+  position: absolute;
+  z-index: 10;
   background: var(--card-bg, #fff);
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 12px;
   min-width: 300px;
   max-width: 400px;
+  max-height: 70vh;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.wfDetailPanelDragging {
+  opacity: 0.9;
+  pointer-events: auto;
 }
 
 .wfDetailHeader {
@@ -3206,9 +3415,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: #f0f0f5;
+  background: var(--bg-secondary, #f0f0f5);
   font-weight: 600;
   font-size: 13px;
+  flex-shrink: 0;
+  cursor: grab;
+}
+
+.wfDetailHeader:active {
+  cursor: grabbing;
 }
 
 .wfDetailClose {
@@ -3229,6 +3444,8 @@
   padding: 12px 14px;
   font-size: 12px;
   color: var(--text-primary, #2d3436);
+  overflow-y: auto;
+  flex: 1;
 }
 
 .wfDetailBody p {
@@ -3237,6 +3454,8 @@
 
 .wfDetailWorkflows {
   margin-top: 8px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .wfDetailWfItem {
@@ -3244,7 +3463,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 6px 8px;
-  background: #f8f9fa;
+  background: var(--bg-tertiary, #f8f9fa);
   border-radius: 6px;
   margin-top: 4px;
   font-size: 11px;
@@ -4398,6 +4617,151 @@
   transform: scale(1.1);
 }
 
+.memberPanel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  min-width: 160px;
+  max-width: 200px;
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+
+[data-theme="dark"] .memberPanel {
+  background: rgba(15, 15, 26, 0.45);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.memberPanelCollapsed {
+  min-width: auto;
+}
+
+.memberPanelHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .memberPanelHeader {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.memberPanelTitle {
+  font-weight: 600;
+  flex: 1;
+}
+
+.memberPanelCount {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.memberPanelToggle {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.memberPanelList {
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.memberPanelList::-webkit-scrollbar {
+  width: 3px;
+}
+
+.memberPanelList::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.memberPanelItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.memberPanelItem:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="dark"] .memberPanelItem:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.memberPanelAvatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.memberPanelInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.memberPanelName {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-theme="dark"] .memberPanelName {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.memberPanelStatus {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.memberPanelStatus[data-status="working"] {
+  color: #74b9ff;
+}
+
+.memberPanelStatus[data-status="waiting"] {
+  color: #fdcb6e;
+}
+
+.memberPanelStatus[data-status="idle"] {
+  color: #55efc4;
+}
+
 .studioTasksView {
   display: flex;
   flex-direction: column;
@@ -4598,6 +4962,16 @@
   font-weight: 500;
 }
 
+.taskMgmtFormReadonly {
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--bg-secondary, #f5f5f5);
+  color: var(--text-primary, #333);
+  font-size: 13px;
+  min-height: 18px;
+}
+
 .taskMgmtFormActions {
   display: flex;
   gap: 8px;
@@ -4631,10 +5005,10 @@
 
 .taskMgmtList {
   flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding-right: 4px;
 }
 
 .taskMgmtEmpty {
@@ -4717,11 +5091,6 @@
 .taskMgmtItemPriority {
   font-size: 10px;
   font-weight: 500;
-}
-
-.taskMgmtItemClaim {
-  font-size: 10px;
-  color: var(--text-secondary, #888);
 }
 
 .taskMgmtItemTime {
@@ -4859,6 +5228,243 @@
   justify-content: flex-end;
   padding: 12px 18px;
   border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+.taskMgmtSplit {
+  display: flex;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.taskMgmtListWrap {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.taskMgmtItemSelected {
+  background: var(--bg-hover, rgba(108, 92, 231, 0.06));
+  border-left: 3px solid var(--color-primary, #6c5ce7);
+}
+
+.taskMgmtItemFileBadge {
+  font-size: 11px;
+  background: rgba(108, 92, 231, 0.08);
+  color: var(--color-primary, #6c5ce7);
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 4px;
+}
+
+.taskMgmtArtifactPanel {
+  width: 340px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-color, #e8e8e8);
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: var(--card-bg, #fff);
+}
+
+.taskMgmtArtifactHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-color, #e8e8e8);
+  margin-bottom: 10px;
+}
+
+.taskMgmtArtifactTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+.taskMgmtArtifactCount {
+  font-size: 12px;
+  color: var(--text-secondary, #999);
+  background: rgba(0, 0, 0, 0.04);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.taskMgmtArtifactEmpty {
+  text-align: center;
+  color: var(--text-secondary, #999);
+  padding: 32px 0;
+  font-size: 13px;
+}
+
+.taskMgmtArtifactRoles {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.taskMgmtArtifactRole {
+  border: 1px solid var(--border-color, #f0f0f0);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.taskMgmtArtifactRoleHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg-secondary, #f8f9fa);
+  cursor: default;
+}
+
+.taskMgmtArtifactRoleIcon {
+  font-size: 16px;
+}
+
+.taskMgmtArtifactRoleName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  flex: 1;
+}
+
+.taskMgmtArtifactRoleCount {
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+  background: rgba(0, 0, 0, 0.05);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.taskMgmtArtifactFileList {
+  padding: 4px 0;
+}
+
+.taskMgmtArtifactFileItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  transition: background 0.15s;
+}
+
+.taskMgmtArtifactFileItem:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.03));
+}
+
+.taskMgmtArtifactFileIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.taskMgmtArtifactFileInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.taskMgmtArtifactFileName {
+  font-size: 13px;
+  color: var(--text-primary, #333);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taskMgmtArtifactFileMeta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.taskMgmtArtifactFileSize {
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+}
+
+.taskMgmtArtifactFileDesc {
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.taskMgmtPagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-color, #e8e8e8);
+  flex-shrink: 0;
+}
+
+.taskMgmtPageBtn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 4px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.15s;
+}
+
+.taskMgmtPageBtn:hover:not(:disabled) {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.05));
+}
+
+.taskMgmtPageBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.taskMgmtPageInfo {
+  font-size: 13px;
+  color: var(--text-primary, #333);
+  min-width: 50px;
+  text-align: center;
+}
+
+.taskMgmtPageTotal {
+  font-size: 12px;
+  color: var(--text-secondary, #999);
+  margin-left: 4px;
+}
+
+.taskMgmtArtifactDefault {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: var(--text-secondary, #999);
+}
+
+.taskMgmtArtifactDefaultIcon {
+  font-size: 40px;
+  opacity: 0.4;
+}
+
+.taskMgmtArtifactDefaultText {
+  font-size: 14px;
+}
+
+.taskMgmtArtifactDefaultSub {
+  font-size: 12px;
+  opacity: 0.7;
 }
 
 .studioTasksHeader {
@@ -5100,39 +5706,6 @@
   font-weight: 600;
 }
 
-.taskDetailClaimActions {
-  display: flex;
-  gap: 8px;
-}
-
-.taskDetailClaimBtn,
-.taskDetailReleaseBtn {
-  padding: 6px 14px;
-  border-radius: 6px;
-  border: none;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.taskDetailClaimBtn {
-  background: #6c5ce7;
-  color: #fff;
-}
-
-.taskDetailClaimBtn:hover {
-  background: #5b4cdb;
-}
-
-.taskDetailReleaseBtn {
-  background: var(--bg-tertiary, #f8f9fa);
-  color: var(--text-primary, #2d3436);
-  border: 1px solid var(--border-color, #e0e0e0);
-}
-
-.taskDetailReleaseBtn:hover {
-  background: #ffeaa7;
-}
 
 .taskDetailSkills {
   display: flex;
@@ -5419,14 +5992,6 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-}
-
-.studioKanbanCardClaimer {
-  font-size: 11px;
-  color: #6c5ce7;
-  background: rgba(108, 92, 231, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
 }
 
 .studioKanbanCardDispatched {
@@ -6395,25 +6960,26 @@
 .studioTemplateCard {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border: 1.5px solid var(--border-color, #e8e8e8);
   border-radius: 10px;
   background: var(--bg-primary, #fff);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   text-align: left;
   position: relative;
 }
 
 .studioTemplateCard:hover {
   border-color: var(--color-primary, #6c5ce7);
-  box-shadow: 0 2px 8px rgba(108, 92, 231, 0.08);
+  box-shadow: 0 4px 12px rgba(108, 92, 231, 0.12);
+  transform: translateY(-1px);
 }
 
 .studioTemplateCard.selected {
   border-color: var(--color-primary, #6c5ce7);
   background: linear-gradient(135deg, rgba(108, 92, 231, 0.04), rgba(108, 92, 231, 0.08));
-  box-shadow: 0 0 0 1px var(--color-primary, #6c5ce7);
+  box-shadow: 0 0 0 1px var(--color-primary, #6c5ce7), 0 2px 8px rgba(108, 92, 231, 0.1);
 }
 
 .studioTemplateCardHeader {
@@ -6743,11 +7309,11 @@
 }
 
 .studioNewThemeIcon {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .studioNewThemeName {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 

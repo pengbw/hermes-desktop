@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 type Theme = "light" | "dark" | "system";
 
@@ -28,6 +29,8 @@ function resolveTheme(theme: Theme): "light" | "dark" {
 
 function applyTheme(resolved: "light" | "dark") {
   document.documentElement.setAttribute("data-theme", resolved);
+  document.documentElement.style.backgroundColor = resolved === "dark" ? "#0f0f1a" : "#f5f5f7";
+  invoke("set_titlebar_theme", { dark: resolved === "dark" }).catch(() => {});
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

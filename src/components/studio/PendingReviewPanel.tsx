@@ -370,54 +370,56 @@ export default function PendingReviewPanel({
                     style={{
                       padding: "8px 12px",
                       borderTop: "1px solid #e9ecef",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
                     }}
                   >
-                    <input
-                      type="text"
+                    <textarea
                       placeholder="审核说明（可选）..."
                       value={reviewComment}
                       onChange={(e) => setReviewComment(e.target.value)}
+                      rows={3}
                       style={{
-                        flex: 1,
-                        padding: "4px 8px",
+                        width: "100%",
+                        padding: "8px 10px",
                         border: "1px solid #ddd",
                         borderRadius: 4,
-                        fontSize: 12,
+                        fontSize: 13,
+                        resize: "vertical",
+                        boxSizing: "border-box",
+                        marginBottom: 8,
                       }}
                     />
-                    <button
-                      onClick={() => handleReview(artifact.id, "approve")}
-                      disabled={reviewing}
-                      style={{
-                        padding: "4px 12px",
-                        background: "#00b894",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 4,
-                        cursor: reviewing ? "not-allowed" : "pointer",
-                        fontSize: 12,
-                      }}
-                    >
-                      ✅ 通过
-                    </button>
-                    <button
-                      onClick={() => handleReview(artifact.id, "reject")}
-                      disabled={reviewing}
-                      style={{
-                        padding: "4px 12px",
-                        background: "#e17055",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 4,
-                        cursor: reviewing ? "not-allowed" : "pointer",
-                        fontSize: 12,
-                      }}
-                    >
-                      ❌ 驳回
-                    </button>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                      <button
+                        onClick={() => handleReview(artifact.id, "approve")}
+                        disabled={reviewing}
+                        style={{
+                          padding: "6px 16px",
+                          background: "#00b894",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 4,
+                          cursor: reviewing ? "not-allowed" : "pointer",
+                          fontSize: 13,
+                        }}
+                      >
+                        ✅ 通过
+                      </button>
+                      <button
+                        onClick={() => handleReview(artifact.id, "reject")}
+                        disabled={reviewing}
+                        style={{
+                          padding: "6px 16px",
+                          background: "#e17055",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 4,
+                          cursor: reviewing ? "not-allowed" : "pointer",
+                          fontSize: 13,
+                        }}
+                      >
+                        ❌ 驳回
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

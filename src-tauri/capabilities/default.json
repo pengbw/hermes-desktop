@@ -15,6 +15,7 @@
     "dialog:default",
     "shell:allow-execute",
     "shell:allow-spawn",
-    "notification:default"
+    "notification:default",
+    "mic-recorder:default"
   ]
 }

@@ -814,9 +814,45 @@ function WorkflowDesignerInner({
     type: "node" | "edge";
     id: string;
   } | null>(null);
+  const [detailPanelPos, setDetailPanelPos] = useState({ x: 16, y: 60 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
 
   const reactFlow = useReactFlow();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+
+  const handleDetailPanelDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const panel = (e.currentTarget as HTMLElement).parentElement;
+      if (!panel) return;
+      const rect = panel.getBoundingClientRect();
+      dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      setIsDragging(true);
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const wrapper = reactFlowWrapper.current;
+        if (!wrapper) return;
+        const wrapperRect = wrapper.getBoundingClientRect();
+        let newX = moveEvent.clientX - wrapperRect.left - dragOffset.current.x;
+        let newY = moveEvent.clientY - wrapperRect.top - dragOffset.current.y;
+        newX = Math.max(0, Math.min(newX, wrapperRect.width - panel.offsetWidth));
+        newY = Math.max(0, Math.min(newY, wrapperRect.height - panel.offsetHeight));
+        setDetailPanelPos({ x: newX, y: newY });
+      };
+
+      const handleMouseUp = () => {
+        setIsDragging(false);
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+    },
+    []
+  );
 
   const memberRoles = useMemo(() => {
     const memberRoleIds = new Set(projectMembers.map((m) => m.roleId));
@@ -1271,17 +1307,7 @@ function WorkflowDesignerInner({
       />
       <div className={styles.wfDesigner} ref={reactFlowWrapper}>
         {/* 流程组标签页 */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "6px 12px",
-            borderBottom: "1px solid #e0e0e0",
-            background: "#fafafa",
-            fontSize: 12,
-          }}
-        >
+        <div className={styles.wfGroupTabs}>
           {workflowGroups.map((g) => {
             const isEditing = editingGroupId === g.id;
             return isEditing ? (
@@ -1330,18 +1356,7 @@ function WorkflowDesignerInner({
                   setEditingGroupId(g.id);
                   setEditingGroupName(g.name);
                 }}
-                style={{
-                  padding: "4px 12px",
-                  borderRadius: 4,
-                  border: "1px solid #ddd",
-                  background: activeGroupId === g.id ? "#6c5ce7" : "#fff",
-                  color: activeGroupId === g.id ? "#fff" : "#333",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
+                className={`${styles.wfGroupTab} ${activeGroupId === g.id ? styles.wfGroupTabActive : ""}`}
                 title={g.isPrimary ? "主流程（不可重命名）" : "双击修改名称"}
               >
                 {g.name}
@@ -1362,15 +1377,7 @@ function WorkflowDesignerInner({
                 console.error("Failed to create workflow group:", err);
               }
             }}
-            style={{
-              padding: "4px 8px",
-              borderRadius: 4,
-              border: "1px dashed #bbb",
-              background: "transparent",
-              cursor: "pointer",
-              fontSize: 12,
-              color: "#999",
-            }}
+            className={styles.wfGroupTabAdd}
           >
             ➕ 添加流程
           </button>
@@ -1479,114 +1486,6 @@ function WorkflowDesignerInner({
             </button>
           </Panel>
 
-          {selectedNode && selectedNode.type === "roleNode" && selectedNode.id !== "start" && (
-            <Panel position="bottom-left" className={styles.wfDetailPanel}>
-              <div className={styles.wfDetailHeader}>
-                <span>
-                  {(selectedNode.data as RoleNodeType["data"]).icon}{" "}
-                  {(selectedNode.data as RoleNodeType["data"]).label}
-                </span>
-                <button className={styles.wfDetailClose} onClick={() => setSelectedNode(null)}>
-                  ✕
-                </button>
-              </div>
-              <div className={styles.wfDetailBody}>
-                {(selectedNode.data as RoleNodeType["data"]).artifactType && (
-                  <p>
-                    <strong>{t("studio.wf.artifactType")}:</strong>{" "}
-                    {(selectedNode.data as RoleNodeType["data"]).artifactType}
-                  </p>
-                )}
-                <p>
-                  <strong>{t("studio.wf.transitionType")}:</strong>{" "}
-                  {(selectedNode.data as RoleNodeType["data"]).transitionType === "need_confirm"
-                    ? "🔒 " + t("studio.needConfirm")
-                    : "🔄 " + t("studio.autoPush")}
-                </p>
-                <div className={styles.wfDetailWorkflows}>
-                  <strong>{t("studio.wf.relatedSteps")}:</strong>
-                  {workflows
-                    .filter(
-                      (w) =>
-                        w.fromRoleId === (selectedNode.data as RoleNodeType["data"]).roleId ||
-                        w.toRoleId === (selectedNode.data as RoleNodeType["data"]).roleId
-                    )
-                    .map((w) => (
-                      <div key={w.id} className={styles.wfDetailWfItem}>
-                        <span>
-                          {w.fromRoleId && w.fromRoleId !== "start" && w.fromRoleId !== "end"
-                            ? roleMap.get(w.fromRoleId)?.icon +
-                              " " +
-                              roleMap.get(w.fromRoleId)?.name
-                            : t("studio.workflowStart")}
-                          → [{w.artifactType || "-"}] →
-                          {w.toRoleId === "end"
-                            ? "🏁 结束"
-                            : `${roleMap.get(w.toRoleId)?.icon} ${roleMap.get(w.toRoleId)?.name}`}
-                          {w.isPrimary && (
-                            <span style={{ marginLeft: 4, fontSize: 11, color: "#e67e22" }}>
-                              🔒 主流程
-                            </span>
-                          )}
-                        </span>
-                        <button
-                          className={styles.wfDetailDelete}
-                          onClick={() => {
-                            if (w.isPrimary) return;
-                            invoke("remove_project_workflow", { id: w.id })
-                              .then(() => loadWorkflows())
-                              .catch(console.error);
-                          }}
-                          disabled={w.isPrimary}
-                          style={w.isPrimary ? { opacity: 0.3, cursor: "not-allowed" } : {}}
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            </Panel>
-          )}
-
-          {selectedEdge && (
-            <Panel position="bottom-left" className={styles.wfDetailPanel}>
-              <div className={styles.wfDetailHeader}>
-                <span>🔗 连线属性</span>
-                <button className={styles.wfDetailClose} onClick={() => setSelectedEdge(null)}>
-                  ✕
-                </button>
-              </div>
-              <div className={styles.wfDetailBody}>
-                <p>
-                  <strong>产出物:</strong>{" "}
-                  {String((selectedEdge.data as Record<string, unknown>)?.artifactType || "-")}
-                </p>
-                <p>
-                  <strong>流转方式:</strong>{" "}
-                  {(selectedEdge.data as Record<string, unknown>)?.transitionType === "need_confirm"
-                    ? "🔒 需确认"
-                    : "🔄 自动推送"}
-                </p>
-                <div className={styles.wfDetailWfItem} style={{ marginTop: 8 }}>
-                  <span>
-                    {nodes.find((n) => n.id === selectedEdge.source)?.data?.label ||
-                      selectedEdge.source}
-                    {" → "}
-                    {nodes.find((n) => n.id === selectedEdge.target)?.data?.label ||
-                      selectedEdge.target}
-                  </span>
-                  <button
-                    className={styles.wfDetailDelete}
-                    onClick={() => handleDeleteEdge(selectedEdge.id)}
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </div>
-            </Panel>
-          )}
-
           {nodes.length === 0 && (
             <Panel position="top-center" className={styles.wfEmptyHint}>
               <p>{t("studio.noWorkflows")}</p>
@@ -1594,6 +1493,126 @@ function WorkflowDesignerInner({
             </Panel>
           )}
         </ReactFlow>
+
+        {selectedNode && selectedNode.type === "roleNode" && selectedNode.id !== "start" && (
+          <div
+            className={`${styles.wfDetailPanel} ${isDragging ? styles.wfDetailPanelDragging : ""}`}
+            style={{ left: detailPanelPos.x, top: detailPanelPos.y }}
+          >
+            <div
+              className={styles.wfDetailHeader}
+              onMouseDown={handleDetailPanelDragStart}
+            >
+              <span>
+                {(selectedNode.data as RoleNodeType["data"]).icon}{" "}
+                {(selectedNode.data as RoleNodeType["data"]).label}
+              </span>
+              <button className={styles.wfDetailClose} onClick={() => setSelectedNode(null)}>
+                ✕
+              </button>
+            </div>
+            <div className={styles.wfDetailBody}>
+              {(selectedNode.data as RoleNodeType["data"]).artifactType && (
+                <p>
+                  <strong>{t("studio.wf.artifactType")}:</strong>{" "}
+                  {(selectedNode.data as RoleNodeType["data"]).artifactType}
+                </p>
+              )}
+              <p>
+                <strong>{t("studio.wf.transitionType")}:</strong>{" "}
+                {(selectedNode.data as RoleNodeType["data"]).transitionType === "need_confirm"
+                  ? "🔒 " + t("studio.needConfirm")
+                  : "🔄 " + t("studio.autoPush")}
+              </p>
+              <div className={styles.wfDetailWorkflows}>
+                <strong>{t("studio.wf.relatedSteps")}:</strong>
+                {workflows
+                  .filter(
+                    (w) =>
+                      w.fromRoleId === (selectedNode.data as RoleNodeType["data"]).roleId ||
+                      w.toRoleId === (selectedNode.data as RoleNodeType["data"]).roleId
+                  )
+                  .map((w) => (
+                    <div key={w.id} className={styles.wfDetailWfItem}>
+                      <span>
+                        {w.fromRoleId && w.fromRoleId !== "start" && w.fromRoleId !== "end"
+                          ? roleMap.get(w.fromRoleId)?.icon +
+                            " " +
+                            roleMap.get(w.fromRoleId)?.name
+                          : t("studio.workflowStart")}
+                        → [{w.artifactType || "-"}] →
+                        {w.toRoleId === "end"
+                          ? "🏁 结束"
+                          : `${roleMap.get(w.toRoleId)?.icon} ${roleMap.get(w.toRoleId)?.name}`}
+                        {w.isPrimary && (
+                          <span style={{ marginLeft: 4, fontSize: 11, color: "#e67e22" }}>
+                            🔒 主流程
+                          </span>
+                        )}
+                      </span>
+                      <button
+                        className={styles.wfDetailDelete}
+                        onClick={() => {
+                          if (w.isPrimary) return;
+                          invoke("remove_project_workflow", { id: w.id })
+                            .then(() => loadWorkflows())
+                            .catch(console.error);
+                        }}
+                        disabled={w.isPrimary}
+                        style={w.isPrimary ? { opacity: 0.3, cursor: "not-allowed" } : {}}
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedEdge && (
+          <div
+            className={`${styles.wfDetailPanel} ${isDragging ? styles.wfDetailPanelDragging : ""}`}
+            style={{ left: detailPanelPos.x, top: detailPanelPos.y }}
+          >
+            <div
+              className={styles.wfDetailHeader}
+              onMouseDown={handleDetailPanelDragStart}
+            >
+              <span>🔗 连线属性</span>
+              <button className={styles.wfDetailClose} onClick={() => setSelectedEdge(null)}>
+                ✕
+              </button>
+            </div>
+            <div className={styles.wfDetailBody}>
+              <p>
+                <strong>产出物:</strong>{" "}
+                {String((selectedEdge.data as Record<string, unknown>)?.artifactType || "-")}
+              </p>
+              <p>
+                <strong>流转方式:</strong>{" "}
+                {(selectedEdge.data as Record<string, unknown>)?.transitionType === "need_confirm"
+                  ? "🔒 需确认"
+                  : "🔄 自动推送"}
+              </p>
+              <div className={styles.wfDetailWfItem} style={{ marginTop: 8 }}>
+                <span>
+                  {nodes.find((n) => n.id === selectedEdge.source)?.data?.label ||
+                    selectedEdge.source}
+                  {" → "}
+                  {nodes.find((n) => n.id === selectedEdge.target)?.data?.label ||
+                    selectedEdge.target}
+                </span>
+                <button
+                  className={styles.wfDetailDelete}
+                  onClick={() => handleDeleteEdge(selectedEdge.id)}
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <EdgeEditorModal

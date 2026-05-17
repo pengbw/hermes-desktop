@@ -368,8 +368,10 @@ pub async fn get_hermes_config(app: AppHandle) -> Result<serde_json::Value, Stri
         .and_then(|v| v.as_bool()).unwrap_or(true);
     let memory_enabled = yaml.pointer("/memory/memory_enabled")
         .and_then(|v| v.as_bool()).unwrap_or(true);
-    let tts_provider = yaml.pointer("/tts/provider")
-        .and_then(|v| v.as_str()).unwrap_or("edge").to_string();
+    let tts_enabled = yaml.pointer("/tts/enabled")
+        .and_then(|v| v.as_bool()).unwrap_or(false);
+    let voice_enabled = yaml.pointer("/voice/enabled")
+        .and_then(|v| v.as_bool()).unwrap_or(false);
 
     Ok(serde_json::json!({
         "model": model,
@@ -383,7 +385,8 @@ pub async fn get_hermes_config(app: AppHandle) -> Result<serde_json::Value, Stri
         "terminal_timeout": terminal_timeout,
         "compression_enabled": compression_enabled,
         "memory_enabled": memory_enabled,
-        "tts_provider": tts_provider,
+        "tts_enabled": tts_enabled,
+        "voice_enabled": voice_enabled,
         "config_path": config_path,
         "env_path": env_path,
         "workspaceRoot": workspace_root,

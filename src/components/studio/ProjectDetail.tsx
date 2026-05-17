@@ -22,6 +22,7 @@ import TaskBoard from "./TaskBoard";
 import TaskManagement from "./TaskManagement";
 import PendingReviewPanel from "./PendingReviewPanel";
 import ArtifactReviewReminder from "./ArtifactReviewReminder";
+import ArtifactTree from "./ArtifactTree";
 
 const VirtualOffice = lazy(() => import("../../windows/VirtualOffice"));
 
@@ -125,6 +126,7 @@ interface ProjectDetailProps {
   onSendMessage: (content: string) => void;
   onPreviewFile: (path: string, name: string) => void;
   getRoleName: (roleId: string) => string;
+  getRoleNamePure: (roleId: string) => string;
   getTagLabel: (tag: string) => string;
   getTagClass: (tag: string) => string;
   t: (key: string) => string;
@@ -146,6 +148,7 @@ function ProjectDetail({
   onSendMessage,
   onPreviewFile,
   getRoleName,
+  getRoleNamePure,
   getTagLabel,
   getTagClass,
   t,
@@ -159,7 +162,7 @@ function ProjectDetail({
   const [projectChatStreaming, setProjectChatStreaming] = useState(false);
   const [projectChatStreamed, setProjectChatStreamed] = useState("");
   const [autoDelegateRunning, setAutoDelegateRunning] = useState(false);
-  const [overviewSubTab, setOverviewSubTab] = useState<"tasks" | "artifacts" | "members">("tasks");
+  const [overviewSubTab, setOverviewSubTab] = useState<"tasks" | "artifacts">("tasks");
   const [taskSubTab, setTaskSubTab] = useState<"list" | "pending">("list");
   const [chatRoleSkills, setChatRoleSkills] = useState<string[]>([]);
   const [projectFileRecords, setProjectFileRecords] = useState<ProjectFileRecord[]>([]);
@@ -169,6 +172,8 @@ function ProjectDetail({
   const loadFileRecords = useCallback(() => {
     if (fileRecordsTimerRef.current) clearTimeout(fileRecordsTimerRef.current);
     fileRecordsTimerRef.current = setTimeout(() => {
+      invoke<number>("cleanup_invalid_file_records", { projectId: project.id })
+        .catch(() => {});
       invoke("scan_project_files", { projectId: project.id })
         .then(() => {
           invoke<ProjectFileRecord[]>("list_project_file_records", { projectId: project.id })
@@ -236,33 +241,17 @@ function ProjectDetail({
     };
   }, [project.id, onTasksUpdate, onArtifactsUpdate, onMembersUpdate]);
 
-  const sortedMembers = useMemo(() => {
-    const roleOrder = new Map<string, number>();
-    let order = 0;
-    for (const wf of projectWorkflows) {
-      if (
-        wf.fromRoleId &&
-        wf.fromRoleId !== "start" &&
-        wf.fromRoleId !== "end" &&
-        !roleOrder.has(wf.fromRoleId)
-      ) {
-        roleOrder.set(wf.fromRoleId, order++);
-      }
-      if (
-        wf.toRoleId &&
-        wf.toRoleId !== "start" &&
-        wf.toRoleId !== "end" &&
-        !roleOrder.has(wf.toRoleId)
-      ) {
-        roleOrder.set(wf.toRoleId, order++);
-      }
-    }
-    return [...projectMembers].sort((a, b) => {
-      const oa = roleOrder.get(a.roleId) ?? 999;
-      const ob = roleOrder.get(b.roleId) ?? 999;
-      return oa - ob;
-    });
-  }, [projectMembers, projectWorkflows]);
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    listen<{ projectId: string; roleId: string }>("workflow_auto_push_completed", (event) => {
+      if (event.payload.projectId !== project.id) return;
+      invoke("trigger_workflow_execution", {
+        projectId: event.payload.projectId,
+        fromRoleId: event.payload.roleId,
+      }).catch((err) => console.error("Failed to trigger workflow execution:", err));
+    }).then((fn) => { unlistenFn = fn; });
+    return () => { unlistenFn?.(); };
+  }, [project.id]);
 
   const mentionData = useMemo(
     () =>
@@ -527,7 +516,7 @@ function ProjectDetail({
 
         <div className={styles.studioDetailBody}>
           {projectDetailTab === "taskmgmt" && (
-            <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
               <div
                 style={{
                   display: "flex",
@@ -572,6 +561,8 @@ function ProjectDetail({
                   projectMembers={projectMembers}
                   allRoles={allRoles}
                   onTasksUpdate={onTasksUpdate}
+                  projectFileRecords={projectFileRecords}
+                  onPreviewFile={onPreviewFile}
                 />
               ) : (
                 <PendingReviewPanel
@@ -627,17 +618,6 @@ function ProjectDetail({
                         {projectFileRecords.length}
                       </span>
                     </button>
-                    <button
-                      className={
-                        styles.studioOverviewTab +
-                        " " +
-                        (overviewSubTab === "members" ? styles.active : "")
-                      }
-                      onClick={() => setOverviewSubTab("members")}
-                    >
-                      👥 人员{" "}
-                      <span className={styles.studioOverviewTabCount}>{projectMembers.length}</span>
-                    </button>
                   </div>
 
                   <div className={styles.studioArtifactListSection}>
@@ -674,11 +654,6 @@ function ProjectDetail({
                                       {task.title}
                                     </div>
                                     <div className={styles.studioArtifactListItemMeta}>
-                                      {task.assignee && (
-                                        <span className={styles.studioArtifactListItemRole}>
-                                          {getRoleName(task.assignee)}
-                                        </span>
-                                      )}
                                       {task.priority > 0 && (
                                         <span className={styles.studioArtifactListItemRole}>
                                           {task.priority >= 3
@@ -709,171 +684,13 @@ function ProjectDetail({
                         {projectFileRecords.length === 0 ? (
                           <p className={styles.studioEmpty}>暂无产物</p>
                         ) : (
-                          <div className={styles.studioArtifactGroupList}>
-                            {(() => {
-                              const grouped = projectFileRecords.reduce(
-                                (acc, rec) => {
-                                  const key = rec.roleId || "_unassigned";
-                                  if (!acc[key]) acc[key] = [];
-                                  acc[key].push(rec);
-                                  return acc;
-                                },
-                                {} as Record<string, ProjectFileRecord[]>
-                              );
-                              return Object.entries(grouped).map(([roleId, files]) => {
-                                const isUnassigned = roleId === "_unassigned";
-                                const role = isUnassigned
-                                  ? null
-                                  : allRoles.find((r) => r.id === roleId);
-                                const roleName = isUnassigned ? "未分配" : getRoleName(roleId);
-                                const extIcon: Record<string, string> = {
-                                  md: "📝",
-                                  txt: "📄",
-                                  json: "📋",
-                                  yaml: "📋",
-                                  yml: "📋",
-                                  ts: "💻",
-                                  tsx: "💻",
-                                  js: "💻",
-                                  jsx: "💻",
-                                  py: "🐍",
-                                  html: "🌐",
-                                  css: "🎨",
-                                  svg: "🖼️",
-                                  png: "🖼️",
-                                  jpg: "🖼️",
-                                  pdf: "📕",
-                                  doc: "📘",
-                                  docx: "📘",
-                                  xls: "📗",
-                                  xlsx: "📗",
-                                };
-                                return (
-                                  <div key={roleId} className={styles.studioArtifactGroup}>
-                                    <div className={styles.studioArtifactGroupHeader}>
-                                      <span className={styles.studioArtifactGroupIcon}>
-                                        {isUnassigned ? "📁" : role?.icon || "🤖"}
-                                      </span>
-                                      <span className={styles.studioArtifactGroupName}>
-                                        {roleName}
-                                      </span>
-                                      <span className={styles.studioArtifactGroupCount}>
-                                        {files.length} 文件
-                                      </span>
-                                    </div>
-                                    <div className={styles.studioArtifactGroupFiles}>
-                                      {files.map((file) => {
-                                        const icon = extIcon[file.fileExt] || "📄";
-                                        const sizeStr =
-                                          file.fileSize > 1024 * 1024
-                                            ? `${(file.fileSize / 1024 / 1024).toFixed(1)}MB`
-                                            : file.fileSize > 1024
-                                              ? `${(file.fileSize / 1024).toFixed(1)}KB`
-                                              : `${file.fileSize}B`;
-                                        return (
-                                          <div
-                                            key={file.id}
-                                            className={styles.studioArtifactFileItem}
-                                            onClick={() => {
-                                              if (file.filePath) {
-                                                onPreviewFile(file.filePath, file.fileName);
-                                              }
-                                            }}
-                                            style={{ cursor: "pointer" }}
-                                          >
-                                            <span className={styles.studioArtifactFileIcon}>
-                                              {icon}
-                                            </span>
-                                            <div className={styles.studioArtifactFileInfo}>
-                                              <span className={styles.studioArtifactFileName}>
-                                                {file.fileName}
-                                              </span>
-                                              <div className={styles.studioArtifactFileMeta}>
-                                                <span className={styles.studioArtifactFileSize}>
-                                                  {sizeStr}
-                                                </span>
-                                                {file.description && (
-                                                  <span className={styles.studioArtifactFileDesc}>
-                                                    {file.description}
-                                                  </span>
-                                                )}
-                                              </div>
-                                            </div>
-                                            <span className={styles.studioArtifactFileTag}>
-                                              {roleName}
-                                            </span>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    {overviewSubTab === "members" && (
-                      <>
-                        {sortedMembers.length === 0 ? (
-                          <p className={styles.studioEmpty}>暂无成员</p>
-                        ) : (
-                          <div className={styles.studioArtifactList}>
-                            {sortedMembers.map((member) => {
-                              const role = allRoles.find((r) => r.id === member.roleId);
-                              const memberArtifact = projectArtifacts.find(
-                                (a) => a.roleId === member.roleId
-                              );
-                              const isWorking =
-                                memberArtifact?.status === "in_progress" ||
-                                memberArtifact?.status === "pending";
-                              const isWaitingApproval = memberArtifact?.status === "submitted";
-                              return (
-                                <div key={member.id} className={styles.studioArtifactListItem}>
-                                  <div className={styles.studioArtifactListItemInfo}>
-                                    <div className={styles.studioArtifactListItemTitle}>
-                                      {getRoleName(member.roleId)}
-                                    </div>
-                                    <div className={styles.studioArtifactListItemMeta}>
-                                      <span className={styles.studioArtifactListItemRole}>
-                                        {role?.name || "AI角色"}
-                                      </span>
-                                      {isWorking && (
-                                        <span
-                                          className={styles.studioArtifactListItemPath}
-                                          style={{ color: "#0984e3" }}
-                                        >
-                                          工作中
-                                        </span>
-                                      )}
-                                      {isWaitingApproval && (
-                                        <span
-                                          className={styles.studioArtifactListItemPath}
-                                          style={{ color: "#fdcb6e" }}
-                                        >
-                                          待审批
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <span
-                                    className={styles.studioArtifactListItemStatus}
-                                    style={{
-                                      color: isWorking
-                                        ? "#0984e3"
-                                        : isWaitingApproval
-                                          ? "#fdcb6e"
-                                          : "#00b894",
-                                    }}
-                                  >
-                                    {isWorking ? "忙碌" : isWaitingApproval ? "待审批" : "空闲"}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
+                          <ArtifactTree
+                            tasks={projectTasks}
+                            fileRecords={projectFileRecords}
+                            allRoles={allRoles}
+                            getRoleNamePure={getRoleNamePure}
+                            onPreviewFile={(path, name) => onPreviewFile(path, name)}
+                          />
                         )}
                       </>
                     )}
@@ -897,7 +714,7 @@ function ProjectDetail({
                       <VirtualOffice
                         members={projectMembers.map((member) => {
                           const role = allRoles.find((r) => r.id === member.roleId);
-                          const memberArtifact = projectArtifacts.find(
+                          const roleArtifacts = projectArtifacts.filter(
                             (a) => a.roleId === member.roleId
                           );
                           const hasActiveTask = projectTasks.some(
@@ -905,14 +722,15 @@ function ProjectDetail({
                               t.assignee === member.roleId &&
                               (t.status === "ready" || t.status === "running")
                           );
-                          const hasSubmittedArtifact = projectArtifacts.some(
-                            (a) => a.roleId === member.roleId && a.status === "submitted"
+                          const hasInProgressArtifact = roleArtifacts.some(
+                            (a) => a.status === "in_progress"
+                          );
+                          const hasSubmittedArtifact = roleArtifacts.some(
+                            (a) => a.status === "submitted"
                           );
                           const isWorking =
-                            memberArtifact?.status === "in_progress" ||
-                            memberArtifact?.status === "pending" ||
-                            hasActiveTask;
-                          const isWaitingApproval = hasSubmittedArtifact && !hasActiveTask;
+                            hasInProgressArtifact || (hasActiveTask && !hasSubmittedArtifact);
+                          const isWaitingApproval = hasSubmittedArtifact;
                           const memberStatus = isWorking
                             ? ("working" as const)
                             : isWaitingApproval
@@ -920,7 +738,7 @@ function ProjectDetail({
                               : ("idle" as const);
                           return {
                             id: member.id,
-                            name: getRoleName(member.roleId),
+                            name: getRoleNamePure(member.roleId),
                             icon: role?.icon || "🤖",
                             color: role?.avatarColor || "#6c5ce7",
                             isWorking,
@@ -1139,6 +957,7 @@ function ProjectDetail({
                       className={`${styles.studioChatMentions} chatMentions`}
                       value={chatInput}
                       onChange={(_e, newValue: string) => setChatInput(newValue)}
+                      allowSuggestionsAboveCursor={true}
                       placeholder={
                         projectChatStreaming ? "AI 正在回复..." : "输入消息，@ 提及角色..."
                       }

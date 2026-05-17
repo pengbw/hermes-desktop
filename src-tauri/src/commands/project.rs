@@ -2,6 +2,7 @@ use crate::commands::helpers::{self, AppState, build_role_constraint_rules, call
 use crate::database::models as db;
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
+use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter, Manager};
 
 fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
@@ -9,14 +10,23 @@ fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
     Ok(state.db_pool.clone())
 }
 
+struct ContextTagRegex {
+    re1: regex::Regex,
+    re2: regex::Regex,
+    re3: regex::Regex,
+}
+
+static CTX_TAG_REGEX: OnceLock<ContextTagRegex> = OnceLock::new();
+
 fn clean_context_tags(text: &str) -> String {
-    let re = regex::Regex::new(r"<memory[^>]*>[\s\S]*?</memory>").unwrap();
-    let result = re.replace_all(text, "").to_string();
-    let re2 = regex::Regex::new(r"\[memory\][\s\S]*?\[/memory\]").unwrap();
-    let result = re2.replace_all(&result, "").to_string();
-    let re3 = regex::Regex::new(r"<!--\s*memory[\s\S]*?-->").unwrap();
-    let result = re3.replace_all(&result, "").to_string();
-    result
+    let regs = CTX_TAG_REGEX.get_or_init(|| ContextTagRegex {
+        re1: regex::Regex::new(r"<memory[^>]*>[\s\S]*?</memory>").unwrap(),
+        re2: regex::Regex::new(r"\[memory\][\s\S]*?\[/memory\]").unwrap(),
+        re3: regex::Regex::new(r"<!--\s*memory[\s\S]*?-->").unwrap(),
+    });
+    let result = regs.re1.replace_all(text, "").to_string();
+    let result = regs.re2.replace_all(&result, "").to_string();
+    regs.re3.replace_all(&result, "").to_string()
 }
 
 async fn record_activity(app: &AppHandle, project_id: &str, role_id: Option<&str>, action: &str, target_type: Option<&str>, target_id: Option<&str>, detail: &str) -> Result<(), String> {
@@ -860,7 +870,8 @@ async fn do_dispatch_task(app: &AppHandle, pool: &sqlx::SqlitePool, task_id: &st
         let app_wf = app.clone();
         let project_id_wf = project_id.to_string();
         let initial_msg = title.to_string();
-        match start_workflow_run(app_wf, project_id_wf, initial_msg, None, None).await {
+        let task_id_for_wf = task_id.to_string();
+        match start_workflow_run(app_wf, project_id_wf, initial_msg, None, Some(task_id_for_wf)).await {
             Ok(run) => log::info!("start_workflow_run: created run_id={}, status={}", run.id, run.status),
             Err(e) => log::error!("start_workflow_run: error={}", e),
         }
@@ -1527,6 +1538,28 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
             .await
             .unwrap_or(None);
     }
+
+    if found_task_id.is_none() || found_task_id.as_deref() == Some("") {
+        found_task_id = sqlx::query_scalar(
+            "SELECT id FROM project_tasks WHERE project_id = ? AND status IN ('running', 'ready') ORDER BY updated_at DESC LIMIT 1"
+        )
+        .bind(&project_id)
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(None);
+
+        if let Some(ref ftid) = found_task_id {
+            if let Some(ref run_id) = workflow_run_id {
+                let _ = sqlx::query("UPDATE workflow_runs SET task_id = ? WHERE id = ? AND (task_id IS NULL OR task_id = '')")
+                    .bind(ftid)
+                    .bind(run_id)
+                    .execute(&pool)
+                    .await;
+                log::info!("trigger_workflow_execution: backfilled task_id={} for workflow_run={}", ftid, run_id);
+            }
+        }
+    }
+
     let effective_task_id = found_task_id.clone().unwrap_or_default();
 
     // Build query based on the trigger type:
@@ -1633,8 +1666,9 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
                     .map_err(|e| e.to_string())?;
 
                     sqlx::query(
-                        "UPDATE project_tasks SET status = 'ready', started_at = COALESCE(started_at, ?), claim_lock = ?, claim_expire_at = ?, updated_at = ? WHERE id = ?"
+                        "UPDATE project_tasks SET assignee = ?, status = 'ready', started_at = COALESCE(started_at, ?), claim_lock = ?, claim_expire_at = ?, updated_at = ? WHERE id = ?"
                     )
+                    .bind(to_role_id)
                     .bind(now)
                     .bind(to_role_id)
                     .bind(now + 30 * 60 * 1000)
@@ -1985,6 +2019,8 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
     // Debounced data push for workflow execution
     crate::commands::helpers::debounced_emit(&app, &project_id, "workflow_steps");
     crate::commands::helpers::debounced_emit(&app, &project_id, "artifacts");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "tasks");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "members");
 
     // Instant event for workflow step change
     let _ = app.emit("workflow_step_changed", serde_json::json!({
@@ -2524,10 +2560,38 @@ pub async fn approve_project_artifact(app: AppHandle, id: String, comment: Optio
                     .await;
             }
             confirm_workflow_step(app.clone(), run_id, true, Some(review_comment.clone())).await?;
+        } else {
+            let matching_step: Option<i64> = sqlx::query_scalar(
+                "SELECT wrs.step_index FROM workflow_run_steps wrs \
+                 JOIN workflow_runs wr ON wrs.id = wrs.run_id \
+                 WHERE wrs.run_id = ? AND wrs.role_id = ? AND wrs.status IN ('running', 'pending_approval') \
+                 ORDER BY wrs.step_index ASC LIMIT 1"
+            )
+            .bind(&run_id)
+            .bind(&role_id)
+            .fetch_optional(&pool)
+            .await
+            .unwrap_or(None);
+
+            if let Some(step) = matching_step {
+                log::info!("approve_project_artifact: found matching step {} for role {} in run {}", step, role_id, run_id);
+                let current: Option<i64> = sqlx::query_scalar("SELECT current_step FROM workflow_runs WHERE id = ?")
+                    .bind(&run_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap_or(None);
+                if current != Some(step) {
+                    let _ = sqlx::query("UPDATE workflow_runs SET current_step = ? WHERE id = ?")
+                        .bind(step)
+                        .bind(&run_id)
+                        .execute(&pool)
+                        .await;
+                }
+                confirm_workflow_step(app.clone(), run_id, true, Some(review_comment.clone())).await?;
+            }
         }
     }
 
-    // Advance workflow_run_steps from pending_approval to running for this role
     if workflow_run_id.is_none() && !project_id.is_empty() && !role_id.is_empty() {
         {
             let pool_step = match get_pool(&app) {
@@ -2538,31 +2602,62 @@ pub async fn approve_project_artifact(app: AppHandle, id: String, comment: Optio
                 }
             };
             let now_step = chrono::Utc::now().timestamp_millis();
-            let pending_steps: Vec<(String, i64)> = sqlx::query_as(
+
+            let matching_step: Option<(String, i64)> = sqlx::query_as(
                 "SELECT wr.id, wrs.step_index FROM workflow_runs wr \
                  JOIN workflow_run_steps wrs ON wr.id = wrs.run_id \
                  WHERE wr.project_id = ? AND wr.status = 'running' \
-                 AND wrs.status = 'pending_approval' \
-                 AND wrs.step_index = ( \
-                    SELECT MIN(wrs2.step_index) FROM workflow_run_steps wrs2 \
-                    WHERE wrs2.run_id = wr.id AND wrs2.status = 'pending_approval' \
-                 )"
+                 AND wrs.role_id = ? AND wrs.status IN ('running', 'pending_approval') \
+                 ORDER BY wrs.step_index ASC LIMIT 1"
             )
             .bind(&project_id)
-            .fetch_all(&pool_step)
+            .bind(&role_id)
+            .fetch_optional(&pool_step)
             .await
-            .unwrap_or_default();
+            .unwrap_or(None);
 
-            for (run_id, step_index) in &pending_steps {
-                let _ = sqlx::query(
-                    "UPDATE workflow_run_steps SET status = 'running', started_at = COALESCE(started_at, ?) WHERE run_id = ? AND step_index = ? AND status = 'pending_approval'"
+            if let Some((run_id, step_idx)) = matching_step {
+                log::info!("approve_project_artifact: found matching step {}/{} for role {} (no workflow_run_id on artifact)", step_idx, run_id, role_id);
+                let current: Option<i64> = sqlx::query_scalar("SELECT current_step FROM workflow_runs WHERE id = ?")
+                    .bind(&run_id)
+                    .fetch_optional(&pool_step)
+                    .await
+                    .unwrap_or(None);
+                if current != Some(step_idx) {
+                    let _ = sqlx::query("UPDATE workflow_runs SET current_step = ? WHERE id = ?")
+                        .bind(step_idx)
+                        .bind(&run_id)
+                        .execute(&pool_step)
+                        .await;
+                }
+                let _ = confirm_workflow_step(app.clone(), run_id, true, Some(review_comment.clone())).await;
+            } else {
+                let pending_steps: Vec<(String, i64)> = sqlx::query_as(
+                    "SELECT wr.id, wrs.step_index FROM workflow_runs wr \
+                     JOIN workflow_run_steps wrs ON wr.id = wrs.run_id \
+                     WHERE wr.project_id = ? AND wr.status = 'running' \
+                     AND wrs.status = 'pending_approval' \
+                     AND wrs.step_index = ( \
+                        SELECT MIN(wrs2.step_index) FROM workflow_run_steps wrs2 \
+                        WHERE wrs2.run_id = wr.id AND wrs2.status = 'pending_approval' \
+                     )"
                 )
-                .bind(now_step)
-                .bind(run_id)
-                .bind(step_index)
-                .execute(&pool_step)
-                .await;
-                log::info!("approve_project_artifact: advanced step {}/{} from pending_approval to running", step_index, run_id);
+                .bind(&project_id)
+                .fetch_all(&pool_step)
+                .await
+                .unwrap_or_default();
+
+                for (run_id, step_index) in &pending_steps {
+                    let _ = sqlx::query(
+                        "UPDATE workflow_run_steps SET status = 'running', started_at = COALESCE(started_at, ?) WHERE run_id = ? AND step_index = ? AND status = 'pending_approval'"
+                    )
+                    .bind(now_step)
+                    .bind(run_id)
+                    .bind(step_index)
+                    .execute(&pool_step)
+                    .await;
+                    log::info!("approve_project_artifact: advanced step {}/{} from pending_approval to running", step_index, run_id);
+                }
             }
         }
 
@@ -2834,6 +2929,8 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
 
             // Debounced data push for artifact rejection
             crate::commands::helpers::debounced_emit(&app, &art_project_id, "artifacts");
+            crate::commands::helpers::debounced_emit(&app, &art_project_id, "tasks");
+            crate::commands::helpers::debounced_emit(&app, &art_project_id, "members");
 
             // Instant event for artifact status change
             let _ = app.emit("artifact_status_changed", serde_json::json!({
@@ -2995,6 +3092,14 @@ pub async fn update_project_task(app: AppHandle, id: String, req: db::UpdateProj
 
     let (cur_title, cur_body, cur_assignee, cur_status, cur_priority, cur_result, cur_skills, cur_max_retries, cur_workspace_kind, cur_workspace_path) = task.ok_or("Task not found")?;
 
+    let project_id: String = sqlx::query_scalar(
+        "SELECT project_id FROM project_tasks WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_one(&pool)
+    .await
+    .unwrap_or_default();
+
     let old_status = cur_status.clone();
     let new_title = req.title.unwrap_or(cur_title);
     let new_body = req.body.unwrap_or(cur_body);
@@ -3053,58 +3158,26 @@ pub async fn update_project_task(app: AppHandle, id: String, req: db::UpdateProj
         .map_err(|e| e.to_string())?;
 
     if new_status == "done" && old_status != "done" {
-        let project_id: Option<String> = sqlx::query_scalar(
-            "SELECT project_id FROM project_tasks WHERE id = ?"
-        )
-        .bind(&id)
-        .fetch_optional(&pool)
-        .await
-        .unwrap_or(None);
-
-        if let Some(pid) = project_id {
+        if !project_id.is_empty() {
             let role_id = if new_assignee.is_empty() { None } else { Some(new_assignee.as_str()) };
-            let _ = record_activity(&app, &pid, role_id, "task_completed", Some("task"), Some(&id), &format!("完成了任务：{}", new_title)).await;
+            let _ = record_activity(&app, &project_id, role_id, "task_completed", Some("task"), Some(&id), &format!("完成了任务：{}", new_title)).await;
         }
     } else if new_status == "running" && old_status != "running" {
-        let project_id: Option<String> = sqlx::query_scalar(
-            "SELECT project_id FROM project_tasks WHERE id = ?"
-        )
-        .bind(&id)
-        .fetch_optional(&pool)
-        .await
-        .unwrap_or(None);
-
-        if let Some(pid) = project_id {
+        if !project_id.is_empty() {
             let role_id = if new_assignee.is_empty() { None } else { Some(new_assignee.as_str()) };
-            let _ = record_activity(&app, &pid, role_id, "task_started", Some("task"), Some(&id), &format!("开始执行任务：{}", new_title)).await;
+            let _ = record_activity(&app, &project_id, role_id, "task_started", Some("task"), Some(&id), &format!("开始执行任务：{}", new_title)).await;
         }
     }
 
     if !new_assignee.is_empty() && new_assignee != cur_assignee && new_status != "done" {
-        let project_id: Option<String> = sqlx::query_scalar(
-            "SELECT project_id FROM project_tasks WHERE id = ?"
-        )
-        .bind(&id)
-        .fetch_optional(&pool)
-        .await
-        .unwrap_or(None);
-
-        if let Some(pid) = project_id {
-            let _ = do_dispatch_task(&app, &pool, &id, &new_assignee, &pid, &new_title, &new_body, new_priority, None, "auto").await;
+        if !project_id.is_empty() {
+            let _ = do_dispatch_task(&app, &pool, &id, &new_assignee, &project_id, &new_title, &new_body, new_priority, None, "auto").await;
         }
     }
 
-    let project_id_for_event: String = sqlx::query_scalar(
-        "SELECT project_id FROM project_tasks WHERE id = ?"
-    )
-    .bind(&id)
-    .fetch_one(&pool)
-    .await
-    .unwrap_or_default();
-
     let _ = app.emit("task_updated", serde_json::json!({
         "taskId": id,
-        "projectId": project_id_for_event,
+        "projectId": project_id,
     }));
 
     Ok(())
@@ -3827,7 +3900,7 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
                                     let rec_message = message.clone();
                                     let rec_content = full_content.clone();
                                     tauri::async_runtime::spawn(async move {
-                                        let _ = record_chat_files(rec_app.clone(), rec_project.clone(), rec_role.clone()).await;
+                                        let _ = record_chat_files(rec_app.clone(), rec_project.clone(), rec_role.clone(), String::new()).await;
                                         let _ = extract_and_save_memory(rec_app, rec_project, rec_role, rec_message, rec_content).await;
                                     });
                                 }
@@ -4084,7 +4157,7 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
         let rec_app = app.clone();
         let rec_project = project_id.clone();
         tauri::async_runtime::spawn(async move {
-            let _ = record_chat_files(rec_app, rec_project, String::new()).await;
+            let _ = record_chat_files(rec_app, rec_project, String::new(), String::new()).await;
         });
     }
 
@@ -4351,8 +4424,17 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
         let rec_reply = reply.clone();
         let rec_pre_existing = pre_existing_files.clone();
         let rec_workspace = project_workspace.to_string();
+        let rec_task_id = task_id.clone().unwrap_or_default();
         tauri::async_runtime::spawn(async move {
-            let _ = record_chat_files(rec_app.clone(), rec_project.clone(), rec_role.clone()).await;
+            let pool = match get_pool(&rec_app) {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("auto_delegate_chat: failed to get pool: {}", e);
+                    return;
+                }
+            };
+
+            let _ = record_chat_files(rec_app.clone(), rec_project.clone(), rec_role.clone(), rec_task_id.clone()).await;
 
             // 检测 Agent 写入的新文件，更新 artifact 的 file_path
             // 延迟 2 秒再扫描，给 Agent 异步写文件留出时间
@@ -4369,21 +4451,12 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                     if !new_files.is_empty() {
                         log::info!("auto_delegate_chat: detected new files in workspace: {:?}", new_files);
 
-                        // 查询该角色的 in_progress 产物
-                        let pool_match = match get_pool(&rec_app) {
-                            Ok(p) => p,
-                            Err(_) => {
-                                log::error!("auto_delegate_chat: failed to get pool for file_path update");
-                                return;
-                            }
-                        };
-
                         let role_artifacts: Vec<(String, String)> = sqlx::query_as(
                             "SELECT id, artifact_type FROM project_artifacts WHERE project_id = ? AND role_id = ? AND status = 'in_progress'"
                         )
                         .bind(&rec_project)
                         .bind(&rec_role)
-                        .fetch_all(&pool_match)
+                        .fetch_all(&pool)
                         .await
                         .unwrap_or_default();
 
@@ -4405,7 +4478,7 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                                 .bind(&full_path)
                                 .bind(now_fp)
                                 .bind(art_id)
-                                .execute(&pool_match)
+                                .execute(&pool)
                                 .await;
 
                                 match result {
@@ -4419,11 +4492,6 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
             }
 
             // After role finishes work, handle workflow-associated artifacts
-            let pool = match get_pool(&rec_app) {
-                Ok(p) => p,
-                Err(_) => return,
-            };
-
             let now = chrono::Utc::now().timestamp_millis();
 
             // Check if this role is part of any workflow in this project
@@ -4731,17 +4799,47 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                             .await
                             .unwrap_or(None);
 
-                        if let Some(tid) = task_id {
-                            if !tid.is_empty() {
-                                let _ = sqlx::query(
-                                    "UPDATE project_tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ? AND status != 'done'"
-                                )
-                                .bind(now)
-                                .bind(now)
-                                .bind(&tid)
-                                .execute(&pool)
-                                .await;
+                        let effective_tid = task_id.as_deref().filter(|t| !t.is_empty()).map(|t| t.to_string());
+
+                        let resolved_tid = if let Some(tid) = effective_tid {
+                            Some(tid)
+                        } else {
+                            let fallback: Option<String> = sqlx::query_scalar(
+                                "SELECT id FROM project_tasks WHERE project_id = ? AND status IN ('running', 'ready') ORDER BY updated_at DESC LIMIT 1"
+                            )
+                            .bind(&rec_project)
+                            .fetch_optional(&pool)
+                            .await
+                            .unwrap_or(None);
+
+                            if let Some(ref ftid) = fallback {
+                                let _ = sqlx::query("UPDATE workflow_runs SET task_id = ? WHERE id = ?")
+                                    .bind(ftid)
+                                    .bind(run_id)
+                                    .execute(&pool)
+                                    .await;
+                                log::info!("auto_delegate_chat: backfilled task_id={} for workflow_run={}", ftid, run_id);
                             }
+
+                            fallback
+                        };
+
+                        if let Some(tid) = resolved_tid {
+                            let _ = sqlx::query(
+                                "UPDATE project_tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ? AND status != 'done'"
+                            )
+                            .bind(now)
+                            .bind(now)
+                            .bind(&tid)
+                            .execute(&pool)
+                            .await;
+                            log::info!("auto_delegate_chat: marked task {} as done", tid);
+
+                            let _ = rec_app.emit("task_status_changed", serde_json::json!({
+                                "projectId": rec_project,
+                                "taskId": tid,
+                                "newStatus": "done",
+                            }));
                         }
                         log::info!("auto_delegate_chat: workflow completed (auto_push), marked tasks as done for project {}", rec_project);
                     } else {
@@ -4762,6 +4860,29 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                         .bind(next_step)
                         .execute(&pool)
                         .await;
+
+                        let next_role_id: Option<String> = sqlx::query_scalar(
+                            "SELECT role_id FROM workflow_run_steps WHERE run_id = ? AND step_index = ?"
+                        )
+                        .bind(run_id)
+                        .bind(next_step)
+                        .fetch_optional(&pool)
+                        .await
+                        .unwrap_or(None);
+
+                        if let (Some(ref nrid)) = (&next_role_id) {
+                            if !rec_task_id.is_empty() && !nrid.is_empty() && nrid != "start" && nrid != "end" {
+                                let _ = sqlx::query(
+                                    "UPDATE project_tasks SET assignee = ?, updated_at = ? WHERE id = ?"
+                                )
+                                .bind(nrid)
+                                .bind(now)
+                                .bind(&rec_task_id)
+                                .execute(&pool)
+                                .await;
+                                log::info!("auto_delegate_chat: auto_push updated task {} assignee to {}", rec_task_id, nrid);
+                            }
+                        }
                         
                         should_emit_event = true;
                     }
@@ -4876,105 +4997,6 @@ pub async fn run_workflow_auto_chat(app: AppHandle, project_id: String, start_ro
     }));
 
     Ok(results)
-}
-
-#[tauri::command]
-pub async fn claim_project_task(app: AppHandle, task_id: String, role_id: String) -> Result<(), String> {
-    let pool = get_pool(&app)?;
-    let now = chrono::Utc::now().timestamp_millis();
-    let expire_at = now + 30 * 60 * 1000;
-
-    let claim_lock: String = sqlx::query_scalar("SELECT claim_lock FROM project_tasks WHERE id = ?")
-        .bind(&task_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .unwrap_or_default();
-
-    if !claim_lock.is_empty() && claim_lock != role_id {
-        let expire: i64 = sqlx::query_scalar("SELECT claim_expire_at FROM project_tasks WHERE id = ?")
-            .bind(&task_id)
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| e.to_string())?;
-        if expire > now {
-            return Err(format!("Task is already claimed by {}", claim_lock));
-        }
-    }
-
-    sqlx::query("UPDATE project_tasks SET claim_lock = ?, claim_expire_at = ?, status = 'running', started_at = COALESCE(started_at, ?), updated_at = ? WHERE id = ?")
-        .bind(&role_id)
-        .bind(expire_at)
-        .bind(now)
-        .bind(now)
-        .bind(&task_id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    sqlx::query("INSERT INTO task_events (id, task_id, event_type, role_id, detail, created_at) VALUES (?, ?, 'claimed', ?, '', ?)")
-        .bind(uuid::Uuid::new_v4().to_string())
-        .bind(&task_id)
-        .bind(&role_id)
-        .bind(now)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let project_id: String = sqlx::query_scalar("SELECT project_id FROM project_tasks WHERE id = ?")
-        .bind(&task_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap_or_default();
-    let _ = record_activity(&app, &project_id, Some(&role_id), "task_claimed", Some("task"), Some(&task_id), "认领了任务").await;
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn heartbeat_task_claim(app: AppHandle, task_id: String) -> Result<(), String> {
-    let pool = get_pool(&app)?;
-    let now = chrono::Utc::now().timestamp_millis();
-    let expire_at = now + 30 * 60 * 1000;
-
-    sqlx::query("UPDATE project_tasks SET claim_expire_at = ? WHERE id = ? AND claim_lock != ''")
-        .bind(expire_at)
-        .bind(&task_id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn release_task_claim(app: AppHandle, task_id: String) -> Result<(), String> {
-    let pool = get_pool(&app)?;
-    let now = chrono::Utc::now().timestamp_millis();
-
-    let claim_lock: String = sqlx::query_scalar("SELECT claim_lock FROM project_tasks WHERE id = ?")
-        .bind(&task_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    sqlx::query("UPDATE project_tasks SET claim_lock = '', claim_expire_at = 0, updated_at = ? WHERE id = ?")
-        .bind(now)
-        .bind(&task_id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    sqlx::query("INSERT INTO task_events (id, task_id, event_type, role_id, detail, created_at) VALUES (?, ?, 'released', ?, '', ?)")
-        .bind(uuid::Uuid::new_v4().to_string())
-        .bind(&task_id)
-        .bind(&claim_lock)
-        .bind(now)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
 }
 
 #[tauri::command]
@@ -5306,6 +5328,31 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
             .await
             .map_err(|e| e.to_string())?;
 
+        // Update submitted artifacts to approved for the current step's role
+        let step_role_id: Option<String> = sqlx::query_scalar(
+            "SELECT role_id FROM workflow_run_steps WHERE run_id = ? AND step_index = ?"
+        )
+        .bind(&run_id)
+        .bind(current_step)
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(None);
+
+        if let Some(ref rid) = step_role_id {
+            if !rid.is_empty() && rid != "start" && rid != "end" {
+                let updated = sqlx::query(
+                    "UPDATE project_artifacts SET status = 'approved', updated_at = ? WHERE project_id = ? AND role_id = ? AND status = 'submitted'"
+                )
+                .bind(now)
+                .bind(&project_id)
+                .bind(rid)
+                .execute(&pool)
+                .await
+                .map_err(|e| e.to_string())?;
+                log::info!("confirm_workflow_step(approved): updated {} submitted artifacts to approved for role_id={}", updated.rows_affected(), rid);
+            }
+        }
+
         let _ = record_activity(&app, &project_id, None, "workflow_step_completed", Some("workflow"), Some(&run_id), &format!("工作流步骤 {} 已确认通过", current_step)).await;
 
         // Get the current step's role_id (the role that just completed) for triggering downstream
@@ -5340,17 +5387,55 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                 .await
                 .map_err(|e| e.to_string())?;
 
-            if let Some(tid) = task_id {
+            let effective_tid = if let Some(ref tid) = task_id {
                 if !tid.is_empty() {
-                    let _ = sqlx::query(
-                        "UPDATE project_tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ? AND status != 'done'"
-                    )
-                    .bind(now)
-                    .bind(now)
-                    .bind(&tid)
-                    .execute(&pool)
-                    .await;
+                    Some(tid.clone())
+                } else {
+                    None
                 }
+            } else {
+                None
+            };
+
+            let resolved_tid = if let Some(tid) = effective_tid {
+                Some(tid)
+            } else {
+                let fallback: Option<String> = sqlx::query_scalar(
+                    "SELECT id FROM project_tasks WHERE project_id = ? AND status IN ('running', 'ready') ORDER BY updated_at DESC LIMIT 1"
+                )
+                .bind(&project_id)
+                .fetch_optional(&pool)
+                .await
+                .unwrap_or(None);
+
+                if let Some(ref ftid) = fallback {
+                    let _ = sqlx::query("UPDATE workflow_runs SET task_id = ? WHERE id = ?")
+                        .bind(ftid)
+                        .bind(&run_id)
+                        .execute(&pool)
+                        .await;
+                    log::info!("confirm_workflow_step: backfilled task_id={} for workflow_run={}", ftid, run_id);
+                }
+
+                fallback
+            };
+
+            if let Some(tid) = resolved_tid {
+                let _ = sqlx::query(
+                    "UPDATE project_tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ? AND status != 'done'"
+                )
+                .bind(now)
+                .bind(now)
+                .bind(&tid)
+                .execute(&pool)
+                .await;
+                log::info!("confirm_workflow_step: marked task {} as done", tid);
+
+                let _ = app.emit("task_status_changed", serde_json::json!({
+                    "projectId": project_id,
+                    "taskId": tid,
+                    "newStatus": "done",
+                }));
             }
             log::info!("confirm_workflow_step: workflow completed, marked tasks as done for project {}", project_id);
 
@@ -5371,6 +5456,29 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                 .await
                 .map_err(|e| e.to_string())?;
 
+            let next_role_id: Option<String> = sqlx::query_scalar(
+                "SELECT role_id FROM workflow_run_steps WHERE run_id = ? AND step_index = ?"
+            )
+            .bind(&run_id)
+            .bind(next_step)
+            .fetch_optional(&pool)
+            .await
+            .unwrap_or(None);
+
+            if let (Some(ref tid), Some(ref nrid)) = (&wf_task_id, &next_role_id) {
+                if !tid.is_empty() && !nrid.is_empty() && nrid != "start" && nrid != "end" {
+                    let _ = sqlx::query(
+                        "UPDATE project_tasks SET assignee = ?, updated_at = ? WHERE id = ?"
+                    )
+                    .bind(nrid)
+                    .bind(now)
+                    .bind(tid)
+                    .execute(&pool)
+                    .await;
+                    log::info!("confirm_workflow_step: updated task {} assignee to {}", tid, nrid);
+                }
+            }
+
             // Trigger workflow execution using the CURRENT step's role_id as from_role_id
             // This will find workflows from the current role to downstream roles and delegate work
             if let Some(from_role_id) = current_role_id {
@@ -5382,8 +5490,8 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                         None,
                         None,
                         None,
-                        None,
-                        None,
+                        Some(run_id.clone()),
+                        Some(next_step as i32),
                     ).await;
                 }
             }
@@ -5460,6 +5568,29 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                     .await
                     .map_err(|e| e.to_string())?;
 
+                // Update task assignee back to the rejected role
+                let task_id_for_wf: Option<String> = sqlx::query_scalar(
+                    "SELECT task_id FROM workflow_runs WHERE id = ?"
+                )
+                .bind(&run_id)
+                .fetch_optional(&pool)
+                .await
+                .unwrap_or(None);
+
+                if let (Some(ref tid), Some(ref sid)) = (&task_id_for_wf, Some(&step_role_id)) {
+                    if !tid.is_empty() && !sid.is_empty() && *sid != "start" && *sid != "end" {
+                        let _ = sqlx::query(
+                            "UPDATE project_tasks SET assignee = ?, status = 'running', updated_at = ? WHERE id = ?"
+                        )
+                        .bind(sid)
+                        .bind(now)
+                        .bind(tid)
+                        .execute(&pool)
+                        .await;
+                        log::info!("confirm_workflow_step(rejected): updated task {} assignee back to {}", tid, sid);
+                    }
+                }
+
                 // Trigger AI to rework based on rejection comment
                 let app_retry = app.clone();
                 let project_id_retry = project_id.clone();
@@ -5471,13 +5602,23 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                     let pool_retry = get_pool(&app_retry).unwrap();
 
                     // Update existing submitted artifact to rejected
+                    let now_retry = chrono::Utc::now().timestamp_millis();
+                    let _ = sqlx::query(
+                        "UPDATE project_artifacts SET status = 'rejected', updated_at = ? WHERE project_id = ? AND role_id = ? AND status = 'submitted'"
+                    )
+                    .bind(now_retry)
+                    .bind(&project_id_retry)
+                    .bind(&step_role_id)
+                    .execute(&pool_retry)
+                    .await;
+                    log::info!("confirm_workflow_step(rejected): updated submitted artifacts to rejected for role_id={}", step_role_id);
+
                     // Then create a new in_progress artifact for the role
                     let new_artifact_id = uuid::Uuid::new_v4().to_string();
-                    let now_retry = chrono::Utc::now().timestamp_millis();
                     let _ = sqlx::query(
                         "INSERT INTO project_artifacts (id, project_id, role_id, artifact_type, title, content, status, run_step_id, workflow_run_id, step_index, created_at, updated_at) \
                          SELECT ?, project_id, role_id, artifact_type, ? || ' - 修改稿', '', 'in_progress', ?, NULL, NULL, ?, ? \
-                         FROM project_artifacts WHERE project_id = ? AND role_id = ? AND status = 'submitted' \
+                         FROM project_artifacts WHERE project_id = ? AND role_id = ? AND status = 'rejected' \
                          ORDER BY updated_at DESC LIMIT 1"
                     )
                     .bind(&new_artifact_id)
@@ -5515,6 +5656,11 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
         "stepIndex": current_step,
         "approved": approved,
     }));
+
+    crate::commands::helpers::debounced_emit(&app, &project_id, "workflow_steps");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "artifacts");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "tasks");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "members");
 
     Ok(())
 }
@@ -6213,16 +6359,16 @@ pub async fn delete_project_memory(app: AppHandle, id: String) -> Result<(), Str
 #[tauri::command]
 pub async fn list_project_file_records(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectFileRecord>, String> {
     let pool = get_pool(&app)?;
-    let rows: Vec<(String, String, String, String, String, String, i64, String, String, i64, i64)> = sqlx::query_as(
-        "SELECT id, project_id, role_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at FROM project_file_records WHERE project_id = ? AND status = 'active' ORDER BY created_at DESC"
+    let rows: Vec<(String, String, String, String, String, String, String, i64, String, String, i64, i64)> = sqlx::query_as(
+        "SELECT id, project_id, role_id, task_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at FROM project_file_records WHERE project_id = ? AND status = 'active' ORDER BY created_at DESC"
     )
     .bind(&project_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, project_id, role_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at)| db::ProjectFileRecord {
-        id, project_id, role_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at,
+    Ok(rows.into_iter().map(|(id, project_id, role_id, task_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at)| db::ProjectFileRecord {
+        id, project_id, role_id, task_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at,
     }).collect())
 }
 
@@ -6236,13 +6382,15 @@ pub async fn create_project_file_record(app: AppHandle, req: db::CreateFileRecor
     });
     let file_size = req.file_size.unwrap_or(0);
     let description = req.description.unwrap_or_default();
+    let task_id = req.task_id.unwrap_or_default();
 
     sqlx::query(
-        "INSERT INTO project_file_records (id, project_id, role_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)"
+        "INSERT INTO project_file_records (id, project_id, role_id, task_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)"
     )
     .bind(&id)
     .bind(&req.project_id)
     .bind(&req.role_id)
+    .bind(&task_id)
     .bind(&req.file_path)
     .bind(&req.file_name)
     .bind(&file_ext)
@@ -6255,7 +6403,7 @@ pub async fn create_project_file_record(app: AppHandle, req: db::CreateFileRecor
     .map_err(|e| e.to_string())?;
 
     Ok(db::ProjectFileRecord {
-        id, project_id: req.project_id, role_id: req.role_id, file_path: req.file_path, file_name: req.file_name, file_ext, file_size, description, status: "active".to_string(), created_at: now, updated_at: now,
+        id, project_id: req.project_id, role_id: req.role_id, task_id, file_path: req.file_path, file_name: req.file_name, file_ext, file_size, description, status: "active".to_string(), created_at: now, updated_at: now,
     })
 }
 
@@ -6269,6 +6417,43 @@ pub async fn delete_project_file_record(app: AppHandle, id: String) -> Result<()
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn cleanup_invalid_file_records(app: AppHandle, project_id: String) -> Result<u64, String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let excluded_patterns = ["node_modules", ".git\\", ".git/", "\\dist\\", "/dist/", "\\build\\", "/build/", "\\target\\", "/target/", "\\__pycache__\\", "/__pycache__/"];
+
+    let all_records: Vec<(String, String)> = sqlx::query_as(
+        "SELECT id, file_path FROM project_file_records WHERE project_id = ? AND status = 'active'"
+    )
+    .bind(&project_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut deleted_count = 0u64;
+    for (id, file_path) in &all_records {
+        let should_delete = excluded_patterns.iter().any(|p| file_path.contains(p));
+        if should_delete {
+            let _ = sqlx::query(
+                "UPDATE project_file_records SET status = 'deleted', updated_at = ? WHERE id = ?"
+            )
+            .bind(now)
+            .bind(id)
+            .execute(&pool)
+            .await;
+            deleted_count += 1;
+        }
+    }
+
+    if deleted_count > 0 {
+        log::info!("cleanup_invalid_file_records: project={}, deleted {} invalid file records", project_id, deleted_count);
+    }
+
+    Ok(deleted_count)
 }
 
 #[tauri::command]
@@ -6318,7 +6503,7 @@ pub async fn scan_project_files(app: AppHandle, project_id: String, role_id: Opt
             let id = uuid::Uuid::new_v4().to_string();
 
             sqlx::query(
-                "INSERT INTO project_file_records (id, project_id, role_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', 'active', ?, ?)"
+                "INSERT INTO project_file_records (id, project_id, role_id, task_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at) VALUES (?, ?, ?, '', ?, ?, ?, ?, '', 'active', ?, ?)"
             )
             .bind(&id)
             .bind(&project_id)
@@ -6334,7 +6519,7 @@ pub async fn scan_project_files(app: AppHandle, project_id: String, role_id: Opt
             .map_err(|e| e.to_string())?;
 
             new_records.push(db::ProjectFileRecord {
-                id, project_id: project_id.clone(), role_id: default_role.clone(), file_path: relative_path, file_name, file_ext, file_size: file_size as i64, description: String::new(), status: "active".to_string(), created_at: now, updated_at: now,
+                id, project_id: project_id.clone(), role_id: default_role.clone(), task_id: String::new(), file_path: relative_path, file_name, file_ext, file_size: file_size as i64, description: String::new(), status: "active".to_string(), created_at: now, updated_at: now,
             });
         }
     }
@@ -6345,13 +6530,14 @@ pub async fn scan_project_files(app: AppHandle, project_id: String, role_id: Opt
 fn scan_dir_recursive(base: &std::path::Path, dir: &std::path::Path) -> Result<Vec<(String, String, u64)>, String> {
     let mut results = Vec::new();
     let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
+    let excluded_dirs = ["node_modules", ".git", "dist", "build", "target", "__pycache__", ".next", ".nuxt", "vendor", "Pods"];
 
     for entry in entries {
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
         let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
 
-        if file_name.starts_with('.') {
+        if file_name.starts_with('.') || excluded_dirs.contains(&file_name.as_str()) {
             continue;
         }
 
@@ -6413,12 +6599,13 @@ fn scan_dir_recursive_set(base: &std::path::Path, dir: &std::path::Path) -> std:
         Ok(e) => e,
         Err(_) => return results,
     };
+    let excluded_dirs = ["node_modules", ".git", "dist", "build", "target", "__pycache__", ".next", ".nuxt", "vendor", "Pods"];
 
     for entry in entries.flatten() {
         let path = entry.path();
         let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
 
-        if file_name.starts_with('.') {
+        if file_name.starts_with('.') || excluded_dirs.contains(&file_name.as_str()) {
             continue;
         }
 
@@ -6433,7 +6620,7 @@ fn scan_dir_recursive_set(base: &std::path::Path, dir: &std::path::Path) -> std:
 }
 
 #[tauri::command]
-pub async fn record_chat_files(app: AppHandle, project_id: String, role_id: String) -> Result<(), String> {
+pub async fn record_chat_files(app: AppHandle, project_id: String, role_id: String, task_id: String) -> Result<(), String> {
     let pool = get_pool(&app)?;
 
     let workspace_path: (String,) = sqlx::query_as(
@@ -6492,11 +6679,12 @@ pub async fn record_chat_files(app: AppHandle, project_id: String, role_id: Stri
             let id = uuid::Uuid::new_v4().to_string();
 
             let _ = sqlx::query(
-                "INSERT INTO project_file_records (id, project_id, role_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', 'active', ?, ?)"
+                "INSERT INTO project_file_records (id, project_id, role_id, task_id, file_path, file_name, file_ext, file_size, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 'active', ?, ?)"
             )
             .bind(&id)
             .bind(&project_id)
             .bind(&role_id)
+            .bind(&task_id)
             .bind(&relative_path)
             .bind(&file_name)
             .bind(&file_ext)

@@ -23,7 +23,7 @@ function CardManagerPanel({
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const [cards, setCards] = useState<QuickCard[]>(loadCustomCards());
-  const [showForm, setShowForm] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", icon: "📌", prompt: "" });
 
@@ -46,9 +46,7 @@ function CardManagerPanel({
     }
     setCards(newCards);
     saveCustomCards(newCards);
-    setShowForm(false);
-    setEditId(null);
-    setForm({ name: "", icon: "📌", prompt: "" });
+    closeModal();
   };
 
   const handleDelete = (id: string) => {
@@ -60,7 +58,19 @@ function CardManagerPanel({
   const handleEdit = (card: QuickCard) => {
     setEditId(card.id);
     setForm({ name: card.name, icon: card.icon, prompt: card.prompt });
-    setShowForm(true);
+    setShowModal(true);
+  };
+
+  const openNewCard = () => {
+    setEditId(null);
+    setForm({ name: "", icon: "📌", prompt: "" });
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditId(null);
+    setForm({ name: "", icon: "📌", prompt: "" });
   };
 
   return (
@@ -68,64 +78,10 @@ function CardManagerPanel({
       <div className={styles.settingsSection}>
         <div className={styles.cardManagerHeader}>
           <h3>{t("card.title")}</h3>
-          <button
-            className={styles.cardAddBtn}
-            onClick={() => {
-              setEditId(null);
-              setForm({ name: "", icon: "📌", prompt: "" });
-              setShowForm(true);
-            }}
-          >
+          <button className={styles.cardAddBtn} onClick={openNewCard}>
             {t("card.add")}
           </button>
         </div>
-
-        {showForm && (
-          <div className="card-form">
-            <div className={styles.cardFormRow}>
-              <label>{t("card.name")}</label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder={t("card.nameHolder")}
-              />
-            </div>
-            <div className={styles.cardFormRow}>
-              <label>{t("card.icon")}</label>
-              <input
-                type="text"
-                value={form.icon}
-                onChange={(e) => setForm({ ...form, icon: e.target.value })}
-                placeholder={t("card.iconHolder")}
-                maxLength={4}
-              />
-            </div>
-            <div className={styles.cardFormRow}>
-              <label>{t("card.prompt")}</label>
-              <textarea
-                value={form.prompt}
-                onChange={(e) => setForm({ ...form, prompt: e.target.value })}
-                placeholder={t("card.promptHolder")}
-                rows={3}
-              />
-            </div>
-            <div className={styles.cardFormActions}>
-              <button className={styles.cardFormBtn + " " + styles.save} onClick={handleSave}>
-                {t("card.save")}
-              </button>
-              <button
-                className={styles.cardFormBtn + " " + styles.cancel}
-                onClick={() => {
-                  setShowForm(false);
-                  setEditId(null);
-                }}
-              >
-                {t("modal.cancel")}
-              </button>
-            </div>
-          </div>
-        )}
 
         <div className={styles.cardManagerBuiltin}>
           <h4>{t("card.builtin")}</h4>
@@ -161,6 +117,58 @@ function CardManagerPanel({
           )}
         </div>
       </div>
+
+      {showModal && (
+        <div className={styles.cardModalOverlay} onClick={closeModal}>
+          <div className={styles.cardModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.cardModalHeader}>
+              <h3>{editId ? "编辑卡片" : "新增卡片"}</h3>
+              <button className={styles.cardModalClose} onClick={closeModal}>
+                ✕
+              </button>
+            </div>
+            <div className={styles.cardModalBody}>
+              <div className={styles.cardFormRow}>
+                <label>卡片名称</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="请输入卡片名称"
+                  autoFocus
+                />
+              </div>
+              <div className={styles.cardFormRow}>
+                <label>图标</label>
+                <input
+                  type="text"
+                  value={form.icon}
+                  onChange={(e) => setForm({ ...form, icon: e.target.value })}
+                  placeholder="请选择或输入emoji图标"
+                  maxLength={4}
+                />
+              </div>
+              <div className={styles.cardFormRow}>
+                <label>AI提示词</label>
+                <textarea
+                  value={form.prompt}
+                  onChange={(e) => setForm({ ...form, prompt: e.target.value })}
+                  placeholder="请输入AI提示词"
+                  rows={5}
+                />
+              </div>
+            </div>
+            <div className={styles.cardModalFooter}>
+              <button className={styles.cardFormBtn + " " + styles.save} onClick={handleSave}>
+                {editId ? "保存修改" : "创建卡片"}
+              </button>
+              <button className={styles.cardFormBtn + " " + styles.cancel} onClick={closeModal}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

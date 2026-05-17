@@ -88,6 +88,53 @@ pub async fn update_conversation_kb_ids(
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadAudioFileResult {
+    pub success: bool,
+    pub data: String,
+    pub mime: String,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn read_audio_file(path: String) -> Result<ReadAudioFileResult, String> {
+    let file_path = std::path::Path::new(&path);
+    if !file_path.exists() {
+        return Ok(ReadAudioFileResult {
+            success: false,
+            data: String::new(),
+            mime: String::new(),
+            error: Some(format!("File not found: {}", path)),
+        });
+    }
+
+    let bytes = std::fs::read(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let data = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+
+    let ext = file_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let mime = match ext.as_str() {
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "ogg" => "audio/ogg",
+        "flac" => "audio/flac",
+        "m4a" => "audio/mp4",
+        "webm" => "audio/webm",
+        _ => "audio/mpeg",
+    };
+
+    Ok(ReadAudioFileResult {
+        success: true,
+        data,
+        mime: mime.to_string(),
+        error: None,
+    })
+}
+
 #[tauri::command]
 pub async fn update_conversation_session_id(
     app: AppHandle,
@@ -178,7 +225,11 @@ pub async fn create_message(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
-    sqlx::query("INSERT INTO messages (id, conversation_id, role, content, thinking, files, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    let audio_path_val = req.audio_path.as_deref().unwrap_or("");
+    let audio_duration_val = req.audio_duration.unwrap_or(0.0);
+    let message_type_val = req.message_type.as_deref().unwrap_or("text");
+
+    sqlx::query("INSERT INTO messages (id, conversation_id, role, content, thinking, files, timestamp, audio_path, audio_duration, message_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(&id)
         .bind(&req.conversation_id)
         .bind(&req.role)
@@ -186,6 +237,9 @@ pub async fn create_message(
         .bind(req.thinking.as_deref().unwrap_or(""))
         .bind(req.files.as_deref().unwrap_or(""))
         .bind(now)
+        .bind(audio_path_val)
+        .bind(audio_duration_val)
+        .bind(message_type_val)
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -205,6 +259,9 @@ pub async fn create_message(
         thinking: req.thinking,
         files: req.files,
         timestamp: now,
+        audio_path: req.audio_path,
+        audio_duration: req.audio_duration,
+        message_type: req.message_type,
     })
 }
 
@@ -214,8 +271,8 @@ pub async fn list_messages(
     conversation_id: String,
 ) -> Result<Vec<db::Message>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, i64)>(
-        "SELECT id, role, content, thinking, files, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
+    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, i64, Option<String>, Option<f64>, Option<String>)>(
+        "SELECT id, role, content, thinking, files, timestamp, audio_path, audio_duration, message_type FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
     )
     .bind(&conversation_id)
     .fetch_all(&pool)
@@ -224,13 +281,16 @@ pub async fn list_messages(
 
     let messages = rows
         .into_iter()
-        .map(|(id, role, content, thinking, files, timestamp)| db::Message {
+        .map(|(id, role, content, thinking, files, timestamp, audio_path, audio_duration, message_type)| db::Message {
             id,
             role,
             content,
             thinking: thinking.filter(|s| !s.is_empty()),
             files: files.filter(|s| !s.is_empty()),
             timestamp,
+            audio_path: audio_path.filter(|s| !s.is_empty()),
+            audio_duration: audio_duration.filter(|d| *d >= 0.0),
+            message_type: message_type.filter(|s| !s.is_empty()),
         })
         .collect();
 
@@ -243,8 +303,11 @@ pub async fn update_message(
     req: db::UpdateMessageRequest,
 ) -> Result<(), String> {
     let pool = get_pool(&app)?;
-    sqlx::query("UPDATE messages SET content = ? WHERE id = ?")
+    sqlx::query("UPDATE messages SET content = ?, audio_path = ?, audio_duration = ?, message_type = ? WHERE id = ?")
         .bind(&req.content)
+        .bind(req.audio_path.as_deref().unwrap_or(""))
+        .bind(req.audio_duration.unwrap_or(0.0))
+        .bind(req.message_type.as_deref().unwrap_or("text"))
         .bind(&req.id)
         .execute(&pool)
         .await

@@ -183,8 +183,29 @@
 }
 
 .micBtn:disabled {
-  opacity: 0.25;
-  cursor: default;
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.micBtnActive {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  animation: micPulse 1.5s ease-in-out infinite;
+}
+
+.micBtnError {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+@keyframes micPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
 }
 
 .kbRetrieveBtn {

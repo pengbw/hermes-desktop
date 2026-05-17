@@ -403,8 +403,9 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
                               ? "通过：评语可选；驳回：评语必填"
                               : "添加备注（可选）..."
                           }
-                          rows={2}
+                          rows={4}
                           className={styles.taskDetailTextarea}
+                          style={{ resize: "vertical" }}
                         />
                         <div className={styles.wfRunStepConfirmActions}>
                           <button

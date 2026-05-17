@@ -19,6 +19,7 @@ const defaultProps = {
   setInput: vi.fn(),
   onSend: vi.fn(),
   isStreaming: false,
+  voiceEnabled: true,
   kbGlobalAutoRetrieve: false,
   kbList: [
     { id: "kb-1", name: "Test KB", icon: "📚", status: "ready" },
