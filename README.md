@@ -89,19 +89,19 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 
 ### 首页
 
-![首页](./docs/screenshots/01-home.jpg)
+![首页](./docs/screenshots/01-home.png)
 
 ### 智能对话
 
-![对话](./docs/screenshots/02-chat.jpg)
+![对话](./docs/screenshots/02-chat.png)
 
 ### 技能中心
 
-![技能中心](./docs/screenshots/03-skills.jpg)
+![技能中心](./docs/screenshots/03-skills.png)
 
 ### 系统设置
 
-![设置](./docs/screenshots/04-settings.jpg)
+![设置](./docs/screenshots/04-settings.png)
 
 ### VRM 数字人
 
