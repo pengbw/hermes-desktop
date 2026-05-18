@@ -115,6 +115,50 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 
 ![动作管理](./docs/screenshots/08-gesture.jpg)
 
+### 🏢 工作室
+
+**项目模板 + 新建项目**
+
+![新建项目](./docs/screenshots/09-studio-new-project.jpg)
+
+> 选择行业模板（软件开发、内容创作、数据分析等），自动配置角色阵容和工作流，开箱即用。
+
+**工作流设计**
+
+![工作流设计](./docs/screenshots/10-studio-workflow.jpg)
+
+> 可视化编排 AI 角色协作流程：开始 → 节点角色 → 审批门控 → 结束。支持条件分支与并行汇聚。
+
+**多角色协作**
+
+![多角色协作](./docs/screenshots/11-studio-collaboration.jpg)
+
+> 内容策划、撰稿人、编辑、审核员实时协同，AI 角色之间自动传递产物，审核意见可追溯。
+
+**角色管理**
+
+![角色管理](./docs/screenshots/12-studio-members.jpg)
+
+> 每个角色独立配置职责描述、专属技能与工作进度，任务分工一目了然。
+
+**技能市场**
+
+![技能市场](./docs/screenshots/13-skills-marketplace.jpg)
+
+> 721+ 技能插件可选安装，覆盖 AI 代理、设计创意、社交媒体等分类，按需扩展 Agent 能力。
+
+**知识库对话**
+
+![知识库对话](./docs/screenshots/14-chat-knowledge.jpg)
+
+> 基于本地文档的 RAG 对话，检索结果实时展示文档来源与匹配度，来源可溯。
+
+**通信设置**
+
+![通信设置](./docs/screenshots/15-settings-communication.jpg)
+
+> 一键接入微信、QQ、元宝、钉钉、飞书等平台，消息收发与 AI 回复无缝打通。
+
 ---
 
 ## 🛠️ 技术栈
