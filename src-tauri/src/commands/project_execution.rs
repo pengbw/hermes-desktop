@@ -2078,13 +2078,15 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
 
                     // Then create a new in_progress artifact for the role
                     let new_artifact_id = uuid::Uuid::new_v4().to_string();
+                    let effective_task_id = wf_task_id.clone().unwrap_or_default();
                     let _ = sqlx::query(
-                        "INSERT INTO project_artifacts (id, project_id, role_id, artifact_type, title, content, status, run_step_id, workflow_run_id, step_index, created_at, updated_at) \
-                         SELECT ?, project_id, role_id, artifact_type, ? || ' - 修改稿', '', 'in_progress', ?, NULL, NULL, ?, ? \
+                        "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, content, status, run_step_id, workflow_run_id, step_index, created_at, updated_at) \
+                         SELECT ?, project_id, role_id, ?, artifact_type, ? || ' - 修改稿', '', 'in_progress', ?, NULL, NULL, ?, ? \
                          FROM project_artifacts WHERE project_id = ? AND role_id = ? AND status = 'rejected' \
                          ORDER BY updated_at DESC LIMIT 1"
                     )
                     .bind(&new_artifact_id)
+                    .bind(&effective_task_id)
                     .bind(if step_action == "need_confirm" { "审批产物" } else { "自动产物" })
                     .bind(&retry_step_id)
                     .bind(now_retry)
