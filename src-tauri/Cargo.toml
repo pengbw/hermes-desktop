@@ -42,6 +42,7 @@ candle-transformers = "0.10.2"
 tokenizers = "0.21"
 notify = { version = "7", features = ["macos_kqueue"] }
 tauri-plugin-mic-recorder = "2.0.0"
+mp3-duration = "0.1"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }

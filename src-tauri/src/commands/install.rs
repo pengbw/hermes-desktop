@@ -555,6 +555,14 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
         .stderr(Stdio::piped())
         .output();
 
+    let _ = command(&python_exe)
+        .args(["-m", "pip", "install", "edge-tts",
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
+               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+
     let _ = app.emit("install-progress", InstallProgress {
         line: "Dependencies installed, verifying...".to_string(), done: false, success: false,
     });
@@ -732,6 +740,14 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
 
     let _ = command(&python_exe)
         .args(["-m", "pip", "install", "aiohttp",
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
+               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+
+    let _ = command(&python_exe)
+        .args(["-m", "pip", "install", "edge-tts",
                "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
                "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
         .stdout(Stdio::piped())

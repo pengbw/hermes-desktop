@@ -458,29 +458,12 @@ pub async fn transcribe_audio(
     }
 }
 
-/// 获取音频文件时长（秒），优先使用 ffprobe，不可用时通过解析 WAV 文件头计算
+/// 获取WAV音频时长（秒），通过解析WAV文件头，跨平台无需系统依赖
 fn get_audio_duration_secs(path: &str) -> Option<f64> {
-    let output = command("ffprobe")
-        .args([
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            path,
-        ])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return get_audio_duration_from_wav_header(path);
+    if let Some(d) = get_audio_duration_from_wav_header(path) {
+        return Some(d);
     }
-
-    let duration_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if duration_str.is_empty() {
-        return get_audio_duration_from_wav_header(path);
-    }
-    duration_str.parse::<f64>().ok()
+    Some(1.0)
 }
 
 /// 通过解析 WAV 文件头计算精确时长（ffprobe 不可用时的 fallback）

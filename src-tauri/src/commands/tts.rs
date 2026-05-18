@@ -202,6 +202,7 @@ pub async fn text_to_speech_file(app: tauri::AppHandle, req: TtsRequest) -> Resu
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        log::warn!("[tts_file] edge-tts failed: {}", stderr.trim());
         return Ok(TtsFileResult {
             success: false,
             audio_path: None,
@@ -211,8 +212,11 @@ pub async fn text_to_speech_file(app: tauri::AppHandle, req: TtsRequest) -> Resu
     }
 
     if output_path.exists() {
+        let file_size = std::fs::metadata(&output_path).map(|m| m.len()).unwrap_or(0);
+        log::info!("[tts_file] output exists, size={} bytes", file_size);
         let audio_path = output_path.to_string_lossy().to_string();
         let audio_duration = get_tts_duration_secs(&audio_path);
+        log::info!("[tts_file] success, audio_path={}, duration={:?}", audio_path, audio_duration);
         Ok(TtsFileResult {
             success: true,
             audio_path: Some(audio_path),
@@ -229,30 +233,23 @@ pub async fn text_to_speech_file(app: tauri::AppHandle, req: TtsRequest) -> Resu
     }
 }
 
-/// 获取音频文件时长（秒），优先使用 ffprobe，不可用时通过解析文件头估算
-fn get_tts_duration_secs(path: &str) -> Option<f64> {
-    let output = command("ffprobe")
-        .args([
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            path,
-        ])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return get_mp3_duration_estimate(path);
+/// 获取MP3音频时长（秒），使用纯Rust crate，跨平台无需系统依赖
+pub(crate) fn get_tts_duration_secs(path: &str) -> Option<f64> {
+    if let Some(d) = try_mp3_duration(path) {
+        log::info!("[tts] mp3-duration: {}s", d);
+        return Some(d);
     }
-
-    let duration_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if duration_str.is_empty() {
-        return get_mp3_duration_estimate(path);
+    if let Some(d) = get_mp3_duration_estimate(path) {
+        return Some(d);
     }
-    duration_str.parse::<f64>().ok()
+    Some(1.0)
 }
+
+fn try_mp3_duration(path: &str) -> Option<f64> {
+    let dur = mp3_duration::from_path(path).ok()?;
+    Some(dur.as_secs_f64())
+}
+
 
 /// 通过解析 MP3 帧头估算时长（ffprobe 不可用时的 fallback）
 /// 原理：扫描前 N 个 MP3 帧获取平均比特率，然后用 文件大小 × 8 / 比特率 估算
