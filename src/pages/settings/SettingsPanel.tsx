@@ -197,13 +197,7 @@ function SettingsPanel() {
     ],
     display: ["showReasoning", "ttsEnabled", "voiceEnabled"],
     context: ["compressionEnabled", "memoryEnabled"],
-    system: [
-      "showReasoning",
-      "ttsEnabled",
-      "voiceEnabled",
-      "compressionEnabled",
-      "memoryEnabled",
-    ],
+    system: ["showReasoning", "ttsEnabled", "voiceEnabled", "compressionEnabled", "memoryEnabled"],
   };
 
   const sectionDirtyCount = (section: string) => {
@@ -247,6 +241,8 @@ function SettingsPanel() {
       };
 
       let needRestartGateway = false;
+      await invoke("set_config", { key: "hermes_api_key", value: hermesApiKey });
+      needRestartGateway = true;
       for (const field of fieldsToSave) {
         if (field === "workspaceRoot") {
           const cfg = config;
@@ -256,11 +252,6 @@ function SettingsPanel() {
         }
         if (field === "hermesApiBase") {
           await invoke("set_config", { key: "hermes_api_base", value: hermesApiBase });
-          needRestartGateway = true;
-          continue;
-        }
-        if (field === "hermesApiKey") {
-          await invoke("set_config", { key: "hermes_api_key", value: hermesApiKey });
           needRestartGateway = true;
           continue;
         }

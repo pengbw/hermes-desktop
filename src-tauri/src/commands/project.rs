@@ -2549,10 +2549,52 @@ pub async fn approve_project_artifact(app: AppHandle, id: String, comment: Optio
             .map_err(|e| e.to_string())?;
 
         let artifact_step = step_index.map(i64::from);
+        let mut resolved_step: Option<i64> = None;
 
-        if let Some(step) = artifact_step {
+        if let Some(step) = artifact_step.filter(|step| *step > 0) {
+            let valid_artifact_step: Option<i64> = sqlx::query_scalar(
+                "SELECT step_index FROM workflow_run_steps \
+                 WHERE run_id = ? AND step_index = ? AND role_id = ? \
+                 AND status IN ('running', 'pending_approval') \
+                 LIMIT 1"
+            )
+            .bind(&run_id)
+            .bind(step)
+            .bind(&role_id)
+            .fetch_optional(&pool)
+            .await
+            .unwrap_or(None);
+
+            if valid_artifact_step.is_some() {
+                resolved_step = Some(step);
+            } else {
+                log::warn!(
+                    "approve_project_artifact: artifact step {} is stale for role {} in run {}, falling back to active step lookup",
+                    step, role_id, run_id
+                );
+            }
+        }
+
+        if resolved_step.is_none() {
+            resolved_step = sqlx::query_scalar(
+                "SELECT step_index FROM workflow_run_steps \
+                 WHERE run_id = ? AND role_id = ? AND status IN ('running', 'pending_approval') \
+                 ORDER BY step_index ASC LIMIT 1"
+            )
+            .bind(&run_id)
+            .bind(&role_id)
+            .fetch_optional(&pool)
+            .await
+            .unwrap_or(None);
+        }
+
+        if let Some(step) = resolved_step {
+            log::info!(
+                "approve_project_artifact: resolved approval step {} for role {} in run {}",
+                step, role_id, run_id
+            );
             if current_step != Some(step) {
-                log::info!("approve_project_artifact: current_step {:?} != artifact step {}, syncing", current_step, step);
+                log::info!("approve_project_artifact: current_step {:?} != resolved step {}, syncing", current_step, step);
                 let _ = sqlx::query("UPDATE workflow_runs SET current_step = ? WHERE id = ?")
                     .bind(step)
                     .bind(&run_id)
@@ -2560,35 +2602,6 @@ pub async fn approve_project_artifact(app: AppHandle, id: String, comment: Optio
                     .await;
             }
             confirm_workflow_step(app.clone(), run_id, true, Some(review_comment.clone())).await?;
-        } else {
-            let matching_step: Option<i64> = sqlx::query_scalar(
-                "SELECT wrs.step_index FROM workflow_run_steps wrs \
-                 JOIN workflow_runs wr ON wrs.id = wrs.run_id \
-                 WHERE wrs.run_id = ? AND wrs.role_id = ? AND wrs.status IN ('running', 'pending_approval') \
-                 ORDER BY wrs.step_index ASC LIMIT 1"
-            )
-            .bind(&run_id)
-            .bind(&role_id)
-            .fetch_optional(&pool)
-            .await
-            .unwrap_or(None);
-
-            if let Some(step) = matching_step {
-                log::info!("approve_project_artifact: found matching step {} for role {} in run {}", step, role_id, run_id);
-                let current: Option<i64> = sqlx::query_scalar("SELECT current_step FROM workflow_runs WHERE id = ?")
-                    .bind(&run_id)
-                    .fetch_optional(&pool)
-                    .await
-                    .unwrap_or(None);
-                if current != Some(step) {
-                    let _ = sqlx::query("UPDATE workflow_runs SET current_step = ? WHERE id = ?")
-                        .bind(step)
-                        .bind(&run_id)
-                        .execute(&pool)
-                        .await;
-                }
-                confirm_workflow_step(app.clone(), run_id, true, Some(review_comment.clone())).await?;
-            }
         }
     }
 
@@ -2767,8 +2780,9 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
 
         if !art_project_id.is_empty() && !art_role_id.is_empty() {
             let mut target_role_id = art_role_id.clone();
-            let target_step_index = step_index;
-            let target_artifact_type = art_type.clone();
+            let mut target_step_index = i64::from(step_index.unwrap_or(1)).max(1);
+            let mut target_artifact_type = art_type.clone();
+            let mut retry_title_base = art_title.clone();
 
             if let Some(ref run_id) = workflow_run_id.clone().filter(|v| !v.is_empty()) {
                 let current_step = step_index.map(i64::from).unwrap_or_default();
@@ -2818,10 +2832,10 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
 
                         if let Some(ps) = prev_need_step {
                             resolved_prev_step = ps;
-                        } else if current_step >= 1 {
+                        } else if current_step > 1 {
                             resolved_prev_step = current_step - 1;
                         } else {
-                            resolved_prev_step = 0;
+                            resolved_prev_step = current_step.max(1);
                         }
                     }
                 } else {
@@ -2840,15 +2854,37 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
 
                     if let Some(ps) = prev_need_step {
                         resolved_prev_step = ps;
-                    } else if current_step >= 1 {
+                    } else if current_step > 1 {
                         resolved_prev_step = current_step - 1;
                     } else {
-                        resolved_prev_step = 0;
+                        resolved_prev_step = current_step.max(1);
+                    }
+                }
+
+                target_step_index = resolved_prev_step.max(1);
+
+                let target_step_artifact: Option<(String, String)> = sqlx::query_as(
+                    "SELECT artifact_type, title FROM project_artifacts \
+                     WHERE workflow_run_id = ? AND step_index = ? \
+                     ORDER BY created_at DESC LIMIT 1"
+                )
+                .bind(run_id)
+                .bind(target_step_index)
+                .fetch_optional(&pool)
+                .await
+                .unwrap_or(None);
+
+                if let Some((artifact_type, title)) = target_step_artifact {
+                    if !artifact_type.is_empty() {
+                        target_artifact_type = artifact_type;
+                    }
+                    if !title.is_empty() {
+                        retry_title_base = title;
                     }
                 }
 
                 sqlx::query("UPDATE workflow_runs SET current_step = ?, status = 'running', completed_at = NULL WHERE id = ?")
-                    .bind(resolved_prev_step)
+                    .bind(target_step_index)
                     .bind(run_id)
                     .execute(&pool)
                     .await
@@ -2859,12 +2895,12 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
                 )
                 .bind(&reason)
                 .bind(run_id)
-                .bind(resolved_prev_step)
+                .bind(target_step_index)
                 .execute(&pool)
                 .await
                 .map_err(|e| e.to_string())?;
 
-                for step_idx in (resolved_prev_step + 1)..=current_step {
+                for step_idx in (target_step_index + 1)..=current_step {
                     sqlx::query(
                         "UPDATE workflow_run_steps SET status = 'pending', completed_at = NULL WHERE run_id = ? AND step_index = ?"
                     )
@@ -2877,7 +2913,7 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
             }
 
             let new_artifact_id = uuid::Uuid::new_v4().to_string();
-            let retry_title = format!("{} - 修改稿", art_title);
+            let retry_title = format!("{} - 修改稿", retry_title_base);
             sqlx::query(
                 "INSERT INTO project_artifacts (id, project_id, role_id, artifact_type, title, content, status, run_step_id, workflow_run_id, step_index, task_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', 'in_progress', '', ?, ?, ?, ?, ?)"
             )
@@ -2887,13 +2923,26 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
             .bind(&target_artifact_type)
             .bind(&retry_title)
             .bind(&workflow_run_id)
-            .bind(&target_step_index)
+            .bind(target_step_index)
             .bind(&task_id)
             .bind(now)
             .bind(now)
             .execute(&pool)
             .await
             .map_err(|e| e.to_string())?;
+
+            if let Some(ref tid) = task_id {
+                if !tid.is_empty() && !target_role_id.is_empty() {
+                    let _ = sqlx::query(
+                        "UPDATE project_tasks SET assignee = ?, status = 'running', updated_at = ? WHERE id = ?"
+                    )
+                    .bind(&target_role_id)
+                    .bind(now)
+                    .bind(tid)
+                    .execute(&pool)
+                    .await;
+                }
+            }
 
             let app_notify = app.clone();
             let notify_project_id = art_project_id.clone();
@@ -4747,7 +4796,7 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                     .unwrap_or_default()
                 };
 
-        let mut should_emit_event = false;
+                let mut auto_push_events: Vec<(String, i64)> = Vec::new();
 
                 for (run_id, completed_step) in &auto_runs {
                     let step_result = sqlx::query(
@@ -4884,15 +4933,17 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                             }
                         }
                         
-                        should_emit_event = true;
+                        auto_push_events.push((run_id.clone(), next_step));
                     }
                 }
 
                 // Emit event to trigger next workflow execution
-                if should_emit_event {
+                for (run_id, step_index) in auto_push_events {
                     let _ = rec_app.emit("workflow_auto_push_completed", serde_json::json!({
                         "projectId": rec_project,
                         "roleId": rec_role,
+                        "workflowRunId": run_id,
+                        "stepIndex": step_index,
                     }));
                 }
             }

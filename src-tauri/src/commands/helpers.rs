@@ -368,7 +368,7 @@ pub(crate) fn tool_label(tool_name: &str) -> &str {
     }
 }
 
-pub(crate) fn sync_single_env_key(app: &tauri::AppHandle, env_key: &str, env_value: &str) {
+pub(crate) fn hermes_env_path() -> Option<String> {
     let env_path_output = match hermes_command()
         .args(&["config", "env-path"])
         .stdout(Stdio::piped())
@@ -376,16 +376,44 @@ pub(crate) fn sync_single_env_key(app: &tauri::AppHandle, env_key: &str, env_val
         .output()
     {
         Ok(o) => o,
-        Err(e) => {
-            log::warn!("[sync_env] Failed to get .env path: {}", e);
-            return;
+        Err(_) => {
+            let home = std::env::var("HOME").unwrap_or_default();
+            let fallback = format!("{}/.hermes/.env", home);
+            if std::path::Path::new(&fallback).exists() {
+                log::info!("[sync_env] hermes command not found, using fallback .env path: {}", fallback);
+                return Some(fallback);
+            }
+            let parent = format!("{}/.hermes", home);
+            if std::path::Path::new(&parent).exists() {
+                log::info!("[sync_env] hermes command not found, using fallback .env path: {}", fallback);
+                return Some(fallback);
+            }
+            log::warn!("[sync_env] hermes command not found and ~/.hermes does not exist, cannot determine .env path");
+            return None;
         }
     };
     let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
     if env_path.is_empty() {
-        log::warn!("[sync_env] .env path is empty");
-        return;
+        let home = std::env::var("HOME").unwrap_or_default();
+        let fallback = format!("{}/.hermes/.env", home);
+        if std::path::Path::new(&fallback).exists() || std::path::Path::new(&format!("{}/.hermes", home)).exists() {
+            log::info!("[sync_env] hermes config env-path returned empty, using fallback: {}", fallback);
+            return Some(fallback);
+        }
+        log::warn!("[sync_env] .env path is empty and no fallback available");
+        return None;
     }
+    Some(env_path)
+}
+
+pub(crate) fn sync_single_env_key(_app: &tauri::AppHandle, env_key: &str, env_value: &str) {
+    let env_path = match hermes_env_path() {
+        Some(p) => p,
+        None => {
+            log::warn!("[sync_env] Cannot determine .env path, skipping sync of {}", env_key);
+            return;
+        }
+    };
 
     if let Some(parent) = std::path::Path::new(&env_path).parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -485,6 +513,23 @@ pub(crate) async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
             }
         } else {
             env_map.insert(key_upper, api_key.clone());
+            changed = true;
+        }
+    }
+
+    let hermes_api_key: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_config WHERE key = 'hermes_api_key'"
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .filter(|v: &String| !v.is_empty());
+
+    if let Some(hak) = &hermes_api_key {
+        let key = "API_SERVER_KEY";
+        if env_map.get(key) != Some(hak) {
+            env_map.insert(key.to_string(), hak.clone());
             changed = true;
         }
     }

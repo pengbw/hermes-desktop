@@ -261,6 +261,18 @@ pub fn restart_hermes(app: AppHandle, state: State<'_, AgentProcess>) -> Result<
     });
     let _ = std::fs::create_dir_all(&workspace_root);
 
+    let api_key: String = tauri::async_runtime::block_on(async {
+        sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'hermes_api_key'")
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default()
+    });
+    if !api_key.is_empty() {
+        crate::commands::helpers::sync_single_env_key(&app, "API_SERVER_KEY", &api_key);
+    }
+
     let new_path = path_with_local_bin();
 
     let child = hermes_command()

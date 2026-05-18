@@ -224,22 +224,34 @@ pub fn run() {
                             let project_trigger = project_id.clone();
                             let role_trigger = role_id.clone();
                             tauri::async_runtime::spawn(async move {
-                                let (wf_run_id, wf_step_index): (Option<String>, Option<i32>) = {
-                                    let state = app_trigger.state::<AppState>();
-                                    let pool = state.db_pool.clone();
-                                    let run_info: Option<(String, i32)> = sqlx::query_as(
-                                        "SELECT wr.id, wrs.step_index FROM workflow_runs wr \
-                                         JOIN workflow_run_steps wrs ON wr.id = wrs.run_id \
-                                         WHERE wr.project_id = ? AND wr.status = 'running' \
-                                         AND wrs.status = 'running' \
-                                         ORDER BY wrs.step_index ASC LIMIT 1"
-                                    )
-                                    .bind(&project_trigger)
-                                    .fetch_optional(&pool)
-                                    .await
-                                    .unwrap_or(None);
-                                    run_info.map(|(rid, si)| (Some(rid), Some(si))).unwrap_or((None, None))
-                                };
+                                let payload_run_id = data["workflowRunId"]
+                                    .as_str()
+                                    .filter(|value| !value.is_empty())
+                                    .map(|value| value.to_string());
+                                let payload_step_index = data["stepIndex"]
+                                    .as_i64()
+                                    .and_then(|value| i32::try_from(value).ok())
+                                    .filter(|value| *value > 0);
+
+                                let (wf_run_id, wf_step_index): (Option<String>, Option<i32>) =
+                                    if payload_run_id.is_some() && payload_step_index.is_some() {
+                                        (payload_run_id, payload_step_index)
+                                    } else {
+                                        let state = app_trigger.state::<AppState>();
+                                        let pool = state.db_pool.clone();
+                                        let run_info: Option<(String, i32)> = sqlx::query_as(
+                                            "SELECT wr.id, wrs.step_index FROM workflow_runs wr \
+                                             JOIN workflow_run_steps wrs ON wr.id = wrs.run_id \
+                                             WHERE wr.project_id = ? AND wr.status = 'running' \
+                                             AND wrs.status = 'running' \
+                                             ORDER BY wrs.step_index ASC LIMIT 1"
+                                        )
+                                        .bind(&project_trigger)
+                                        .fetch_optional(&pool)
+                                        .await
+                                        .unwrap_or(None);
+                                        run_info.map(|(rid, si)| (Some(rid), Some(si))).unwrap_or((None, None))
+                                    };
                                 log::info!("workflow_auto_push_completed: triggering next step for project_id={}, from_role_id={}, run_id={:?}, step={:?}", project_trigger, role_trigger, wf_run_id, wf_step_index);
                                 match commands::project::trigger_workflow_execution(app_trigger, project_trigger, role_trigger, None, None, Some(true), wf_run_id, wf_step_index).await {
                                     Ok(result) => log::info!("workflow_auto_push_completed: triggered={}, pending={}", result.triggered_workflows.len(), result.pending_approvals.len()),
