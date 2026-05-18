@@ -62,8 +62,8 @@ export function useAvatarChat({
       avatarConvIdRef.current = conv.id;
       hermesSessionIdRef.current = conv.hermesSessionId;
       return conv.id;
-    } catch (e) {
-// console.error("[Avatar] 获取/创建会话失败:", e);
+    } catch {
+      // console.error("[Avatar] 获取/创建会话失败:", e);
       return null;
     }
   }, []);
@@ -95,8 +95,8 @@ export function useAvatarChat({
             const fileList = nonImageFiles.map((f) => `- ${f.name}: ${f.path}`).join("\n");
             sendContent = `${sendContent}\n\n附件文件路径：\n${fileList}`;
           }
-        } catch (err) {
-// console.warn("Failed to parse attached files:", err);
+        } catch {
+          // console.warn("Failed to parse attached files:", err);
         }
       }
 
@@ -124,8 +124,8 @@ export function useAvatarChat({
             files: filesJson || null,
           },
         });
-      } catch (e) {
-// console.error("[Avatar] 保存用户消息失败:", e);
+      } catch {
+        // console.error("[Avatar] 保存用户消息失败:", e);
       }
 
       onChatWindowOpen();
@@ -165,8 +165,8 @@ export function useAvatarChat({
                     content: fullContent,
                   },
                 });
-              } catch (e) {
-// console.error("[Avatar] 保存AI消息失败:", e);
+              } catch {
+                // console.error("[Avatar] 保存AI消息失败:", e);
               }
             })();
 
@@ -193,8 +193,8 @@ export function useAvatarChat({
           forceKbRetrieve: false,
           conversationId: convId,
         });
-      } catch (err) {
-// console.error("[Avatar] Chat error:", err);
+      } catch {
+        // console.error("[Avatar] Chat error:", err);
         setIsThinking(false);
         isThinkingRef.current = false;
         setIsWaitingResponse(false);
@@ -208,8 +208,8 @@ export function useAvatarChat({
               content: "抱歉，出了点问题...",
             },
           });
-        } catch (e) {
-// console.error("[Avatar] 保存错误消息失败:", e);
+        } catch {
+          // console.error("[Avatar] 保存错误消息失败:", e);
         }
       }
     },

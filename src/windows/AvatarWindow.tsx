@@ -286,8 +286,8 @@ export default function AvatarWindow() {
             GESTURES = parseGesturesFromDb(gestures);
             gesturesRef.current = GESTURES;
           }
-        } catch (e) {
-// console.error("Failed to load gestures from DB", e);
+        } catch {
+          // console.error("Failed to load gestures from DB", e);
         }
 
         const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
@@ -574,15 +574,15 @@ export default function AvatarWindow() {
             }
 
             renderer.render(scene, camera);
-          } catch (e) {
-// console.warn("[Avatar] render:", e);
+          } catch {
+            // console.warn("[Avatar] render:", e);
           }
         };
 
         animate();
         setIsLoaded(true);
-      } catch (err) {
-// console.error("[Avatar] VRM failed:", err);
+      } catch {
+        // console.error("[Avatar] VRM failed:", err);
         setLoadError(String(err));
       }
     };
@@ -783,8 +783,8 @@ export default function AvatarWindow() {
                       fileBytes: bytes,
                     });
                     newFiles.push({ name: f.name, path: tempPath });
-                  } catch (err) {
-// console.error("Failed to save temp file:", f.name, err);
+                  } catch {
+                    // console.error("Failed to save temp file:", f.name, err);
                   }
                 }
                 if (newFiles.length > 0) {

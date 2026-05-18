@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type {
-  SkillCatalogResult,
-  CatalogSkill,
-} from "@core/types";
+import type { SkillCatalogResult, CatalogSkill } from "@core/types";
 import cardStyles from "@pages/cards/CardManagerPanel.module.css";
 import skillStyles from "./SkillsPanel.module.css";
 
@@ -29,7 +26,12 @@ function SkillsPanel({
   const [configSkill, setConfigSkill] = useState<CatalogSkill | null>(null);
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
   const [tooltipSkill, setTooltipSkill] = useState<string | null>(null);
-  const [successModal, setSuccessModal] = useState<{ open: boolean; skillName: string; success: boolean; message: string }>({ open: false, skillName: "", success: true, message: "" });
+  const [successModal, setSuccessModal] = useState<{
+    open: boolean;
+    skillName: string;
+    success: boolean;
+    message: string;
+  }>({ open: false, skillName: "", success: true, message: "" });
   const skillPageSize = 20;
 
   const loadCatalog = async (page: number = 1) => {
@@ -46,8 +48,8 @@ function SkillsPanel({
       });
       setCatalogResult(result);
       setSkillPage(page);
-    } catch (err) {
-// console.error("Failed to load skill catalog:", err);
+    } catch {
+      // console.error("Failed to load skill catalog:", err);
     } finally {
       setLoading(false);
     }
@@ -56,8 +58,8 @@ function SkillsPanel({
   const handleRefresh = async () => {
     try {
       await invoke<number>("load_skill_catalog_from_file");
-    } catch (err) {
-// console.error("Reload catalog failed:", err);
+    } catch {
+      // console.error("Reload catalog failed:", err);
     }
     loadCatalog(skillPage);
   };
@@ -97,17 +99,26 @@ function SkillsPanel({
     setInstalling(skill.identifier);
     setInstallMsg("");
     try {
-      const config = skill.userConfig && Object.keys(skill.userConfig).length > 0
-        ? skill.userConfig
-        : null;
+      const config =
+        skill.userConfig && Object.keys(skill.userConfig).length > 0 ? skill.userConfig : null;
       await invoke("install_skill_from_catalog", {
         identifier: skill.identifier,
         config,
       });
-      setSuccessModal({ open: true, skillName: skill.name, success: true, message: t("skills.installSuccess") });
+      setSuccessModal({
+        open: true,
+        skillName: skill.name,
+        success: true,
+        message: t("skills.installSuccess"),
+      });
       loadCatalog(skillPage);
     } catch (err: unknown) {
-      setSuccessModal({ open: true, skillName: skill.name, success: false, message: err instanceof Error ? err.message : String(err) || t("skills.installFail") });
+      setSuccessModal({
+        open: true,
+        skillName: skill.name,
+        success: false,
+        message: err instanceof Error ? err.message : String(err) || t("skills.installFail"),
+      });
     } finally {
       setInstalling(null);
     }
@@ -123,10 +134,20 @@ function SkillsPanel({
         identifier: configSkill.identifier,
         config: configValues,
       });
-      setSuccessModal({ open: true, skillName: configSkill.name, success: true, message: t("skills.installSuccess") });
+      setSuccessModal({
+        open: true,
+        skillName: configSkill.name,
+        success: true,
+        message: t("skills.installSuccess"),
+      });
       loadCatalog(skillPage);
     } catch (err: unknown) {
-      setSuccessModal({ open: true, skillName: configSkill.name, success: false, message: err instanceof Error ? err.message : String(err) || t("skills.installFail") });
+      setSuccessModal({
+        open: true,
+        skillName: configSkill.name,
+        success: false,
+        message: err instanceof Error ? err.message : String(err) || t("skills.installFail"),
+      });
     } finally {
       setInstalling(null);
       setConfigSkill(null);
@@ -138,8 +159,8 @@ function SkillsPanel({
       await invoke("uninstall_skill", { name: skill.name });
       loadCatalog(skillPage);
       setMenuOpen(null);
-    } catch (err) {
-// console.error("Uninstall failed:", err);
+    } catch {
+      // console.error("Uninstall failed:", err);
     }
   };
 
@@ -148,9 +169,7 @@ function SkillsPanel({
     setDetailLoading(true);
     setDetailContent("");
     try {
-      const identifier = skill.category
-        ? `${skill.category}/${skill.name}`
-        : skill.name;
+      const identifier = skill.category ? `${skill.category}/${skill.name}` : skill.name;
       const content = await invoke<string>("inspect_skill", { identifier });
       setDetailContent(content);
     } catch {
@@ -169,8 +188,8 @@ function SkillsPanel({
       setShowConfigModal(false);
       setConfigSkill(null);
       loadCatalog(skillPage);
-    } catch (err) {
-// console.error("Save config failed:", err);
+    } catch {
+      // console.error("Save config failed:", err);
     }
   };
 
@@ -185,11 +204,16 @@ function SkillsPanel({
 
   const getSourceLabel = (source: string) => {
     switch (source) {
-      case "builtin": return t("skills.builtinSources");
-      case "hub": return t("skills.hubSources");
-      case "local": return t("skills.localSources");
-      case "hermes-dynamic": return "Hermes";
-      default: return source;
+      case "builtin":
+        return t("skills.builtinSources");
+      case "hub":
+        return t("skills.hubSources");
+      case "local":
+        return t("skills.localSources");
+      case "hermes-dynamic":
+        return "Hermes";
+      default:
+        return source;
     }
   };
 
@@ -217,7 +241,9 @@ function SkillsPanel({
         </button>
         {start > 1 && (
           <>
-            <button className={skillStyles.pageBtn} onClick={() => loadCatalog(1)}>1</button>
+            <button className={skillStyles.pageBtn} onClick={() => loadCatalog(1)}>
+              1
+            </button>
             {start > 2 && <span className={skillStyles.pageEllipsis}>…</span>}
           </>
         )}
@@ -233,7 +259,9 @@ function SkillsPanel({
         {end < total && (
           <>
             {end < total - 1 && <span className={skillStyles.pageEllipsis}>…</span>}
-            <button className={skillStyles.pageBtn} onClick={() => loadCatalog(total)}>{total}</button>
+            <button className={skillStyles.pageBtn} onClick={() => loadCatalog(total)}>
+              {total}
+            </button>
           </>
         )}
         <button
@@ -299,9 +327,7 @@ function SkillsPanel({
           value={activeCategory}
           onChange={(e) => setActiveCategory(e.target.value)}
         >
-          <option value="all">
-            {t("skills.allCategories")}
-          </option>
+          <option value="all">{t("skills.allCategories")}</option>
           {categories.map((cat) => (
             <option key={cat.id} value={cat.id}>
               {cat.icon} {cat.name} ({cat.count})
@@ -310,9 +336,7 @@ function SkillsPanel({
         </select>
       </div>
 
-      {installMsg && (
-        <div className={skillStyles.installMsg}>{installMsg}</div>
-      )}
+      {installMsg && <div className={skillStyles.installMsg}>{installMsg}</div>}
 
       {loading && (
         <div className={skillStyles.skillsLoading}>
@@ -330,9 +354,7 @@ function SkillsPanel({
                   <span className={skillStyles.skillIconEmoji}>
                     {skill.category ? getCategoryIcon(skill.category) : "🔧"}
                   </span>
-                  <span className={skillStyles.skillIconLetter}>
-                    {getSkillInitial(skill.name)}
-                  </span>
+                  <span className={skillStyles.skillIconLetter}>{getSkillInitial(skill.name)}</span>
                 </div>
                 <div className={skillStyles.skillCardHeader}>
                   <span className={skillStyles.skillCardName}>{skill.name}</span>
@@ -351,10 +373,7 @@ function SkillsPanel({
                     ⋮
                   </button>
                   {menuOpen === skill.id && (
-                    <div
-                      className={skillStyles.skillCardMenu}
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <div className={skillStyles.skillCardMenu} onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => {
                           handleInspect(skill);
@@ -399,9 +418,7 @@ function SkillsPanel({
                     {skill.installed ? t("skills.installed") : t("skills.notInstalled")}
                   </span>
                   {skill.categoryLabel && (
-                    <span className={skillStyles.tagBadge}>
-                      {skill.categoryLabel}
-                    </span>
+                    <span className={skillStyles.tagBadge}>{skill.categoryLabel}</span>
                   )}
                   {skill.tags.slice(0, 2).map((tag) => (
                     <span key={tag} className={skillStyles.tagBadge}>
@@ -427,9 +444,7 @@ function SkillsPanel({
                 >
                   <span className={skillStyles.descIndicator}>ℹ</span>
                   {tooltipSkill === skill.id && (
-                    <div className={skillStyles.descTooltipContent}>
-                      {skill.description}
-                    </div>
+                    <div className={skillStyles.descTooltipContent}>{skill.description}</div>
                   )}
                 </div>
               )}
@@ -471,15 +486,30 @@ function SkillsPanel({
       )}
 
       {showConfigModal && configSkill && configSkill.configSchema && (
-        <div className={skillStyles.modalOverlay} onClick={() => { setShowConfigModal(false); setConfigSkill(null); }}>
+        <div
+          className={skillStyles.modalOverlay}
+          onClick={() => {
+            setShowConfigModal(false);
+            setConfigSkill(null);
+          }}
+        >
           <div
             className={skillStyles.modalContent}
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 480 }}
           >
             <div className={skillStyles.modalHeader}>
-              <h3>{configSkill.installed ? t("skills.editConfig") : t("skills.installConfig")} - {configSkill.name}</h3>
-              <button className={skillStyles.modalClose} onClick={() => { setShowConfigModal(false); setConfigSkill(null); }}>
+              <h3>
+                {configSkill.installed ? t("skills.editConfig") : t("skills.installConfig")} -{" "}
+                {configSkill.name}
+              </h3>
+              <button
+                className={skillStyles.modalClose}
+                onClick={() => {
+                  setShowConfigModal(false);
+                  setConfigSkill(null);
+                }}
+              >
                 ×
               </button>
             </div>
@@ -491,7 +521,9 @@ function SkillsPanel({
                     {field.required && <span style={{ color: "red", marginLeft: 4 }}>*</span>}
                   </label>
                   {field.description && (
-                    <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: "0 0 6px 0" }}>
+                    <p
+                      style={{ fontSize: 12, color: "var(--text-secondary)", margin: "0 0 6px 0" }}
+                    >
                       {field.description}
                     </p>
                   )}
@@ -500,7 +532,12 @@ function SkillsPanel({
                       href={field.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      style={{ fontSize: 12, color: "var(--accent)", display: "block", marginBottom: 6 }}
+                      style={{
+                        fontSize: 12,
+                        color: "var(--accent)",
+                        display: "block",
+                        marginBottom: 6,
+                      }}
                     >
                       {t("skills.getConfigUrl")} →
                     </a>
@@ -526,7 +563,10 @@ function SkillsPanel({
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 20 }}>
                 <button
                   className={cardStyles.cardAddBtn}
-                  onClick={() => { setShowConfigModal(false); setConfigSkill(null); }}
+                  onClick={() => {
+                    setShowConfigModal(false);
+                    setConfigSkill(null);
+                  }}
                 >
                   {t("skills.cancel")}
                 </button>
@@ -538,10 +578,7 @@ function SkillsPanel({
                     {t("skills.save")}
                   </button>
                 ) : (
-                  <button
-                    className={skillStyles.installBtn}
-                    onClick={handleConfigInstall}
-                  >
+                  <button className={skillStyles.installBtn} onClick={handleConfigInstall}>
                     {t("skills.install")}
                   </button>
                 )}
@@ -552,15 +589,24 @@ function SkillsPanel({
       )}
 
       {successModal.open && (
-        <div className={skillStyles.modalOverlay} onClick={() => setSuccessModal({ ...successModal, open: false })}>
+        <div
+          className={skillStyles.modalOverlay}
+          onClick={() => setSuccessModal({ ...successModal, open: false })}
+        >
           <div
             className={skillStyles.modalContent}
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 400, textAlign: "center" }}
           >
             <div className={skillStyles.modalHeader}>
-              <h3>{successModal.success ? "✓" : "✗"} {successModal.success ? t("skills.installSuccess") : t("skills.installFail")}</h3>
-              <button className={skillStyles.modalClose} onClick={() => setSuccessModal({ ...successModal, open: false })}>
+              <h3>
+                {successModal.success ? "✓" : "✗"}{" "}
+                {successModal.success ? t("skills.installSuccess") : t("skills.installFail")}
+              </h3>
+              <button
+                className={skillStyles.modalClose}
+                onClick={() => setSuccessModal({ ...successModal, open: false })}
+              >
                 ×
               </button>
             </div>
@@ -568,7 +614,14 @@ function SkillsPanel({
               <p style={{ margin: "0 0 16px 0", fontSize: 14 }}>
                 <strong>{successModal.skillName}</strong>
               </p>
-              <p style={{ margin: 0, fontSize: 13, color: successModal.success ? "var(--color-text-secondary)" : "#e53935", wordBreak: "break-word" }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: 13,
+                  color: successModal.success ? "var(--color-text-secondary)" : "#e53935",
+                  wordBreak: "break-word",
+                }}
+              >
                 {successModal.message}
               </p>
               <div style={{ marginTop: 20 }}>

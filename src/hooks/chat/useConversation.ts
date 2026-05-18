@@ -14,18 +14,18 @@ export function useConversation() {
     try {
       const result = await invoke<Conversation[]>("list_conversations");
       setConversations(result);
-    } catch (err) {
-// console.error("Failed to load conversations:", err);
+    } catch {
+      // console.error("Failed to load conversations:", err);
     }
   };
 
   const loadMessages = async (conversationId: string) => {
     const versionBefore = cacheVersionRef.current.get(conversationId) || 0;
-// console.log("[loadMessages] start, convId:", conversationId, "versionBefore:", versionBefore);
+    // console.log("[loadMessages] start, convId:", conversationId, "versionBefore:", versionBefore);
     try {
       const result = await invoke<Message[]>("list_messages", { conversationId });
       const versionAfter = cacheVersionRef.current.get(conversationId) || 0;
-// console.log("[loadMessages] done, convId:", conversationId, "versionAfter:", versionAfter, "dbMsgCount:", result.length, "skipped:", versionAfter > versionBefore);
+      // console.log("[loadMessages] done, convId:", conversationId, "versionAfter:", versionAfter, "dbMsgCount:", result.length, "skipped:", versionAfter > versionBefore);
       if (versionAfter > versionBefore) {
         return;
       }
@@ -33,8 +33,8 @@ export function useConversation() {
       if (conversationId === currentConversationIdRef.current) {
         setMessages(result);
       }
-    } catch (err) {
-// console.error("Failed to load messages:", err);
+    } catch {
+      // console.error("Failed to load messages:", err);
     }
   };
 
@@ -65,8 +65,8 @@ export function useConversation() {
       currentConversationIdRef.current = result.id;
       setMessages([]);
       return result.id;
-    } catch (err) {
-// console.error("Failed to create conversation:", err);
+    } catch {
+      // console.error("Failed to create conversation:", err);
       return null;
     }
   };
@@ -85,8 +85,8 @@ export function useConversation() {
         currentConversationIdRef.current = null;
         setMessages([]);
       }
-    } catch (err) {
-// console.error("Failed to delete conversation:", err);
+    } catch {
+      // console.error("Failed to delete conversation:", err);
     }
   };
 
@@ -94,8 +94,8 @@ export function useConversation() {
     try {
       await invoke("rename_conversation", { id, title });
       setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
-    } catch (err) {
-// console.error("Failed to rename conversation:", err);
+    } catch {
+      // console.error("Failed to rename conversation:", err);
     }
   };
 
@@ -103,8 +103,8 @@ export function useConversation() {
     try {
       await invoke("update_conversation_kb_ids", { id, kbIds });
       setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, kbIds } : c)));
-    } catch (err) {
-// console.error("Failed to save kb_ids:", err);
+    } catch {
+      // console.error("Failed to save kb_ids:", err);
     }
   };
 
@@ -113,7 +113,7 @@ export function useConversation() {
     const updated = [...cached, message];
     messagesMapRef.current.set(convId, updated);
     cacheVersionRef.current.set(convId, (cacheVersionRef.current.get(convId) || 0) + 1);
-// console.log("[addMessageToCache] convId:", convId, "currentConvId:", currentConversationIdRef.current, "match:", convId === currentConversationIdRef.current, "msgCount:", updated.length, "messageType:", message.messageType);
+    // console.log("[addMessageToCache] convId:", convId, "currentConvId:", currentConversationIdRef.current, "match:", convId === currentConversationIdRef.current, "msgCount:", updated.length, "messageType:", message.messageType);
     if (convId === currentConversationIdRef.current) {
       setMessages(updated);
     }

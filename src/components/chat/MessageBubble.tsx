@@ -53,7 +53,7 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
   const [showTranscript, setShowTranscript] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const isVoiceMessage = message.messageType === "voice";
-// console.log("[MessageBubble]", message.id, message.role, "type:", message.messageType, "voice:", isVoiceMessage, "audio:", message.audioPath);
+  // console.log("[MessageBubble]", message.id, message.role, "type:", message.messageType, "voice:", isVoiceMessage, "audio:", message.audioPath);
 
   const handleTts = useCallback(async () => {
     if (ttsPaused && audioRef.current) {
@@ -113,21 +113,21 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
         setTtsPlaying(true);
         setTtsPaused(false);
       } else {
-// console.warn("TTS failed:", result.error);
+        // console.warn("TTS failed:", result.error);
       }
-    } catch (err) {
-// console.warn("TTS error:", err);
+    } catch {
+      // console.warn("TTS error:", err);
     } finally {
       setTtsLoading(false);
     }
   }, [message.content, ttsPlaying, ttsPaused]);
 
-  const releaseTtsUrl = useCallback(() => {
+  const releaseTtsUrl = () => {
     if (ttsObjectUrlRef.current) {
       URL.revokeObjectURL(ttsObjectUrlRef.current);
       ttsObjectUrlRef.current = null;
     }
-  }, []);
+  };
 
   const handleTtsStop = useCallback(() => {
     if (audioRef.current) {
@@ -138,14 +138,17 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
     releaseTtsUrl();
     setTtsPlaying(false);
     setTtsPaused(false);
-  }, [releaseTtsUrl]);
+  }, []);
 
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    if (isVoiceMessage && message.content) {
-      e.preventDefault();
-      setContextMenu({ x: e.clientX, y: e.clientY });
-    }
-  }, [isVoiceMessage, message.content]);
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (isVoiceMessage && message.content) {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      }
+    },
+    [isVoiceMessage, message.content]
+  );
 
   const handleTranscriptClick = useCallback(() => {
     setShowTranscript(true);
@@ -168,10 +171,7 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
         )}
       </div>
       {isVoiceMessage ? (
-        <div
-          className={styles.voiceMessageOnly}
-          onContextMenu={handleContextMenu}
-        >
+        <div className={styles.voiceMessageOnly} onContextMenu={handleContextMenu}>
           <AudioPlayer
             audioPath={message.audioPath}
             audioDuration={message.audioDuration}
@@ -191,21 +191,128 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
         <div
           className={`${styles.messageBubble} ${message.role === "user" ? styles.messageBubbleUser : styles.messageBubbleAssistant}`}
         >
-        {message.thinking && (
-          <div className={styles.thinkingBlock}>
-            <span className={`${styles.thinkingLabel} ${styles.thinkingLabelDone}`}>
-              {t("chat.thinkingProcess")}
-            </span>
-            <pre className={styles.thinkingContent}>{message.thinking}</pre>
-          </div>
-        )}
-        {msgFiles.length > 0 && (
-          <div className={styles.messageFiles}>
-            {msgFiles.map((f, i) => (
-              <div
-                key={i}
-                className={`${styles.messageFileItem} ${message.role === "user" ? styles.messageFileItemUser : styles.messageFileItemAssistant}`}
+          {message.thinking && (
+            <div className={styles.thinkingBlock}>
+              <span className={`${styles.thinkingLabel} ${styles.thinkingLabelDone}`}>
+                {t("chat.thinkingProcess")}
+              </span>
+              <pre className={styles.thinkingContent}>{message.thinking}</pre>
+            </div>
+          )}
+          {msgFiles.length > 0 && (
+            <div className={styles.messageFiles}>
+              {msgFiles.map((f, i) => (
+                <div
+                  key={i}
+                  className={`${styles.messageFileItem} ${message.role === "user" ? styles.messageFileItemUser : styles.messageFileItemAssistant}`}
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                    <polyline points="13 2 13 9 20 9" />
+                  </svg>
+                  <span className={styles.messageFileName}>{f.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {message.content ? (
+            <div className={styles.messageText}>
+              {message.role === "assistant" ? (
+                <MarkdownRenderer content={message.content} />
+              ) : (
+                message.content
+              )}
+            </div>
+          ) : (
+            message.role === "assistant" && <div className={styles.messageEmpty}>未收到回复</div>
+          )}
+          {message.role === "assistant" && message.content && ttsEnabled && (
+            <div className={styles.messageActions}>
+              <button
+                className={`${styles.actionBtn} ${ttsPlaying || ttsPaused ? styles.actionBtnActive : ""}`}
+                onClick={handleTts}
+                disabled={ttsLoading}
+                title={
+                  ttsPaused
+                    ? t("chat.ttsResume")
+                    : ttsPlaying
+                      ? t("chat.ttsPause")
+                      : t("chat.ttsPlay")
+                }
               >
+                {ttsLoading ? (
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" strokeDasharray="30 30" strokeDashoffset="0">
+                      <animateTransform
+                        attributeName="transform"
+                        type="rotate"
+                        from="0 12 12"
+                        to="360 12 12"
+                        dur="1s"
+                        repeatCount="indefinite"
+                      />
+                    </circle>
+                  </svg>
+                ) : ttsPlaying ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16" rx="1" />
+                    <rect x="14" y="4" width="4" height="16" rx="1" />
+                  </svg>
+                ) : ttsPaused ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="6 3 20 12 6 21" />
+                  </svg>
+                ) : (
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                  </svg>
+                )}
+              </button>
+              {(ttsPlaying || ttsPaused) && (
+                <button
+                  className={styles.actionBtn}
+                  onClick={handleTtsStop}
+                  title={t("chat.ttsStop")}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="4" y="4" width="16" height="16" rx="2" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+          {message.knowledgeSources && message.knowledgeSources.length > 0 && (
+            <div className={styles.knowledgeSources}>
+              <div className={styles.knowledgeSourcesHeader}>
                 <svg
                   width="12"
                   height="12"
@@ -216,116 +323,37 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-                  <polyline points="13 2 13 9 20 9" />
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
                 </svg>
-                <span className={styles.messageFileName}>{f.name}</span>
+                <span>{t("chat.knowledgeSources")}</span>
               </div>
-            ))}
-          </div>
-        )}
-        {message.content ? (
-          <div className={styles.messageText}>
-            {message.role === "assistant" ? (
-              <MarkdownRenderer content={message.content} />
-            ) : (
-              message.content
-            )}
-          </div>
-        ) : (
-          message.role === "assistant" && <div className={styles.messageEmpty}>未收到回复</div>
-        )}
-        {message.role === "assistant" && message.content && ttsEnabled && (
-          <div className={styles.messageActions}>
-            <button
-              className={`${styles.actionBtn} ${(ttsPlaying || ttsPaused) ? styles.actionBtnActive : ""}`}
-              onClick={handleTts}
-              disabled={ttsLoading}
-              title={ttsPaused ? t("chat.ttsResume") : ttsPlaying ? t("chat.ttsPause") : t("chat.ttsPlay")}
-            >
-              {ttsLoading ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" strokeDasharray="30 30" strokeDashoffset="0">
-                    <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite" />
-                  </circle>
-                </svg>
-              ) : ttsPlaying ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="4" width="4" height="16" rx="1" />
-                  <rect x="14" y="4" width="4" height="16" rx="1" />
-                </svg>
-              ) : ttsPaused ? (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="6 3 20 12 6 21" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                </svg>
-              )}
-            </button>
-            {(ttsPlaying || ttsPaused) && (
-              <button
-                className={styles.actionBtn}
-                onClick={handleTtsStop}
-                title={t("chat.ttsStop")}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="4" y="4" width="16" height="16" rx="2" />
-                </svg>
-              </button>
-            )}
-          </div>
-        )}
-        {message.knowledgeSources && message.knowledgeSources.length > 0 && (
-          <div className={styles.knowledgeSources}>
-            <div className={styles.knowledgeSourcesHeader}>
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              </svg>
-              <span>{t("chat.knowledgeSources")}</span>
+              {message.knowledgeSources.map((src: KnowledgeSource, idx: number) => (
+                <div key={idx} className={styles.knowledgeSourceItem}>
+                  <div className={styles.knowledgeSourceMeta}>
+                    {src.kb_name && <span className={styles.knowledgeSourceKb}>{src.kb_name}</span>}
+                    {src.file_name && (
+                      <span className={styles.knowledgeSourceFile}>{src.file_name}</span>
+                    )}
+                    {src.score != null && (
+                      <span className={styles.knowledgeSourceScore}>
+                        {(src.score * 100).toFixed(0)}%
+                      </span>
+                    )}
+                  </div>
+                  <div className={styles.knowledgeSourcePreview}>
+                    {src.content.slice(0, 120)}
+                    {src.content.length > 120 ? "..." : ""}
+                  </div>
+                </div>
+              ))}
             </div>
-            {message.knowledgeSources.map((src: KnowledgeSource, idx: number) => (
-              <div key={idx} className={styles.knowledgeSourceItem}>
-                <div className={styles.knowledgeSourceMeta}>
-                  {src.kb_name && <span className={styles.knowledgeSourceKb}>{src.kb_name}</span>}
-                  {src.file_name && (
-                    <span className={styles.knowledgeSourceFile}>{src.file_name}</span>
-                  )}
-                  {src.score != null && (
-                    <span className={styles.knowledgeSourceScore}>
-                      {(src.score * 100).toFixed(0)}%
-                    </span>
-                  )}
-                </div>
-                <div className={styles.knowledgeSourcePreview}>
-                  {src.content.slice(0, 120)}
-                  {src.content.length > 120 ? "..." : ""}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
       )}
       {contextMenu && (
         <div className={styles.contextMenuOverlay} onClick={handleCloseContextMenu}>
-          <div
-            className={styles.contextMenu}
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-          >
+          <div className={styles.contextMenu} style={{ left: contextMenu.x, top: contextMenu.y }}>
             <button className={styles.contextMenuItem} onClick={handleTranscriptClick}>
               {t("chat.voiceToText")}
             </button>

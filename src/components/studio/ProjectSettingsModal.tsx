@@ -58,8 +58,8 @@ export default function ProjectSettingsModal({
       setProjectArtifacts(artifacts);
       const proj = project;
       setProjectGuidelines(proj?.projectGuidelines || "");
-    } catch (err) {
-// console.error("Failed to load project data:", err);
+    } catch {
+      // console.error("Failed to load project data:", err);
     }
   };
 
@@ -85,8 +85,8 @@ export default function ProjectSettingsModal({
       setProjectMembers(members);
       const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", { projectId });
       setProjectArtifacts(artifacts);
-    } catch (err) {
-// console.error("Failed to add member:", err);
+    } catch {
+      // console.error("Failed to add member:", err);
     }
   };
 
@@ -98,8 +98,8 @@ export default function ProjectSettingsModal({
       setProjectMembers(members);
       const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", { projectId });
       setProjectArtifacts(artifacts);
-    } catch (err) {
-// console.error("Failed to remove member:", err);
+    } catch {
+      // console.error("Failed to remove member:", err);
     }
   };
 
@@ -110,8 +110,8 @@ export default function ProjectSettingsModal({
         const members = await invoke<ProjectMember[]>("list_project_members", { projectId });
         setProjectMembers(members);
       }
-    } catch (err) {
-// console.error("Failed to update equipment:", err);
+    } catch {
+      // console.error("Failed to update equipment:", err);
     }
   };
 
@@ -125,8 +125,8 @@ export default function ProjectSettingsModal({
         },
       });
       onProjectsUpdate();
-    } catch (err) {
-// console.error("Failed to save guidelines:", err);
+    } catch {
+      // console.error("Failed to save guidelines:", err);
     }
   };
 
@@ -141,8 +141,8 @@ export default function ProjectSettingsModal({
       a.download = `hermes-project-${Date.now()}.json`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (err) {
-// console.error("Export failed:", err);
+    } catch {
+      // console.error("Export failed:", err);
     }
   };
 
@@ -307,8 +307,8 @@ export default function ProjectSettingsModal({
                               }
                             );
                             setProjectArtifacts(artifacts);
-                          } catch (err) {
-// console.error("Failed to approve:", err);
+                          } catch {
+                            // console.error("Failed to approve:", err);
                           }
                         }}
                       >
@@ -329,8 +329,8 @@ export default function ProjectSettingsModal({
                               }
                             );
                             setProjectArtifacts(artifacts);
-                          } catch (err) {
-// console.error("Failed to reject:", err);
+                          } catch {
+                            // console.error("Failed to reject:", err);
                           }
                         }}
                       >
@@ -702,8 +702,8 @@ function MemoriesTab({
         category: filterCategory === "all" ? undefined : filterCategory,
       });
       setMemories(data);
-    } catch (err) {
-// console.error("Failed to load memories:", err);
+    } catch {
+      // console.error("Failed to load memories:", err);
     }
   };
 
@@ -726,8 +726,8 @@ function MemoriesTab({
       });
       setNewMemory({ category: "general", content: "" });
       loadMemories();
-    } catch (err) {
-// console.error("Failed to add memory:", err);
+    } catch {
+      // console.error("Failed to add memory:", err);
     }
   };
 
@@ -735,8 +735,8 @@ function MemoriesTab({
     try {
       await invoke("delete_project_memory", { id });
       loadMemories();
-    } catch (err) {
-// console.error("Failed to delete memory:", err);
+    } catch {
+      // console.error("Failed to delete memory:", err);
     }
   };
 

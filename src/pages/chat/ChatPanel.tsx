@@ -122,8 +122,8 @@ function ChatPanel({
       try {
         const cfg = await invoke<Record<string, unknown>>("get_knowledge_config");
         setKbGlobalAutoRetrieve(!!cfg.globalAutoRetrieve);
-      } catch (err) {
-// console.warn("Failed to load kb config:", err);
+      } catch {
+        // console.warn("Failed to load kb config:", err);
       }
       try {
         const kbs =
@@ -131,8 +131,8 @@ function ChatPanel({
             "list_knowledge_bases"
           );
         setKbList(kbs);
-      } catch (err) {
-// console.warn("Failed to load kb list:", err);
+      } catch {
+        // console.warn("Failed to load kb list:", err);
       }
     })();
   }, []);
@@ -156,7 +156,7 @@ function ChatPanel({
       kbIds?: string[];
       voiceInfo?: { audioPath: string; audioDuration: number };
     }) => {
-// console.log("[ChatPanel] handleSend, params:", { content: params.content, voiceInfo: params.voiceInfo });
+      // console.log("[ChatPanel] handleSend, params:", { content: params.content, voiceInfo: params.voiceInfo });
       const result = await sendMessage(
         params.filesJson,
         params.model,
@@ -167,7 +167,7 @@ function ChatPanel({
         params.voiceInfo,
         params.content
       );
-// console.log("[ChatPanel] handleSend result:", result);
+      // console.log("[ChatPanel] handleSend result:", result);
       if (result && params.voiceInfo && !params.content) {
         pendingVoiceRef.current = result;
       }
@@ -180,7 +180,13 @@ function ChatPanel({
       const pending = pendingVoiceRef.current;
       if (!pending) return;
       pendingVoiceRef.current = null;
-      await streamVoiceResponse(pending.conversationId, pending.userMsgId, text, audioPath, audioDuration);
+      await streamVoiceResponse(
+        pending.conversationId,
+        pending.userMsgId,
+        text,
+        audioPath,
+        audioDuration
+      );
     },
     [streamVoiceResponse]
   );
@@ -236,7 +242,9 @@ function ChatPanel({
               })}
             </div>
           ) : (
-            messages.map((msg) => <MessageBubble key={msg.id} message={msg} ttsEnabled={ttsEnabled} />)
+            messages.map((msg) => (
+              <MessageBubble key={msg.id} message={msg} ttsEnabled={ttsEnabled} />
+            ))
           )}
           <StreamingIndicator
             isStreaming={isStreaming}

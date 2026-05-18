@@ -22,8 +22,8 @@ export function useMessageHandler({
           onMessagesUpdate(result);
         }
         return result;
-      } catch (err) {
-// console.error("Failed to load messages:", err);
+      } catch {
+        // console.error("Failed to load messages:", err);
         return [];
       }
     },

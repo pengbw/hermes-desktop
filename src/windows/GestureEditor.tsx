@@ -339,7 +339,6 @@ export default function GestureEditor({
       },
       undefined,
       (_err) => {
-        // console.error("Failed to load VRM for gesture editor:", _err);
         setLoading(false);
       }
     );
@@ -388,9 +387,7 @@ export default function GestureEditor({
           const q = eulerToQuat(p);
           node.quaternion.set(q.x, q.y, q.z, q.w);
         }
-      } catch (err) {
-// console.warn("Failed to apply gesture pose:", err);
-      }
+      } catch {}
     }
   }
 

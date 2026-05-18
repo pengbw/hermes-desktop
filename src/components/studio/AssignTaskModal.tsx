@@ -74,8 +74,8 @@ export default function AssignTaskModal({
       });
       onAssigned();
       onClose();
-    } catch (err) {
-// console.error("Failed to assign task:", err);
+    } catch {
+      // console.error("Failed to assign task:", err);
     } finally {
       setLoading(false);
     }

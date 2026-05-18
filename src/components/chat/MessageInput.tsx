@@ -42,38 +42,39 @@ export default function MessageInput({
   const { t } = useI18n();
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
 
-  const { voiceState, installError, progressText, micError, toggleRecording, installStt } = useVoiceInput({
-    onResult: () => {},
-    onRecordingComplete: (audioPath) => {
-// console.log("[MessageInput] onRecordingComplete, audioPath:", audioPath);
-      const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
-      onSend({
-        voiceInfo: { audioPath, audioDuration: 0 },
-        forceKbRetrieve: shouldKbRetrieve,
-        kbIds: shouldKbRetrieve ? pendingKbIds : undefined,
-      });
-      setInput("");
-    },
-    onSttComplete: (text, audioPath, audioDuration) => {
-      if (onSttComplete) {
-        onSttComplete(text, audioPath, audioDuration);
-      }
-    },
-    onFinalResult: (text, audioPath, audioDuration) => {
-      if (audioPath) {
+  const { voiceState, installError, progressText, micError, toggleRecording, installStt } =
+    useVoiceInput({
+      onResult: () => {},
+      onRecordingComplete: (audioPath) => {
+        // console.log("[MessageInput] onRecordingComplete, audioPath:", audioPath);
         const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
         onSend({
-          content: text.trim(),
-          voiceInfo: { audioPath, audioDuration: audioDuration ?? 0 },
+          voiceInfo: { audioPath, audioDuration: 0 },
           forceKbRetrieve: shouldKbRetrieve,
           kbIds: shouldKbRetrieve ? pendingKbIds : undefined,
         });
         setInput("");
-      } else {
-        setInput(text);
-      }
-    },
-  });
+      },
+      onSttComplete: (text, audioPath, audioDuration) => {
+        if (onSttComplete) {
+          onSttComplete(text, audioPath, audioDuration);
+        }
+      },
+      onFinalResult: (text, audioPath, audioDuration) => {
+        if (audioPath) {
+          const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
+          onSend({
+            content: text.trim(),
+            voiceInfo: { audioPath, audioDuration: audioDuration ?? 0 },
+            forceKbRetrieve: shouldKbRetrieve,
+            kbIds: shouldKbRetrieve ? pendingKbIds : undefined,
+          });
+          setInput("");
+        } else {
+          setInput(text);
+        }
+      },
+    });
   const [isDragging, setIsDragging] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [modelList, setModelList] = useState<{ id: string; ownedBy?: string }[]>([]);
@@ -97,8 +98,8 @@ export default function MessageInput({
             { id: string; name: string; value: string; baseUrl: string; apiKey: string }[]
           >("list_providers");
         setProviders(list);
-      } catch (e) {
-// console.error("Failed to load providers:", e);
+      } catch {
+        // console.error("Failed to load providers:", e);
       }
     };
     const loadCurrentModel = async () => {
@@ -106,8 +107,8 @@ export default function MessageInput({
         const config = await invoke<{ model: string; provider: string }>("get_hermes_config");
         setCurrentModel(config.model);
         setCurrentProvider(config.provider);
-      } catch (e) {
-// console.error("Failed to load model config:", e);
+      } catch {
+        // console.error("Failed to load model config:", e);
       }
     };
     loadProviders();
@@ -137,8 +138,8 @@ export default function MessageInput({
           providerValue: currentProvider,
         });
         setModelList(list);
-      } catch (e) {
-// console.error("Failed to load model list:", e);
+      } catch {
+        // console.error("Failed to load model list:", e);
         setModelList([]);
       }
     })();
@@ -156,8 +157,8 @@ export default function MessageInput({
           fileBytes: bytes,
         });
         result.push({ name: f.name, path: tempPath });
-      } catch (e) {
-// console.error("Failed to save temp file:", f.name, e);
+      } catch {
+        // console.error("Failed to save temp file:", f.name, e);
       }
     }
     return result;
@@ -419,7 +420,7 @@ export default function MessageInput({
                       : voiceState === "installing"
                         ? progressText || t("chat.voiceInstalling") || "Installing..."
                         : voiceState === "install-error"
-                          ? (installError || t("chat.voiceInstallHint") || "Click to retry")
+                          ? installError || t("chat.voiceInstallHint") || "Click to retry"
                           : voiceState === "not-installed"
                             ? t("chat.voiceInstallHint") || "Click to install voice recognition"
                             : voiceState === "mic-error"
@@ -428,8 +429,17 @@ export default function MessageInput({
                                 ? t("chat.voiceStop")
                                 : t("chat.voiceStart")
                 }
-                disabled={isStreaming || voiceState === "checking" || voiceState === "transcribing" || voiceState === "installing"}
-                onClick={voiceState === "not-installed" || voiceState === "install-error" ? installStt : toggleRecording}
+                disabled={
+                  isStreaming ||
+                  voiceState === "checking" ||
+                  voiceState === "transcribing" ||
+                  voiceState === "installing"
+                }
+                onClick={
+                  voiceState === "not-installed" || voiceState === "install-error"
+                    ? installStt
+                    : toggleRecording
+                }
               >
                 <svg
                   width="16"
@@ -448,11 +458,13 @@ export default function MessageInput({
                 </svg>
               </button>
             )}
-            {voiceEnabled && progressText && (voiceState === "installing" || voiceState === "transcribing") && (
-              <span style={{ fontSize: 11, color: "#888", whiteSpace: "nowrap" }}>
-                {progressText}
-              </span>
-            )}
+            {voiceEnabled &&
+              progressText &&
+              (voiceState === "installing" || voiceState === "transcribing") && (
+                <span style={{ fontSize: 11, color: "#888", whiteSpace: "nowrap" }}>
+                  {progressText}
+                </span>
+              )}
           </div>
           <div className={styles.toolbarRight}>
             <div className={styles.modelSelector} ref={modelDropdownRef}>

@@ -19,20 +19,30 @@ interface HomeChatInputProps {
   t: (key: string, params?: Record<string, string | number>) => string;
 }
 
-function HomeChatInput({ sendMessage, isStreaming, placeholder, voiceEnabled, t }: HomeChatInputProps) {
+function HomeChatInput({
+  sendMessage,
+  isStreaming,
+  placeholder,
+  voiceEnabled,
+  t,
+}: HomeChatInputProps) {
   const [homeInput, setHomeInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { voiceState, installError, progressText, micError, toggleRecording, installStt } = useVoiceInput({
-    onResult: () => {},
-    onFinalResult: (text, audioPath, audioDuration) => {
-      if (audioPath) {
-        sendMessage("", text.trim(), undefined, undefined, { audioPath, audioDuration: audioDuration ?? 0 });
-      } else {
-        setHomeInput(text);
-      }
-    },
-  });
+  const { voiceState, installError, progressText, micError, toggleRecording, installStt } =
+    useVoiceInput({
+      onResult: () => {},
+      onFinalResult: (text, audioPath, audioDuration) => {
+        if (audioPath) {
+          sendMessage("", text.trim(), undefined, undefined, {
+            audioPath,
+            audioDuration: audioDuration ?? 0,
+          });
+        } else {
+          setHomeInput(text);
+        }
+      },
+    });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
   const lastCompositionEndRef = useRef(0);
@@ -88,8 +98,8 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, voiceEnabled, t 
           fileBytes: bytes,
         });
         result.push({ name: f.name, path: tempPath });
-      } catch (e) {
-// console.error("Failed to save temp file:", f.name, e);
+      } catch {
+        // console.error("Failed to save temp file:", f.name, e);
       }
     }
     return result;
@@ -326,7 +336,7 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, voiceEnabled, t 
                       : voiceState === "installing"
                         ? progressText || t("chat.voiceInstalling") || "Installing..."
                         : voiceState === "install-error"
-                          ? (installError || t("chat.voiceInstallHint") || "Click to retry")
+                          ? installError || t("chat.voiceInstallHint") || "Click to retry"
                           : voiceState === "not-installed"
                             ? t("chat.voiceInstallHint") || "Click to install voice recognition"
                             : voiceState === "mic-error"
@@ -335,8 +345,17 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, voiceEnabled, t 
                                 ? t("chat.voiceStop")
                                 : t("chat.voiceStart")
                 }
-                disabled={isStreaming || voiceState === "checking" || voiceState === "transcribing" || voiceState === "installing"}
-                onClick={voiceState === "not-installed" || voiceState === "install-error" ? installStt : toggleRecording}
+                disabled={
+                  isStreaming ||
+                  voiceState === "checking" ||
+                  voiceState === "transcribing" ||
+                  voiceState === "installing"
+                }
+                onClick={
+                  voiceState === "not-installed" || voiceState === "install-error"
+                    ? installStt
+                    : toggleRecording
+                }
               >
                 <svg
                   width="16"
@@ -355,11 +374,13 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, voiceEnabled, t 
                 </svg>
               </button>
             )}
-            {voiceEnabled && progressText && (voiceState === "installing" || voiceState === "transcribing") && (
-              <span style={{ fontSize: 11, color: "#888", whiteSpace: "nowrap" }}>
-                {progressText}
-              </span>
-            )}
+            {voiceEnabled &&
+              progressText &&
+              (voiceState === "installing" || voiceState === "transcribing") && (
+                <span style={{ fontSize: 11, color: "#888", whiteSpace: "nowrap" }}>
+                  {progressText}
+                </span>
+              )}
           </div>
           <div className={inputStyles.toolbarRight}>
             <button

@@ -57,7 +57,7 @@ function TaskManagement({
   const [taskPage, setTaskPage] = useState(1);
   const TASK_PAGE_SIZE = 10;
 
-  const defaultSelectedId = useMemo(() => tasks.length > 0 ? tasks[0].id : null, [tasks]);
+  const defaultSelectedId = useMemo(() => (tasks.length > 0 ? tasks[0].id : null), [tasks]);
   const activeTaskId = selectedTaskId ?? defaultSelectedId;
 
   const refreshTasks = useCallback(async () => {
@@ -83,8 +83,8 @@ function TaskManagement({
       setNewStatus("todo");
       setShowCreateForm(false);
       refreshTasks();
-    } catch (err) {
-// console.error("Failed to create task:", err);
+    } catch {
+      // console.error("Failed to create task:", err);
     }
   };
 
@@ -92,8 +92,8 @@ function TaskManagement({
     try {
       await invoke("update_project_task", { id: taskId, req: updates });
       refreshTasks();
-    } catch (err) {
-// console.error("Failed to update task:", err);
+    } catch {
+      // console.error("Failed to update task:", err);
     }
   };
 
@@ -102,8 +102,8 @@ function TaskManagement({
       await invoke("delete_project_task", { id: taskId });
       if (editingTask?.id === taskId) setEditingTask(null);
       refreshTasks();
-    } catch (err) {
-// console.error("Failed to delete task:", err);
+    } catch {
+      // console.error("Failed to delete task:", err);
     }
   };
 
@@ -181,7 +181,10 @@ function TaskManagement({
             <button
               key={s.key}
               className={`${styles.taskMgmtStatBtn} ${filterStatus === s.key ? styles.taskMgmtStatBtnActive : ""}`}
-              onClick={() => { setFilterStatus(filterStatus === s.key ? "all" : s.key); setTaskPage(1); }}
+              onClick={() => {
+                setFilterStatus(filterStatus === s.key ? "all" : s.key);
+                setTaskPage(1);
+              }}
               style={{ borderColor: s.color }}
             >
               <span className={styles.taskMgmtStatIcon}>{s.icon}</span>
@@ -196,7 +199,10 @@ function TaskManagement({
           <select
             className={styles.taskMgmtFilterSelect}
             value={filterAssignee}
-            onChange={(e) => { setFilterAssignee(e.target.value); setTaskPage(1); }}
+            onChange={(e) => {
+              setFilterAssignee(e.target.value);
+              setTaskPage(1);
+            }}
           >
             <option value="all">全部成员</option>
             <option value="">未分配</option>
@@ -364,8 +370,7 @@ function TaskManagement({
                   <div
                     key={task.id}
                     className={
-                      styles.taskMgmtItem +
-                      (isSelected ? " " + styles.taskMgmtItemSelected : "")
+                      styles.taskMgmtItem + (isSelected ? " " + styles.taskMgmtItemSelected : "")
                     }
                     onClick={() => setSelectedTaskId(isSelected ? null : task.id)}
                   >
@@ -406,10 +411,7 @@ function TaskManagement({
                         </span>
                       </div>
                     </div>
-                    <div
-                      className={styles.taskMgmtItemRight}
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <div className={styles.taskMgmtItemRight} onClick={(e) => e.stopPropagation()}>
                       {(task.status === "todo" || task.status === "triage") && (
                         <button
                           className={styles.taskMgmtItemDispatch}
@@ -469,24 +471,39 @@ function TaskManagement({
               >
                 ›
               </button>
-              <span className={styles.taskMgmtPageTotal}>
-                共 {filteredTasks.length} 条
-              </span>
+              <span className={styles.taskMgmtPageTotal}>共 {filteredTasks.length} 条</span>
             </div>
           )}
         </div>
 
         <div className={styles.taskMgmtArtifactPanel}>
-          {activeTaskId ? (() => {
+          {activeTaskId ? (
+            (() => {
               const selectedTask = tasks.find((t) => t.id === activeTaskId);
               const taskFiles = projectFileRecords.filter((f) => f.taskId === activeTaskId);
               if (!selectedTask) return null;
 
               const extIcon: Record<string, string> = {
-                md: "📝", txt: "📄", json: "📋", yaml: "📋", yml: "📋",
-                ts: "💻", tsx: "💻", js: "💻", jsx: "💻", py: "🐍",
-                html: "🌐", css: "🎨", svg: "🖼️", png: "🖼️", jpg: "🖼️",
-                pdf: "📕", doc: "📘", docx: "📘", xls: "📗", xlsx: "📗",
+                md: "📝",
+                txt: "📄",
+                json: "📋",
+                yaml: "📋",
+                yml: "📋",
+                ts: "💻",
+                tsx: "💻",
+                js: "💻",
+                jsx: "💻",
+                py: "🐍",
+                html: "🌐",
+                css: "🎨",
+                svg: "🖼️",
+                png: "🖼️",
+                jpg: "🖼️",
+                pdf: "📕",
+                doc: "📘",
+                docx: "📘",
+                xls: "📗",
+                xlsx: "📗",
               };
 
               const roleGrouped = taskFiles.reduce(
@@ -505,9 +522,7 @@ function TaskManagement({
                     <span className={styles.taskMgmtArtifactTitle}>
                       📦 {selectedTask.title} 的产物
                     </span>
-                    <span className={styles.taskMgmtArtifactCount}>
-                      {taskFiles.length} 文件
-                    </span>
+                    <span className={styles.taskMgmtArtifactCount}>{taskFiles.length} 文件</span>
                   </div>
                   {taskFiles.length === 0 ? (
                     <p className={styles.taskMgmtArtifactEmpty}>暂无产物</p>
@@ -523,9 +538,7 @@ function TaskManagement({
                               <span className={styles.taskMgmtArtifactRoleIcon}>
                                 {isUnassigned ? "📁" : role?.icon || "🤖"}
                               </span>
-                              <span className={styles.taskMgmtArtifactRoleName}>
-                                {roleName}
-                              </span>
+                              <span className={styles.taskMgmtArtifactRoleName}>{roleName}</span>
                               <span className={styles.taskMgmtArtifactRoleCount}>
                                 {files.length}
                               </span>
@@ -550,9 +563,7 @@ function TaskManagement({
                                     }}
                                     style={{ cursor: file.filePath ? "pointer" : "default" }}
                                   >
-                                    <span className={styles.taskMgmtArtifactFileIcon}>
-                                      {icon}
-                                    </span>
+                                    <span className={styles.taskMgmtArtifactFileIcon}>{icon}</span>
                                     <div className={styles.taskMgmtArtifactFileInfo}>
                                       <span className={styles.taskMgmtArtifactFileName}>
                                         {file.fileName}
@@ -579,18 +590,17 @@ function TaskManagement({
                   )}
                 </>
               );
-            })() : (
-              <div className={styles.taskMgmtArtifactDefault}>
-                <div className={styles.taskMgmtArtifactDefaultIcon}>📦</div>
-                <div className={styles.taskMgmtArtifactDefaultText}>
-                  点击左侧任务查看产物
-                </div>
-                <div className={styles.taskMgmtArtifactDefaultSub}>
-                  共 {projectFileRecords.length} 个产物文件
-                </div>
+            })()
+          ) : (
+            <div className={styles.taskMgmtArtifactDefault}>
+              <div className={styles.taskMgmtArtifactDefaultIcon}>📦</div>
+              <div className={styles.taskMgmtArtifactDefaultText}>点击左侧任务查看产物</div>
+              <div className={styles.taskMgmtArtifactDefaultSub}>
+                共 {projectFileRecords.length} 个产物文件
               </div>
-            )}
-          </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {assignModal &&

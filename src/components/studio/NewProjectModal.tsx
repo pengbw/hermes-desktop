@@ -104,8 +104,8 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
 
       handleClose();
       onCreated();
-    } catch (err) {
-// console.error("Failed to create project:", err);
+    } catch {
+      // console.error("Failed to create project:", err);
       alert(t("studio.createFailed") + ": " + err);
     }
   };

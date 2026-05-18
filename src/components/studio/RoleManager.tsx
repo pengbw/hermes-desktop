@@ -51,8 +51,8 @@ function RoleSkillPanel({
     try {
       const roleData = await invoke<RoleSkill[]>("list_role_skills", { roleId });
       setRoleSkills(roleData);
-    } catch (err) {
-// console.error("Failed to load role skills:", err);
+    } catch {
+      // console.error("Failed to load role skills:", err);
     }
     try {
       const memberData = await invoke<ProjectMemberSkill[]>("list_member_skills", {
@@ -60,8 +60,8 @@ function RoleSkillPanel({
         memberId,
       });
       setMemberSkills(memberData);
-    } catch (err) {
-// console.error("Failed to load member skills:", err);
+    } catch {
+      // console.error("Failed to load member skills:", err);
     }
   }, [roleId, projectId, memberId]);
 
@@ -73,8 +73,8 @@ function RoleSkillPanel({
     try {
       await invoke("unbind_role_skill", { id });
       loadSkills();
-    } catch (err) {
-// console.error("Failed to unbind role skill:", err);
+    } catch {
+      // console.error("Failed to unbind role skill:", err);
     }
   };
 
@@ -82,8 +82,8 @@ function RoleSkillPanel({
     try {
       await invoke("bind_member_skill", { projectId, memberId, skillName });
       loadSkills();
-    } catch (err) {
-// console.error("Failed to bind member skill:", err);
+    } catch {
+      // console.error("Failed to bind member skill:", err);
     }
   };
 
@@ -91,8 +91,8 @@ function RoleSkillPanel({
     try {
       await invoke("unbind_member_skill", { id });
       loadSkills();
-    } catch (err) {
-// console.error("Failed to unbind member skill:", err);
+    } catch {
+      // console.error("Failed to unbind member skill:", err);
     }
   };
 
@@ -271,8 +271,8 @@ function RoleManager({
       onMembersUpdate(members);
       const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", { projectId });
       onArtifactsUpdate(artifacts);
-    } catch (err) {
-// console.error("Failed to add member:", err);
+    } catch {
+      // console.error("Failed to add member:", err);
     }
   };
 
@@ -283,8 +283,8 @@ function RoleManager({
       onMembersUpdate(members);
       const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", { projectId });
       onArtifactsUpdate(artifacts);
-    } catch (err) {
-// console.error("Failed to remove member:", err);
+    } catch {
+      // console.error("Failed to remove member:", err);
     }
   };
 

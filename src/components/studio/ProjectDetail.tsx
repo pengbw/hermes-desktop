@@ -63,8 +63,8 @@ function ActivityFeed({
           limit: 20,
         });
         setActivities(data);
-      } catch (err) {
-// console.error("Failed to load activities:", err);
+      } catch {
+        // console.error("Failed to load activities:", err);
       }
     };
     load();
@@ -172,8 +172,7 @@ function ProjectDetail({
   const loadFileRecords = useCallback(() => {
     if (fileRecordsTimerRef.current) clearTimeout(fileRecordsTimerRef.current);
     fileRecordsTimerRef.current = setTimeout(() => {
-      invoke<number>("cleanup_invalid_file_records", { projectId: project.id })
-        .catch(() => {});
+      invoke<number>("cleanup_invalid_file_records", { projectId: project.id }).catch(() => {});
       invoke("scan_project_files", { projectId: project.id })
         .then(() => {
           invoke<ProjectFileRecord[]>("list_project_file_records", { projectId: project.id })
@@ -249,8 +248,12 @@ function ProjectDetail({
         projectId: event.payload.projectId,
         fromRoleId: event.payload.roleId,
       }).catch((err) => console.error("Failed to trigger workflow execution:", err));
-    }).then((fn) => { unlistenFn = fn; });
-    return () => { unlistenFn?.(); };
+    }).then((fn) => {
+      unlistenFn = fn;
+    });
+    return () => {
+      unlistenFn?.();
+    };
   }, [project.id]);
 
   const mentionData = useMemo(
@@ -324,8 +327,8 @@ function ProjectDetail({
         projectId: project.id,
       });
       onMessagesUpdate(msgs);
-    } catch (err) {
-// console.error("Failed to send message:", err);
+    } catch {
+      // console.error("Failed to send message:", err);
     }
 
     const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
@@ -357,8 +360,8 @@ function ProjectDetail({
                   messageType: "text",
                 },
               });
-            } catch (err) {
-// console.error("Failed to save AI message:", err);
+            } catch {
+              // console.error("Failed to save AI message:", err);
             }
           }
           const msgs = await invoke<ProjectMessage[]>("list_project_messages", {
@@ -380,8 +383,8 @@ function ProjectDetail({
           message: cleanContent,
           eventId,
         });
-      } catch (err) {
-// console.error("Failed to chat with roles:", err);
+      } catch {
+        // console.error("Failed to chat with roles:", err);
         setProjectChatStreaming(false);
         setProjectChatStreamed("");
         unlisten();
@@ -415,8 +418,8 @@ function ProjectDetail({
               projectId: project.id,
             });
             onMessagesUpdate(msgs);
-          } catch (err) {
-// console.error("Failed to save AI message:", err);
+          } catch {
+            // console.error("Failed to save AI message:", err);
           }
           setProjectChatStreaming(false);
           setProjectChatStreamed("");
@@ -435,8 +438,8 @@ function ProjectDetail({
         message: cleanContent,
         eventId,
       });
-    } catch (err) {
-// console.error("Failed to chat with role:", err);
+    } catch {
+      // console.error("Failed to chat with role:", err);
       setProjectChatStreaming(false);
       setProjectChatStreamed("");
       unlisten();
@@ -1057,8 +1060,8 @@ function ProjectDetail({
                           });
                           onMessagesUpdate(msgs);
                           setChatInput("");
-                        } catch (err) {
-// console.error("Auto delegate failed:", err);
+                        } catch {
+                          // console.error("Auto delegate failed:", err);
                         } finally {
                           setAutoDelegateRunning(false);
                         }

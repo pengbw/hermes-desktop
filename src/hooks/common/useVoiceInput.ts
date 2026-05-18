@@ -66,11 +66,21 @@ export function useVoiceInput({
   const onRecordingCompleteRef = useRef(onRecordingComplete);
   const onSttCompleteRef = useRef(onSttComplete);
   const langRef = useRef(lang);
-  useEffect(() => { onResultRef.current = onResult; });
-  useEffect(() => { onFinalResultRef.current = onFinalResult; });
-  useEffect(() => { onRecordingCompleteRef.current = onRecordingComplete; });
-  useEffect(() => { onSttCompleteRef.current = onSttComplete; });
-  useEffect(() => { langRef.current = lang; });
+  useEffect(() => {
+    onResultRef.current = onResult;
+  });
+  useEffect(() => {
+    onFinalResultRef.current = onFinalResult;
+  });
+  useEffect(() => {
+    onRecordingCompleteRef.current = onRecordingComplete;
+  });
+  useEffect(() => {
+    onSttCompleteRef.current = onSttComplete;
+  });
+  useEffect(() => {
+    langRef.current = lang;
+  });
 
   useEffect(() => {
     (async () => {
@@ -120,7 +130,7 @@ export function useVoiceInput({
       await startRecording();
       setVoiceState("recording");
     } catch (e: unknown) {
-// console.warn("Failed to start mic recording:", e);
+      // console.warn("Failed to start mic recording:", e);
       const errMsg = e instanceof Error ? e.message : String(e ?? "Unknown error");
       const lowerMsg = errMsg.toLowerCase();
       // 检测麦克风权限相关错误（macOS/Windows 通用）
@@ -146,14 +156,14 @@ export function useVoiceInput({
     let audioPath: string;
     try {
       audioPath = await stopRecording();
-    } catch (e) {
-// console.warn("Failed to stop mic recording:", e);
+    } catch {
+      // console.warn("Failed to stop mic recording:", e);
       setVoiceState("ready");
       return;
     }
 
     if (!audioPath) {
-// console.warn("No audio path returned from stopRecording");
+      // console.warn("No audio path returned from stopRecording");
       setVoiceState("ready");
       return;
     }
@@ -176,29 +186,25 @@ export function useVoiceInput({
         const resultAudioDuration = result.audioDuration ?? undefined;
 
         if (onSttCompleteRef.current) {
-          onSttCompleteRef.current(
-            result.text.trim(),
-            resultAudioPath,
-            resultAudioDuration
-          );
+          onSttCompleteRef.current(result.text.trim(), resultAudioPath, resultAudioDuration);
         } else if (onFinalResultRef.current) {
-          onFinalResultRef.current(
-            result.text.trim(),
-            resultAudioPath,
-            resultAudioDuration
-          );
+          onFinalResultRef.current(result.text.trim(), resultAudioPath, resultAudioDuration);
         } else {
           onResultRef.current(result.text.trim());
         }
       } else if (result.success && !result.text.trim()) {
         if (onSttCompleteRef.current) {
-          onSttCompleteRef.current("", result.audioPath ?? audioPath, result.audioDuration ?? undefined);
+          onSttCompleteRef.current(
+            "",
+            result.audioPath ?? audioPath,
+            result.audioDuration ?? undefined
+          );
         }
       } else if (result.error) {
-// console.warn("Transcription failed:", result.error);
+        // console.warn("Transcription failed:", result.error);
       }
-    } catch (e) {
-// console.warn("Transcription error:", e);
+    } catch {
+      // console.warn("Transcription error:", e);
     } finally {
       setVoiceState("ready");
       setProgressText(null);
@@ -221,7 +227,7 @@ export function useVoiceInput({
       await invoke("install_stt");
     } catch (e: any) {
       const msg = typeof e === "string" ? e : e?.toString() || "Unknown error";
-// console.warn("Failed to install STT:", msg);
+      // console.warn("Failed to install STT:", msg);
       setInstallError(msg);
       setVoiceState("install-error");
     }
@@ -231,7 +237,11 @@ export function useVoiceInput({
   useEffect(() => {
     return () => {
       if (voiceState === "recording") {
-        try { stopRecording(); } catch { /* 静默处理，避免卸载时报错 */ }
+        try {
+          stopRecording();
+        } catch {
+          /* 静默处理，避免卸载时报错 */
+        }
       }
     };
   }, [voiceState]);

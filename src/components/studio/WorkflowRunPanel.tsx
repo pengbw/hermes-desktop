@@ -40,8 +40,8 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
     try {
       const data = await invoke<WorkflowRun[]>("list_workflow_runs", { projectId });
       setRuns(data);
-    } catch (err) {
-// console.error("Failed to load workflow runs:", err);
+    } catch {
+      // console.error("Failed to load workflow runs:", err);
     }
   }, [projectId]);
 
@@ -49,8 +49,8 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
     try {
       const data = await invoke<WorkflowRunStatus>("get_workflow_run_status", { runId });
       setRunStatus(data);
-    } catch (err) {
-// console.error("Failed to load run status:", err);
+    } catch {
+      // console.error("Failed to load run status:", err);
     }
   }, []);
 
@@ -111,8 +111,8 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       setShowStartForm(false);
       await loadRuns();
       setSelectedRunId(run.id);
-    } catch (err) {
-// console.error("Failed to start workflow run:", err);
+    } catch {
+      // console.error("Failed to start workflow run:", err);
       alert("启动工作流失败: " + err);
     }
   };
@@ -122,8 +122,8 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       await invoke("pause_workflow_run", { runId });
       await loadRuns();
       if (selectedRunId === runId) await loadRunStatus(runId);
-    } catch (err) {
-// console.error("Failed to pause:", err);
+    } catch {
+      // console.error("Failed to pause:", err);
     }
   };
 
@@ -132,8 +132,8 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       await invoke("resume_workflow_run", { runId });
       await loadRuns();
       if (selectedRunId === runId) await loadRunStatus(runId);
-    } catch (err) {
-// console.error("Failed to resume:", err);
+    } catch {
+      // console.error("Failed to resume:", err);
     }
   };
 
@@ -151,8 +151,8 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       setConfirmComment("");
       await loadRuns();
       await loadRunStatus(runId);
-    } catch (err) {
-// console.error("Failed to confirm step:", err);
+    } catch {
+      // console.error("Failed to confirm step:", err);
     }
   };
 

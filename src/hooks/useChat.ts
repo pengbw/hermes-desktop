@@ -101,8 +101,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
               messageType: voiceInfo ? "voice" : "text",
             },
           });
-        } catch (err) {
-// console.error("Failed to save user message (home):", err);
+        } catch {
+          // console.error("Failed to save user message (home):", err);
         }
 
         conv.addMessageToCache(convId, userMsg);
@@ -135,8 +135,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
             conv.loadConversations();
           }
         );
-      } catch (err) {
-// console.error("Failed to start chat from home:", err);
+      } catch {
+        // console.error("Failed to start chat from home:", err);
       }
     }, 50);
   };
@@ -153,7 +153,7 @@ export function useChat(t: (key: string, params?: Record<string, string | number
   ) => {
     const effectiveContent = contentOverride || input.trim();
     const isVoiceOnly = !!voiceInfo && !effectiveContent && !attachedFiles;
-// console.log("[sendMessage] effectiveContent:", JSON.stringify(effectiveContent), "isVoiceOnly:", isVoiceOnly, "voiceInfo:", voiceInfo, "attachedFiles:", attachedFiles, "isStreaming:", stream.isStreaming);
+    // console.log("[sendMessage] effectiveContent:", JSON.stringify(effectiveContent), "isVoiceOnly:", isVoiceOnly, "voiceInfo:", voiceInfo, "attachedFiles:", attachedFiles, "isStreaming:", stream.isStreaming);
     if ((!effectiveContent && !attachedFiles && !isVoiceOnly) || stream.isStreaming) return;
 
     let conversationId = conv.currentConversationId;
@@ -171,8 +171,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
         conv.setConversations((prev) => [conversation, ...prev]);
         conv.setCurrentConversation(conversation.id);
         stream.setActiveConversation(conversation.id);
-      } catch (err) {
-// console.error("Failed to create conversation:", err);
+      } catch {
+        // console.error("Failed to create conversation:", err);
         return;
       }
     }
@@ -197,8 +197,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
           const fileList = nonImageFiles.map((f) => `- ${f.name}: ${f.path}`).join("\n");
           sendContent = `${sendContent}\n\n附件文件路径：\n${fileList}`;
         }
-      } catch (err) {
-// console.warn("Failed to parse attached files:", err);
+      } catch {
+        // console.warn("Failed to parse attached files:", err);
       }
     }
 
@@ -214,7 +214,7 @@ export function useChat(t: (key: string, params?: Record<string, string | number
     };
 
     conv.addMessageToCache(conversationId!, userMsg);
-// console.log("[sendMessage] addMessageToCache called, convId:", conversationId, "userMsg:", { id: userMsg.id, content: userMsg.content, audioPath: userMsg.audioPath, audioDuration: userMsg.audioDuration, messageType: userMsg.messageType });
+    // console.log("[sendMessage] addMessageToCache called, convId:", conversationId, "userMsg:", { id: userMsg.id, content: userMsg.content, audioPath: userMsg.audioPath, audioDuration: userMsg.audioDuration, messageType: userMsg.messageType });
     setInput("");
 
     try {
@@ -230,12 +230,12 @@ export function useChat(t: (key: string, params?: Record<string, string | number
           messageType: voiceInfo ? "voice" : "text",
         },
       });
-    } catch (err) {
-// console.error("Failed to save user message:", err);
+    } catch {
+      // console.error("Failed to save user message:", err);
     }
 
     if (isVoiceOnly) {
-// console.log("[sendMessage] isVoiceOnly, returning early with convId:", conversationId, "userMsgId:", userMsg.id);
+      // console.log("[sendMessage] isVoiceOnly, returning early with convId:", conversationId, "userMsgId:", userMsg.id);
       return { conversationId: conversationId!, userMsgId: userMsg.id };
     }
 
@@ -303,8 +303,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
           messageType: "voice",
         },
       });
-    } catch (err) {
-// console.warn("Failed to update voice message content:", err);
+    } catch {
+      // console.warn("Failed to update voice message content:", err);
     }
 
     if (!sttText.trim()) return;

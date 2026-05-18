@@ -15,7 +15,8 @@ use tauri::Listener;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let default_level = if cfg!(debug_assertions) { "info" } else { "off" };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level)).init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

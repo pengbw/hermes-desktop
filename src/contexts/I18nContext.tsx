@@ -88,8 +88,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     try {
       const { emit } = await import("@tauri-apps/api/event");
       await emit("locale-changed", { locale: l });
-    } catch (err) {
-// console.warn("Failed to emit locale-changed event:", err);
+    } catch {
+      // console.warn("Failed to emit locale-changed event:", err);
     }
   }, []);
 

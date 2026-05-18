@@ -252,7 +252,7 @@ export function applyExpression(
     if (duration && onReset) {
       setTimeout(onReset, duration);
     }
-  } catch (err) {
-// console.warn("[Avatar] Expression failed:", err);
+  } catch {
+    // console.warn("[Avatar] Expression failed:", err);
   }
 }

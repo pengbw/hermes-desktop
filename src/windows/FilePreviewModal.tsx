@@ -112,7 +112,7 @@ export default function FilePreviewModal({ filePath, fileName, onClose }: FilePr
         setContent(text);
         setWordBuffer(null);
       }
-    } catch (err) {
+    } catch {
       setError(String(err));
     } finally {
       setLoading(false);

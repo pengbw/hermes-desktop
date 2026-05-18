@@ -82,8 +82,8 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
         { fileId }
       );
       setPreviewChunks(chunks);
-    } catch (e) {
-// console.error("Failed to preview file:", e);
+    } catch {
+      // console.error("Failed to preview file:", e);
     }
   };
 
@@ -95,16 +95,16 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
         const updated = list.find((kb) => kb.id === selectedKbRef.current!.id);
         if (updated) updateSelectedKb(updated);
       }
-    } catch (e) {
-// console.error("Failed to load knowledge bases:", e);
+    } catch {
+      // console.error("Failed to load knowledge bases:", e);
     }
     try {
       const config =
         await invoke<Record<string, string | number | boolean>>("get_knowledge_config");
-// console.log("[kb] loaded config:", config);
+      // console.log("[kb] loaded config:", config);
       setKbGlobalConfig(config);
-    } catch (e) {
-// console.error("Failed to load kb config:", e);
+    } catch {
+      // console.error("Failed to load kb config:", e);
     }
   };
 
@@ -114,8 +114,8 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
         knowledgeBaseId: kbId,
       });
       setKbFiles(files);
-    } catch (e) {
-// console.error("Failed to load knowledge files:", e);
+    } catch {
+      // console.error("Failed to load knowledge files:", e);
     }
   };
 
@@ -141,8 +141,8 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
         for (const id of pendingKbs) {
           try {
             await invoke("index_knowledge_base", { id });
-          } catch (e) {
-// console.warn("[kb] auto-reindex failed:", e);
+          } catch {
+            // console.warn("[kb] auto-reindex failed:", e);
           }
         }
         pendingKbs.clear();
@@ -175,25 +175,25 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
       resetForm();
       loadKnowledgeBases();
       const shouldAutoIndex = result.retrievalMode !== "off" || kbGlobalConfig.globalAutoRetrieve;
-      // console.log("[kb] handleCreate auto-index check:", {
-      //   retrievalMode: result.retrievalMode,
-      //   globalAutoRetrieve: kbGlobalConfig.globalAutoRetrieve,
-      //   shouldAutoIndex,
-      //   directoriesLen: form.directories.length,
-      // });
+      console.log("[kb] handleCreate auto-index check:", {
+        retrievalMode: result.retrievalMode,
+        globalAutoRetrieve: kbGlobalConfig.globalAutoRetrieve,
+        shouldAutoIndex,
+        directoriesLen: form.directories.length,
+      });
       if (result?.id && form.directories.length > 0 && shouldAutoIndex) {
         setIndexingKbId(result.id);
         setIndexProgress({ status: "scanning", current: 0, total: 0, file: "" });
         try {
           await invoke("index_knowledge_base", { id: result.id });
-        } catch (e) {
-// console.error("Auto-index failed:", e);
+        } catch {
+          // console.error("Auto-index failed:", e);
           setIndexingKbId(null);
           setIndexProgress(null);
         }
       }
-    } catch (e) {
-// console.error("Failed to create knowledge base:", e);
+    } catch {
+      // console.error("Failed to create knowledge base:", e);
     }
   };
 
@@ -220,7 +220,7 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
           directories: JSON.stringify(form.directories),
         });
       }
-    } catch (e) {
+    } catch {
       alert("更新知识库失败: " + e);
     }
   };
@@ -236,8 +236,8 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
       await invoke("delete_knowledge_base", { id: deleteTargetId });
       if (selectedKb?.id === deleteTargetId) updateSelectedKb(null);
       loadKnowledgeBases();
-    } catch (e) {
-// console.error("Failed to delete knowledge base:", e);
+    } catch {
+      // console.error("Failed to delete knowledge base:", e);
     } finally {
       setShowDeleteConfirm(false);
       setDeleteTargetId(null);
@@ -249,8 +249,8 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
     setIndexProgress({ status: "scanning", current: 0, total: 0, file: "" });
     try {
       await invoke("index_knowledge_base", { id });
-    } catch (e) {
-// console.error("Failed to index knowledge base:", e);
+    } catch {
+      // console.error("Failed to index knowledge base:", e);
       setIndexingKbId(null);
       setIndexProgress(null);
     }
@@ -268,8 +268,8 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
         }
       );
       setSearchResults(result);
-    } catch (e) {
-// console.error("Failed to search knowledge base:", e);
+    } catch {
+      // console.error("Failed to search knowledge base:", e);
     }
   };
 
@@ -415,8 +415,8 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
                     const json = JSON.parse(text);
                     await invoke("import_knowledge_base", { id: selectedKb.id, data: json });
                     loadKnowledgeBases();
-                  } catch (e) {
-// console.error("Import failed:", e);
+                  } catch {
+                    // console.error("Import failed:", e);
                   }
                 }}
               >

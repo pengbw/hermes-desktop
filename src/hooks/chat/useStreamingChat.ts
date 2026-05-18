@@ -124,7 +124,13 @@ export function useStreamingChat() {
         };
 
         if (isVoiceMessage) {
-          updateChatState(convId, { isStreaming: true, isThinking: true, thinkingContent: "", streamedContent: "", toolProgress: "" });
+          updateChatState(convId, {
+            isStreaming: true,
+            isThinking: true,
+            thinkingContent: "",
+            streamedContent: "",
+            toolProgress: "",
+          });
           (async () => {
             try {
               let audioPath: string | undefined;
@@ -144,9 +150,7 @@ export function useStreamingChat() {
                     audioPath = ttsResult.audioPath;
                     audioDuration = ttsResult.audioDuration ?? undefined;
                   }
-                } catch (ttsErr) {
-// console.warn("Auto TTS generation failed:", ttsErr);
-                }
+                } catch {}
               }
 
               const voiceMsg: Message = {
@@ -168,8 +172,7 @@ export function useStreamingChat() {
                   messageType: "voice",
                 },
               });
-            } catch (saveErr) {
-// console.error("Failed to save voice message:", saveErr);
+            } catch {
               onMessage(assistantMsg);
             }
             updateChatState(convId, { isStreaming: false, isThinking: false, toolProgress: "" });
@@ -193,9 +196,7 @@ export function useStreamingChat() {
                   messageType: "text",
                 },
               });
-            } catch (saveErr) {
-// console.error("Failed to save assistant message:", saveErr);
-            }
+            } catch {}
           })();
           unlisten();
           unlistenSources();
@@ -224,9 +225,8 @@ export function useStreamingChat() {
 
     try {
       await invoke("chat_with_hermes_api", invokeParams);
-    } catch (err) {
-// console.error("Chat API error:", err);
-      const errorContent = fullContent || `⚠️ 请求失败：${err}`;
+    } catch {
+      const errorContent = fullContent || `⚠️ 请求失败`;
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",

@@ -29,8 +29,8 @@ function ArtifactVersionPanel({
         artifactId: artifact.id,
       });
       setVersions(data);
-    } catch (err) {
-// console.error("Failed to load versions:", err);
+    } catch {
+      // console.error("Failed to load versions:", err);
     }
   }, [artifact.id]);
 
@@ -42,8 +42,8 @@ function ArtifactVersionPanel({
     try {
       await invoke("create_artifact_version", { artifactId: artifact.id });
       loadVersions();
-    } catch (err) {
-// console.error("Failed to create version:", err);
+    } catch {
+      // console.error("Failed to create version:", err);
     }
   };
 
@@ -55,8 +55,8 @@ function ArtifactVersionPanel({
         toId: diffToId,
       });
       setDiffResult(result);
-    } catch (err) {
-// console.error("Failed to diff versions:", err);
+    } catch {
+      // console.error("Failed to diff versions:", err);
     }
   };
 

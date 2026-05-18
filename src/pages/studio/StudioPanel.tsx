@@ -106,8 +106,8 @@ function StudioPanel() {
         })
       );
       setProjectMembersMap(membersMap);
-    } catch (err) {
-// console.error("Failed to load projects:", err);
+    } catch {
+      // console.error("Failed to load projects:", err);
     } finally {
       setLoading(false);
     }
@@ -117,8 +117,8 @@ function StudioPanel() {
     try {
       const list = await invoke<AiRoleItem[]>("list_ai_roles");
       setAllRoles(list);
-    } catch (err) {
-// console.error("Failed to load roles:", err);
+    } catch {
+      // console.error("Failed to load roles:", err);
     }
   };
 
@@ -139,8 +139,8 @@ function StudioPanel() {
         req: { id: project.id, isFavorite: !project.isFavorite },
       });
       loadProjects();
-    } catch (err) {
-// console.error("Failed to toggle favorite:", err);
+    } catch {
+      // console.error("Failed to toggle favorite:", err);
     }
   };
 
@@ -151,8 +151,8 @@ function StudioPanel() {
         setSelectedProject(null);
       }
       loadProjects();
-    } catch (err) {
-// console.error("Failed to delete project:", err);
+    } catch {
+      // console.error("Failed to delete project:", err);
     }
   };
 
@@ -160,8 +160,8 @@ function StudioPanel() {
     try {
       await invoke("update_project", { req: { id: project.id, status: "archived" } });
       loadProjects();
-    } catch (err) {
-// console.error("Failed to archive project:", err);
+    } catch {
+      // console.error("Failed to archive project:", err);
     }
   };
 
@@ -181,8 +181,8 @@ function StudioPanel() {
       setProjectWorkflows(workflows);
       setProjectTasks(tasks);
       invoke("recover_role_energy").catch(console.error);
-    } catch (err) {
-// console.error("Failed to load project data:", err);
+    } catch {
+      // console.error("Failed to load project data:", err);
     }
   };
 
@@ -213,8 +213,8 @@ function StudioPanel() {
         projectId: selectedProject.id,
       });
       setProjectMessages(msgs);
-    } catch (err) {
-// console.error("Failed to send message:", err);
+    } catch {
+      // console.error("Failed to send message:", err);
     }
   };
 

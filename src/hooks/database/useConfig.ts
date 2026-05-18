@@ -10,8 +10,8 @@ export function useConfig() {
     try {
       const result = await invoke<HermesConfigData>("get_config");
       setConfig(result);
-    } catch (err) {
-// console.error("Failed to load config:", err);
+    } catch {
+      // console.error("Failed to load config:", err);
     } finally {
       setLoading(false);
     }

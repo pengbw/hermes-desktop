@@ -74,8 +74,8 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
     try {
       const list = await invoke<AiRoleItem[]>("list_ai_roles");
       setRoles(list);
-    } catch (err) {
-// console.error("Failed to load AI roles:", err);
+    } catch {
+      // console.error("Failed to load AI roles:", err);
     } finally {
       setLoading(false);
     }
@@ -125,8 +125,8 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       for (const skillName of newRoleSkills) {
         try {
           await invoke("bind_role_skill", { roleId: created.id, skillName });
-        } catch (err) {
-// console.error("Failed to bind skill:", skillName, err);
+        } catch {
+          // console.error("Failed to bind skill:", skillName, err);
         }
       }
       setEditForm({ ...EMPTY_FORM });
@@ -134,8 +134,8 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       setShowNewRole(false);
       loadRoles();
       showToast("✅ 角色创建成功");
-    } catch (err) {
-// console.error("Failed to create role:", err);
+    } catch {
+      // console.error("Failed to create role:", err);
       showToast("❌ 创建失败：" + String(err));
     }
   };
@@ -163,8 +163,8 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       setEditRoleSkills([]);
       loadRoles();
       showToast("✅ 角色保存成功");
-    } catch (err) {
-// console.error("Failed to update role:", err);
+    } catch {
+      // console.error("Failed to update role:", err);
       showToast("❌ 保存失败：" + String(err));
     }
   };
@@ -173,8 +173,8 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
     try {
       await invoke("delete_ai_role", { id });
       loadRoles();
-    } catch (err) {
-// console.error("Failed to delete role:", err);
+    } catch {
+      // console.error("Failed to delete role:", err);
     }
   };
 
@@ -450,8 +450,8 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                                 try {
                                   await invoke("unbind_role_skill", { id: skill.id });
                                   loadRoleSkills(editingRole.id);
-                                } catch (err) {
-// console.error("Failed to unbind skill:", err);
+                                } catch {
+                                  // console.error("Failed to unbind skill:", err);
                                 }
                               }}
                             >
@@ -524,8 +524,8 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                                         skillName: s.name,
                                       });
                                       loadRoleSkills(editingRole.id);
-                                    } catch (err) {
-// console.error("Failed to bind skill:", err);
+                                    } catch {
+                                      // console.error("Failed to bind skill:", err);
                                     }
                                   }}
                                 >
@@ -558,7 +558,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                       <label>已选择技能</label>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                         {newRoleSkills.length === 0 && (
-                          <span style={{ color: "#999", fontSize: 12 }}>暂未选择技能，创建后自动绑定</span>
+                          <span style={{ color: "#999", fontSize: 12 }}>
+                            暂未选择技能，创建后自动绑定
+                          </span>
                         )}
                         {newRoleSkills.map((skillName) => (
                           <span

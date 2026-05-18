@@ -82,8 +82,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         })
       );
       set({ projectMembersMap: membersMap });
-    } catch (err) {
-// console.error("Failed to load projects:", err);
+    } catch {
+      // console.error("Failed to load projects:", err);
     }
   },
 
@@ -115,8 +115,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           projectActivities: activities,
           projectMemories: memories,
         });
-      } catch (err) {
-// console.error("Failed to load project data:", err);
+      } catch {
+        // console.error("Failed to load project data:", err);
       }
     } else {
       set({
@@ -136,8 +136,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     try {
       const roles = await invoke<AiRoleItem[]>("list_ai_roles");
       set({ allRoles: roles });
-    } catch (err) {
-// console.error("Failed to load roles:", err);
+    } catch {
+      // console.error("Failed to load roles:", err);
     }
   },
 
@@ -156,8 +156,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     try {
       const boards = await invoke<ProjectBoard[]>("list_project_boards", { projectId });
       set({ projectBoards: boards });
-    } catch (err) {
-// console.error("Failed to load boards:", err);
+    } catch {
+      // console.error("Failed to load boards:", err);
     }
   },
 
@@ -168,8 +168,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         limit: 50,
       });
       set({ projectActivities: activities });
-    } catch (err) {
-// console.error("Failed to load activities:", err);
+    } catch {
+      // console.error("Failed to load activities:", err);
     }
   },
 
@@ -177,8 +177,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     try {
       const memories = await invoke<ProjectMemory[]>("list_project_memories", { projectId });
       set({ projectMemories: memories });
-    } catch (err) {
-// console.error("Failed to load memories:", err);
+    } catch {
+      // console.error("Failed to load memories:", err);
     }
   },
 
@@ -186,8 +186,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     try {
       await invoke("create_project_board", { req: { projectId, name, description } });
       await get().loadProjectBoards(projectId);
-    } catch (err) {
-// console.error("Failed to create board:", err);
+    } catch {
+      // console.error("Failed to create board:", err);
     }
   },
 
@@ -198,8 +198,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       if (project) {
         await get().loadProjectBoards(project.id);
       }
-    } catch (err) {
-// console.error("Failed to delete board:", err);
+    } catch {
+      // console.error("Failed to delete board:", err);
     }
   },
 
@@ -211,8 +211,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         const tasks = await invoke<ProjectTask[]>("list_project_tasks", { projectId: project.id });
         set({ projectTasks: tasks });
       }
-    } catch (err) {
-// console.error("Failed to archive task:", err);
+    } catch {
+      // console.error("Failed to archive task:", err);
     }
   },
 }));

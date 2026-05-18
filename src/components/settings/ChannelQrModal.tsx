@@ -32,7 +32,7 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
       setQrType(result.qrType);
       setCountdown(result.expiresIn || 480);
       setScanning(true);
-    } catch (e) {
+    } catch {
       if (!mountedRef.current) return;
       setError(String(e));
     } finally {
@@ -75,8 +75,8 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
           if (pollRef.current) clearInterval(pollRef.current);
           try {
             await TauriCommands.channelConfirmQr(channel.id);
-          } catch (e) {
-// console.error("[ChannelQrModal] channelConfirmQr failed:", e);
+          } catch {
+            // console.error("[ChannelQrModal] channelConfirmQr failed:", e);
           }
           onConnected();
           onClose();

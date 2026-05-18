@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { QuickCard } from "@core/types";
 import { BUILTIN_CARDS } from "@constants/builtinCards";
 import { CARDS_STORAGE_KEY } from "@constants/config";
@@ -27,8 +27,9 @@ function CardManagerPanel({
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", icon: "📌", prompt: "" });
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     if (!form.name.trim() || !form.prompt.trim()) return;
+    const now = Date.now();
     const newCards = cards.slice();
     if (editId) {
       const idx = newCards.findIndex((c) => c.id === editId);
@@ -37,7 +38,7 @@ function CardManagerPanel({
       }
     } else {
       newCards.push({
-        id: `custom_${Date.now()}`,
+        id: `custom_${now}`,
         name: form.name,
         icon: form.icon,
         prompt: form.prompt,
@@ -47,7 +48,7 @@ function CardManagerPanel({
     setCards(newCards);
     saveCustomCards(newCards);
     closeModal();
-  };
+  }, [form, editId, cards]);
 
   const handleDelete = (id: string) => {
     const newCards = cards.filter((c) => c.id !== id);

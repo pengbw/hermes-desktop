@@ -59,7 +59,7 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
           onInstalled();
         }, 1500);
       }
-    } catch (err) {
+    } catch {
       setInstallError(String(err));
       setInstalling(false);
     }

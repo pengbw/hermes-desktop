@@ -27,8 +27,8 @@ export function useKnowledgeBase() {
         const updated = list.find((kb) => kb.id === selectedKbRef.current!.id);
         if (updated) updateSelectedKb(updated);
       }
-    } catch (e) {
-// console.error("Failed to load knowledge bases:", e);
+    } catch {
+      // console.error("Failed to load knowledge bases:", e);
     }
   }, [updateSelectedKb]);
 
@@ -73,8 +73,8 @@ export function useKnowledgeBase() {
     setIndexingKbId(id);
     try {
       await invoke("index_knowledge_base", { id });
-    } catch (e) {
-// console.error("Failed to index knowledge base:", e);
+    } catch {
+      // console.error("Failed to index knowledge base:", e);
     } finally {
       setIndexingKbId(null);
     }
@@ -113,8 +113,8 @@ export function useKnowledgeFiles(kbId: string | null) {
         knowledgeBaseId: kbId,
       });
       setFiles(result);
-    } catch (e) {
-// console.error("Failed to load knowledge files:", e);
+    } catch {
+      // console.error("Failed to load knowledge files:", e);
     }
   }, [kbId]);
 
@@ -162,8 +162,8 @@ export function useKnowledgeSearch() {
       const results = await invoke("search_knowledge_base", { id: kbId, query, limit });
       setSearchResults(results);
       return results;
-    } catch (e) {
-// console.error("Search failed:", e);
+    } catch {
+      // console.error("Search failed:", e);
       return null;
     } finally {
       setIsSearching(false);

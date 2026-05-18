@@ -77,7 +77,7 @@ export default function ProviderModal({
         });
       }
       onSave();
-    } catch (e) {
+    } catch {
       alert("保存供应商失败: " + String(e));
     }
   };
@@ -315,7 +315,7 @@ export default function ProviderModal({
                             setApiKeyVerifyResult("idle");
                             setApiKeyVerifyCount(0);
                           }, 8000);
-                        } catch (e) {
+                        } catch {
                           setApiKeyVerifyResult("fail");
                           setApiKeyVerifyError(String(e));
                           setTimeout(() => {

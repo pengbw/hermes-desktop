@@ -52,8 +52,8 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
           ollamaEndpoint: cfg.ollamaEndpoint || "http://localhost:11434",
           ollamaModel: cfg.ollamaModel || "nomic-embed-text",
         });
-      } catch (e) {
-// console.error("Failed to load knowledge config:", e);
+      } catch {
+        // console.error("Failed to load knowledge config:", e);
       }
     })();
     (async () => {
@@ -63,8 +63,8 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
             { id: string; name: string; value: string; baseUrl: string; apiKey: string }[]
           >("list_providers");
         setProviders(list || []);
-      } catch (e) {
-// console.error("Failed to load providers:", e);
+      } catch {
+        // console.error("Failed to load providers:", e);
       }
     })();
     (async () => {
@@ -138,8 +138,8 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
       await invoke("set_knowledge_config", { config: kbConfig });
       setSaveMsg("success");
       setTimeout(() => setSaveMsg(null), 2000);
-    } catch (e) {
-// console.error("Failed to save knowledge config:", e);
+    } catch {
+      // console.error("Failed to save knowledge config:", e);
       setSaveMsg("error");
     } finally {
       setSaving(false);
@@ -160,7 +160,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
         setCloudTestResult("idle");
         setCloudTestError("");
       }, 5000);
-    } catch (e) {
+    } catch {
       setCloudTestResult("fail");
       setCloudTestError(String(e));
       setTimeout(() => {
@@ -184,7 +184,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
         setOllamaTestResult("idle");
         setOllamaTestError("");
       }, 5000);
-    } catch (e) {
+    } catch {
       setOllamaTestResult("fail");
       setOllamaTestError(String(e));
       setTimeout(() => {
@@ -211,8 +211,8 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
       setDownloadProgress(100);
       setLocalModelStatus("ready");
       unlisten();
-    } catch (e) {
-// console.error("Failed to install local model:", e);
+    } catch {
+      // console.error("Failed to install local model:", e);
       setLocalModelStatus("missing");
     }
   };
@@ -223,8 +223,8 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
       if (result === "installed" || result === "already_exists") {
         setLocalModelStatus("onnx_ready");
       }
-    } catch (e) {
-// console.error("Failed to install ONNX model:", e);
+    } catch {
+      // console.error("Failed to install ONNX model:", e);
     }
   };
 

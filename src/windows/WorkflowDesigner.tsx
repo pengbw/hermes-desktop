@@ -880,8 +880,8 @@ function WorkflowDesignerInner({
       const { nodes: flowNodes, edges: flowEdges } = buildFlowFromWorkflows(filtered, roles);
       setNodes(flowNodes);
       setEdges(flowEdges);
-    } catch (err) {
-// console.error("Failed to load workflows:", err);
+    } catch {
+      // console.error("Failed to load workflows:", err);
     }
   }, [projectId, roles, setNodes, setEdges, activeGroupId]);
 
@@ -1168,8 +1168,8 @@ function WorkflowDesignerInner({
           if (workflowId) {
             try {
               await invoke("remove_project_workflow", { id: workflowId });
-            } catch (err) {
-// console.error("Failed to remove old workflow:", err);
+            } catch {
+              // console.error("Failed to remove old workflow:", err);
             }
           }
           loadWorkflows();
@@ -1193,8 +1193,8 @@ function WorkflowDesignerInner({
         for (const wf of relatedWfs) {
           try {
             await invoke("remove_project_workflow", { id: wf.id });
-          } catch (err) {
-// console.error("Failed to remove workflow:", err);
+          } catch {
+            // console.error("Failed to remove workflow:", err);
           }
         }
       }
@@ -1236,8 +1236,8 @@ function WorkflowDesignerInner({
             await invoke("remove_project_workflow", { id: wf.id });
             await loadWorkflows();
             invoke("sync_workflow_to_file", { projectId }).catch(console.error);
-          } catch (err) {
-// console.error("Failed to remove workflow:", err);
+          } catch {
+            // console.error("Failed to remove workflow:", err);
           }
         }
       }
@@ -1315,8 +1315,8 @@ function WorkflowDesignerInner({
                     try {
                       await invoke("update_workflow_group", { id: g.id, name: newName });
                       loadWorkflows();
-                    } catch (err) {
-// console.error("Failed to rename workflow group:", err);
+                    } catch {
+                      // console.error("Failed to rename workflow group:", err);
                     }
                   }
                   setEditingGroupId(null);
@@ -1379,7 +1379,7 @@ function WorkflowDesignerInner({
                           setActiveGroupId(primary?.id || null);
                         }
                         loadWorkflows();
-                      } catch (err) {
+                      } catch {
                         alert(String(err));
                       }
                     }}
@@ -1399,8 +1399,8 @@ function WorkflowDesignerInner({
                 });
                 setActiveGroupId(newGroup.id);
                 invoke("sync_workflow_to_file", { projectId }).catch(console.error);
-              } catch (err) {
-// console.error("Failed to create workflow group:", err);
+              } catch {
+                // console.error("Failed to create workflow group:", err);
               }
             }}
             className={styles.wfGroupTabAdd}
@@ -1575,8 +1575,8 @@ function WorkflowDesignerInner({
                   }
                   await loadWorkflows();
                   alert("同步成功");
-                } catch (err) {
-// console.error("Failed to sync workflow:", err);
+                } catch {
+                  // console.error("Failed to sync workflow:", err);
                   alert("同步失败: " + err);
                 }
               }}

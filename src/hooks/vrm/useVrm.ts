@@ -54,8 +54,8 @@ export function useVrm(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
       if (gestures && gestures.length > 0) {
         gesturesRef.current = parseGesturesFromDb(gestures);
       }
-    } catch (e) {
-// console.error("Failed to load gestures from DB", e);
+    } catch {
+      // console.error("Failed to load gestures from DB", e);
     }
   }, []);
 
@@ -113,9 +113,9 @@ export function useVrm(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
         if (!destroyed) {
           setIsLoaded(true);
         }
-      } catch (err) {
+      } catch {
         if (!destroyed) {
-// console.error("[Avatar] Init failed:", err);
+          // console.error("[Avatar] Init failed:", err);
           setLoadError(err instanceof Error ? err.message : String(err));
         }
       }
