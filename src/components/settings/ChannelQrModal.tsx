@@ -32,7 +32,7 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
       setQrType(result.qrType);
       setCountdown(result.expiresIn || 480);
       setScanning(true);
-    } catch {
+    } catch (e) {
       if (!mountedRef.current) return;
       setError(String(e));
     } finally {

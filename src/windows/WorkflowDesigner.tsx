@@ -1379,7 +1379,7 @@ function WorkflowDesignerInner({
                           setActiveGroupId(primary?.id || null);
                         }
                         loadWorkflows();
-                      } catch {
+                      } catch (err) {
                         alert(String(err));
                       }
                     }}
@@ -1575,7 +1575,7 @@ function WorkflowDesignerInner({
                   }
                   await loadWorkflows();
                   alert("同步成功");
-                } catch {
+                } catch (err) {
                   // console.error("Failed to sync workflow:", err);
                   alert("同步失败: " + err);
                 }

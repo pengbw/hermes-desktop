@@ -85,7 +85,7 @@ export default function GestureSettings({
         });
         onRefresh();
         alert(`成功导入动作: ${gestureName}`);
-      } catch {
+      } catch (e) {
         // console.error("导入失败:", e);
         alert("导入失败: " + String(e));
       }

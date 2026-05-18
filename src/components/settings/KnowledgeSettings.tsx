@@ -160,7 +160,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
         setCloudTestResult("idle");
         setCloudTestError("");
       }, 5000);
-    } catch {
+    } catch (e) {
       setCloudTestResult("fail");
       setCloudTestError(String(e));
       setTimeout(() => {
@@ -184,7 +184,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
         setOllamaTestResult("idle");
         setOllamaTestError("");
       }, 5000);
-    } catch {
+    } catch (e) {
       setOllamaTestResult("fail");
       setOllamaTestError(String(e));
       setTimeout(() => {

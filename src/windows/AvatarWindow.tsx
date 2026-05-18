@@ -574,14 +574,12 @@ export default function AvatarWindow() {
             }
 
             renderer.render(scene, camera);
-          } catch {
-            // console.warn("[Avatar] render:", e);
-          }
+          } catch {}
         };
 
         animate();
         setIsLoaded(true);
-      } catch {
+      } catch (err) {
         // console.error("[Avatar] VRM failed:", err);
         setLoadError(String(err));
       }

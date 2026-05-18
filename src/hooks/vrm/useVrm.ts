@@ -113,7 +113,7 @@ export function useVrm(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
         if (!destroyed) {
           setIsLoaded(true);
         }
-      } catch {
+      } catch (err) {
         if (!destroyed) {
           // console.error("[Avatar] Init failed:", err);
           setLoadError(err instanceof Error ? err.message : String(err));

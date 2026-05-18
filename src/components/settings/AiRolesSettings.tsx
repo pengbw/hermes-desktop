@@ -134,7 +134,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       setShowNewRole(false);
       loadRoles();
       showToast("✅ 角色创建成功");
-    } catch {
+    } catch (err) {
       // console.error("Failed to create role:", err);
       showToast("❌ 创建失败：" + String(err));
     }
@@ -163,7 +163,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       setEditRoleSkills([]);
       loadRoles();
       showToast("✅ 角色保存成功");
-    } catch {
+    } catch (err) {
       // console.error("Failed to update role:", err);
       showToast("❌ 保存失败：" + String(err));
     }
