@@ -113,7 +113,7 @@ function SettingsPanel() {
         providerValue,
       });
       setModelList(list);
-    } catch {
+    } catch (err) {
       // console.error("Failed to fetch model list:", err);
       setModelList([]);
       setModelListError(String(err));
@@ -154,7 +154,7 @@ function SettingsPanel() {
     try {
       await invoke("delete_provider", { id });
       loadProviders();
-    } catch {
+    } catch (e) {
       alert("删除供应商失败: " + String(e));
     }
   };
@@ -280,7 +280,7 @@ function SettingsPanel() {
           setSaveMessage({ text: "设置已保存，但网关重启失败，请手动重启", type: "error" });
         }
       }
-    } catch {
+    } catch (err) {
       // console.error("Failed to save config:", err);
       setSaveMessage({ text: `${t("settings.saveFailed")}: ${err}`, type: "error" });
     } finally {
@@ -560,7 +560,7 @@ function SettingsPanel() {
                           } else {
                             setUpdateInfo({ ...result, has_update: false });
                           }
-                        } catch {
+                        } catch (err) {
                           setUpdateInfo({
                             has_update: false,
                             latest_version: "",
@@ -640,7 +640,7 @@ function SettingsPanel() {
                 }
                 setShowGestureModal(false);
                 loadGestures();
-              } catch {
+              } catch (e) {
                 alert("保存失败: " + String(e));
               }
             }}

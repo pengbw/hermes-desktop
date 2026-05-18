@@ -111,7 +111,7 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       setShowStartForm(false);
       await loadRuns();
       setSelectedRunId(run.id);
-    } catch {
+    } catch (err) {
       // console.error("Failed to start workflow run:", err);
       alert("启动工作流失败: " + err);
     }

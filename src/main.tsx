@@ -60,7 +60,7 @@ async function bootstrap() {
         </React.StrictMode>
       );
     }
-  } catch {
+  } catch (error) {
     // console.error("[Hermes] Failed to bootstrap app:", error);
     const root = document.getElementById("root") as HTMLElement;
     root.innerHTML = `<div style="padding: 20px; color: red; font-family: monospace;">

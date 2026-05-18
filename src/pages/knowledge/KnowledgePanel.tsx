@@ -220,7 +220,7 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
           directories: JSON.stringify(form.directories),
         });
       }
-    } catch {
+    } catch (e) {
       alert("更新知识库失败: " + e);
     }
   };

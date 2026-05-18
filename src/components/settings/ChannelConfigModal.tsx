@@ -58,7 +58,7 @@ export default function ChannelConfigModal({
       await TauriCommands.channelSetupToken(channel.id, config);
       onConnected();
       onClose();
-    } catch {
+    } catch (e) {
       setError(String(e));
     } finally {
       setSaving(false);
@@ -87,7 +87,7 @@ export default function ChannelConfigModal({
       } else {
         setTestResult(t("channel.testFailed") + ": " + (status.errorMessage || status.status));
       }
-    } catch {
+    } catch (e) {
       setTestResult(t("channel.testFailed") + ": " + String(e));
     } finally {
       setTesting(false);

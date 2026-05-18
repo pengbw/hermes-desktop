@@ -22,7 +22,7 @@ export function useAsync<T>() {
         setState({ data: result, error: null, isLoading: false });
       }
       return result;
-    } catch {
+    } catch (err) {
       if (mountedRef.current) {
         setState({
           data: null,
