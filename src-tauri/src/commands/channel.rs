@@ -741,26 +741,6 @@ except Exception as e:
         });
 
         let _ = app_clone.emit("channel-status-changed", &channel_type_clone);
-
-        if new_status == "connected" {
-            let _ = rt.block_on(async {
-                match restart_gateway_internal(&app_clone).await {
-                    Ok(()) => {
-                        log::info!("[channel] Gateway restarted after QR login for {}", channel_type_clone);
-                    }
-                    Err(e) => {
-                        log::error!("[channel] Failed to restart gateway after QR login for {}: {}", channel_type_clone, e);
-                        let _ = sqlx::query("UPDATE channel_configs SET status = 'error', error_message = ?, updated_at = ? WHERE channel_type = ?")
-                            .bind(format!("Gateway restart failed: {}", e))
-                            .bind(chrono::Utc::now().timestamp_millis())
-                            .bind(&channel_type_clone)
-                            .execute(&pool)
-                            .await;
-                        let _ = app_clone.emit("channel-status-changed", &channel_type_clone);
-                    }
-                }
-            });
-        }
     });
 
     Ok(QrCodeResult {
