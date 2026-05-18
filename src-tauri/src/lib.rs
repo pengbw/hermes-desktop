@@ -359,6 +359,7 @@ pub fn run() {
             commands::project::list_workflow_groups,
             commands::project::create_workflow_group,
             commands::project::update_workflow_group,
+            commands::project::set_workflow_group_valid,
             commands::project::delete_workflow_group,
             commands::project::get_workflow_start_role,
             commands::project::assign_task,

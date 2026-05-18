@@ -570,7 +570,7 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
     // 创建主流程组
     let primary_group_id = uuid::Uuid::new_v4().to_string();
     sqlx::query(
-        "INSERT INTO project_workflow_groups (id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at) VALUES (?, ?, '主流程', 1, NULL, 0, ?, ?)"
+        "INSERT INTO project_workflow_groups (id, project_id, name, is_primary, is_valid, parent_group_id, sort_order, created_at, updated_at) VALUES (?, ?, '主流程', 1, 1, NULL, 0, ?, ?)"
     )
     .bind(&primary_group_id)
     .bind(&project_id)
@@ -1422,7 +1422,7 @@ pub async fn import_project(app: AppHandle, data: serde_json::Value) -> Result<d
         // 创建主流程组
         let primary_group_id = uuid::Uuid::new_v4().to_string();
         sqlx::query(
-            "INSERT INTO project_workflow_groups (id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at) VALUES (?, ?, '主流程', 1, NULL, 0, ?, ?)"
+            "INSERT INTO project_workflow_groups (id, project_id, name, is_primary, is_valid, parent_group_id, sort_order, created_at, updated_at) VALUES (?, ?, '主流程', 1, 1, NULL, 0, ?, ?)"
         )
         .bind(&primary_group_id)
         .bind(&id)
@@ -2120,16 +2120,16 @@ pub async fn remove_project_workflow(app: AppHandle, id: String) -> Result<(), S
 #[tauri::command]
 pub async fn list_workflow_groups(app: AppHandle, project_id: String) -> Result<Vec<db::WorkflowGroup>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, String, bool, Option<String>, i64, i64, i64)>(
-        "SELECT id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at FROM project_workflow_groups WHERE project_id = ? ORDER BY sort_order ASC"
+    let rows = sqlx::query_as::<_, (String, String, String, bool, bool, Option<String>, i64, i64, i64)>(
+        "SELECT id, project_id, name, is_primary, is_valid, parent_group_id, sort_order, created_at, updated_at FROM project_workflow_groups WHERE project_id = ? ORDER BY sort_order ASC"
     )
     .bind(&project_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at)| db::WorkflowGroup {
-        id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at,
+    Ok(rows.into_iter().map(|(id, project_id, name, is_primary, is_valid, parent_group_id, sort_order, created_at, updated_at)| db::WorkflowGroup {
+        id, project_id, name, is_primary, is_valid, parent_group_id, sort_order, created_at, updated_at,
     }).collect())
 }
 
@@ -2148,7 +2148,7 @@ pub async fn create_workflow_group(app: AppHandle, req: db::CreateWorkflowGroupR
     let sort_order = max_sort.unwrap_or(0) + 1;
 
     sqlx::query(
-        "INSERT INTO project_workflow_groups (id, project_id, name, is_primary, parent_group_id, sort_order, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?, ?, ?)"
+        "INSERT INTO project_workflow_groups (id, project_id, name, is_primary, is_valid, parent_group_id, sort_order, created_at, updated_at) VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?)"
     )
     .bind(&id)
     .bind(&req.project_id)
@@ -2166,6 +2166,7 @@ pub async fn create_workflow_group(app: AppHandle, req: db::CreateWorkflowGroupR
         project_id: req.project_id,
         name,
         is_primary: false,
+        is_valid: false,
         parent_group_id: req.parent_group_id,
         sort_order,
         created_at: now,
@@ -2185,6 +2186,143 @@ pub async fn update_workflow_group(app: AppHandle, id: String, name: String) -> 
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_workflow_group_valid(app: AppHandle, id: String, is_valid: bool) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    if is_valid {
+        validate_group_workflows(&pool, &id).await?;
+    }
+
+    sqlx::query("UPDATE project_workflow_groups SET is_valid = ?, updated_at = ? WHERE id = ?")
+        .bind(is_valid)
+        .bind(now)
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+async fn validate_group_workflows(pool: &sqlx::SqlitePool, group_id: &str) -> Result<(), String> {
+    let rows: Vec<(Option<String>, String, String, String, String)> = sqlx::query_as(
+        "SELECT from_role_id, to_role_id, transition_type, branch_label, parallel_group FROM project_workflows WHERE group_id = ? ORDER BY sort_order ASC"
+    )
+    .bind(group_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if rows.is_empty() {
+        return Err("流程组内没有工作流连线".to_string());
+    }
+
+    // ① 必须有且仅有一个开始节点
+    let start_count = rows.iter().filter(|(f, _, _, _, _)| f.as_deref() == Some("start")).count();
+    if start_count == 0 {
+        return Err("流程缺少从「开始」出发的连线".to_string());
+    }
+    if start_count > 1 {
+        return Err("流程只能有一个从「开始」出发的连线".to_string());
+    }
+
+    // ② 必须有结束节点
+    let has_end = rows.iter().any(|(_, to, _, _, _)| to == "end");
+    if !has_end {
+        return Err("流程缺少连接到「结束」的连线".to_string());
+    }
+
+    // ③ 连线两端节点必须存在：检查引用完整性
+    let role_ids: std::collections::HashSet<String> = {
+        let project_id: String = sqlx::query_scalar(
+            "SELECT project_id FROM project_workflow_groups WHERE id = ?"
+        )
+        .bind(group_id)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        sqlx::query_as::<_, (String,)>(
+            "SELECT id FROM ai_roles WHERE id IN (SELECT role_id FROM project_members WHERE project_id = ?)"
+        )
+        .bind(&project_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|(id,)| id)
+        .collect()
+    };
+
+    for (from, to, _, _, _) in &rows {
+        let from_key = from.as_deref().unwrap_or("");
+        if from_key != "" && from_key != "start" && !role_ids.contains(from_key) {
+            return Err(format!("连线源角色 \"{}\" 不存在于项目中", from_key));
+        }
+        if to != "end" && !role_ids.contains(to.as_str()) {
+            return Err(format!("连线目标角色 \"{}\" 不存在于项目中", to));
+        }
+    }
+
+    // ④ 条件节点(transition_type='condition')必须有"是"和"否"两条分支
+    for (from, _, trans, branch, _) in &rows {
+        if trans == "condition" {
+            let from_key = from.as_deref().unwrap_or("");
+            let branches: Vec<&str> = rows.iter()
+                .filter(|(f, _, t, _, _)| f.as_deref() == Some(from_key) && t == "condition")
+                .map(|(_, _, _, b, _)| b.as_str())
+                .collect();
+            let has_yes = branches.iter().any(|b| *b == "yes" || b.is_empty());
+            let has_no = branches.iter().any(|b| *b == "no");
+            if !has_yes || !has_no {
+                if !branches.is_empty() {
+                    return Err(format!("条件节点 \"{}\" 需要\"是\"和\"否\"两条分支连线", from_key));
+                }
+            }
+        }
+    }
+
+    // ⑤ 并行节点(transition_type='parallel')必须连接合并节点
+    let has_parallel = rows.iter().any(|(_, _, t, _, _)| t == "parallel");
+    let has_merge = rows.iter().any(|(_, _, t, _, _)| t == "merge");
+    if has_parallel && !has_merge {
+        return Err("流程包含并行节点但缺少合并节点".to_string());
+    }
+
+    // ⑥ 连通性：从 start 出发，所有节点必须能到达 end
+    let mut graph: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    for (from, to, _, _, _) in &rows {
+        let from_key = from.as_deref().unwrap_or("");
+        graph.entry(from_key).or_default().push(to.as_str());
+    }
+
+    let mut visited = std::collections::HashSet::new();
+    let mut stack = vec!["start"];
+    while let Some(curr) = stack.pop() {
+        if !visited.insert(curr) {
+            continue;
+        }
+        if let Some(neighbors) = graph.get(curr) {
+            for &next in neighbors {
+                stack.push(next);
+            }
+        }
+    }
+
+    for (from, to, _, _, _) in &rows {
+        let from_key = from.as_deref().unwrap_or("");
+        if !visited.contains(from_key) && from_key != "start" {
+            return Err(format!("角色 \"{}\" 无法从开始节点到达", from_key));
+        }
+        if !visited.contains(to.as_str()) && to != "end" {
+            return Err(format!("角色 \"{}\" 无法从开始节点到达", to));
+        }
+    }
+
     Ok(())
 }
 
@@ -3039,7 +3177,7 @@ pub async fn create_project_message(app: AppHandle, req: db::CreateProjectMessag
 pub async fn list_project_tasks(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectTask>, String> {
     let pool = get_pool(&app)?;
     let rows = sqlx::query(
-        "SELECT id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, workflow_group_id, created_at, updated_at FROM project_tasks WHERE project_id = ? ORDER BY priority DESC, created_at ASC"
+        "SELECT id, project_id, title, body, assignee, status, priority, parent_task_id, artifact_id, result, claim_lock, claim_expire_at, started_at, completed_at, skills, max_retries, retry_count, workspace_kind, workspace_path, board_id, workflow_group_id, created_at, updated_at FROM project_tasks WHERE project_id = ? ORDER BY priority DESC, created_at DESC"
     )
     .bind(&project_id)
     .fetch_all(&pool)

@@ -201,6 +201,7 @@ export interface WorkflowGroup {
   projectId: string;
   name: string;
   isPrimary: boolean;
+  isValid: boolean;
   parentGroupId: string | null;
   sortOrder: number;
   createdAt: number;

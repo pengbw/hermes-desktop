@@ -134,12 +134,14 @@ export default function AssignTaskModal({
               style={{ width: "100%", padding: "10px 12px" }}
             >
               <option value="">不使用流程（自由分配）</option>
-              {workflowGroups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                  {g.isPrimary ? " 🔒" : ""}
-                </option>
-              ))}
+              {workflowGroups
+                .filter((g) => g.isValid !== false)
+                .map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                    {g.isPrimary ? " 🔒" : ""}
+                  </option>
+                ))}
             </select>
             {selectedGroupId && (
               <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>

@@ -33,5 +33,18 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             .await?;
     }
 
+    let has_workflow_group_valid: bool = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM pragma_table_info('project_workflow_groups') WHERE name = 'is_valid'"
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0) > 0;
+
+    if !has_workflow_group_valid {
+        sqlx::query("ALTER TABLE project_workflow_groups ADD COLUMN is_valid BOOLEAN NOT NULL DEFAULT 1")
+            .execute(pool)
+            .await?;
+    }
+
     Ok(())
 }

@@ -720,16 +720,13 @@ function ContextMenu({
 }
 
 function validateWorkflow(nodes: FlowNode[], edges: Edge[]): { valid: boolean; error?: string } {
-  // 1. Check for start node
   const startNodes = nodes.filter((n) => n.type === "startNode" || n.id === "start");
   if (startNodes.length === 0) return { valid: false, error: "流程缺少开始节点" };
   if (startNodes.length > 1) return { valid: false, error: "流程只能有一个开始节点" };
 
-  // 2. Check for end node
   const endNodes = nodes.filter((n) => n.type === "endNode" || n.id === "end");
   if (endNodes.length === 0) return { valid: false, error: "流程缺少结束节点" };
 
-  // 3. Reachability to end node
   const graph = new Map<string, string[]>();
   nodes.forEach((n) => graph.set(n.id, []));
   edges.forEach((e) => {
@@ -821,38 +818,35 @@ function WorkflowDesignerInner({
   const reactFlow = useReactFlow();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
-  const handleDetailPanelDragStart = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const panel = (e.currentTarget as HTMLElement).parentElement;
-      if (!panel) return;
-      const rect = panel.getBoundingClientRect();
-      dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      setIsDragging(true);
+  const handleDetailPanelDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const panel = (e.currentTarget as HTMLElement).parentElement;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    setIsDragging(true);
 
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        const wrapper = reactFlowWrapper.current;
-        if (!wrapper) return;
-        const wrapperRect = wrapper.getBoundingClientRect();
-        let newX = moveEvent.clientX - wrapperRect.left - dragOffset.current.x;
-        let newY = moveEvent.clientY - wrapperRect.top - dragOffset.current.y;
-        newX = Math.max(0, Math.min(newX, wrapperRect.width - panel.offsetWidth));
-        newY = Math.max(0, Math.min(newY, wrapperRect.height - panel.offsetHeight));
-        setDetailPanelPos({ x: newX, y: newY });
-      };
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const wrapper = reactFlowWrapper.current;
+      if (!wrapper) return;
+      const wrapperRect = wrapper.getBoundingClientRect();
+      let newX = moveEvent.clientX - wrapperRect.left - dragOffset.current.x;
+      let newY = moveEvent.clientY - wrapperRect.top - dragOffset.current.y;
+      newX = Math.max(0, Math.min(newX, wrapperRect.width - panel.offsetWidth));
+      newY = Math.max(0, Math.min(newY, wrapperRect.height - panel.offsetHeight));
+      setDetailPanelPos({ x: newX, y: newY });
+    };
 
-      const handleMouseUp = () => {
-        setIsDragging(false);
-        document.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseup", handleMouseUp);
-      };
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
 
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-    },
-    []
-  );
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, []);
 
   const memberRoles = useMemo(() => {
     const memberRoleIds = new Set(projectMembers.map((m) => m.roleId));
@@ -1358,10 +1352,42 @@ function WorkflowDesignerInner({
                 }}
                 className={`${styles.wfGroupTab} ${activeGroupId === g.id ? styles.wfGroupTabActive : ""}`}
                 title={g.isPrimary ? "主流程（不可重命名）" : "双击修改名称"}
+                style={{ position: "relative" }}
               >
+                {g.isValid === false && (
+                  <span
+                    title={
+                      "校验未通过：\n① 必须有且仅有一个开始节点\n② 必须有结束节点\n③ 连线两端节点必须存在\n④ 条件节点必须有「是」「否」分支\n⑤ 并行节点必须连接合并节点\n⑥ 所有节点必须能到达结束节点"
+                    }
+                    style={{ fontSize: 10, color: "#e74c3c" }}
+                  >
+                    ⚠️{" "}
+                  </span>
+                )}
                 {g.name}
                 {g.isPrimary && <span style={{ fontSize: 10 }}>🔒</span>}
-                {!g.isPrimary && <span style={{ fontSize: 10, opacity: 0.5 }}>✏️</span>}
+                {!g.isPrimary && (
+                  <span
+                    className={styles.wfGroupTabDelete}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!confirm(`确定删除流程「${g.name}」？`)) return;
+                      try {
+                        await invoke("delete_workflow_group", { id: g.id });
+                        if (activeGroupId === g.id) {
+                          const primary = workflowGroups.find((wg) => wg.isPrimary);
+                          setActiveGroupId(primary?.id || null);
+                        }
+                        loadWorkflows();
+                      } catch (err) {
+                        alert(String(err));
+                      }
+                    }}
+                    title="删除此流程"
+                  >
+                    🗑️
+                  </span>
+                )}
               </button>
             );
           })}
@@ -1426,10 +1452,78 @@ function WorkflowDesignerInner({
             </button>
             <button
               className={styles.wfToolbarBtn}
+              onClick={() => {
+                const validation = validateWorkflow(nodes, edges);
+                if (validation.valid) {
+                  alert("✅ 流程校验通过，所有节点均可连通到结束节点");
+                } else {
+                  alert("❌ 流程校验失败：\n" + validation.error);
+                }
+              }}
+              title="验证工作流完整性"
+            >
+              ✅ 验证流程
+            </button>
+            {activeGroupId &&
+              (() => {
+                const cur = workflowGroups.find((g) => g.id === activeGroupId);
+                const groupWorkflows = workflows.filter(
+                  (w) => w.groupId === activeGroupId || (!w.groupId && cur?.isPrimary)
+                );
+                const isEmpty = groupWorkflows.length === 0;
+                const dbValid = cur?.isValid !== false;
+                const isValid = !isEmpty && dbValid;
+                const rulesDesc = [
+                  "① 必须有且仅有一个开始节点",
+                  "② 必须有结束节点",
+                  "③ 连线两端节点必须存在",
+                  "④ 条件节点必须有「是」和「否」两条分支",
+                  "⑤ 并行节点必须连接合并节点",
+                  "⑥ 所有节点必须能到达结束节点",
+                ].join("\n");
+                if (isEmpty) {
+                  return (
+                    <span
+                      className={styles.wfToolbarBtn}
+                      style={{ cursor: "default", fontSize: 12, color: "#999" }}
+                      title="流程为空，请在画布上添加连线后点击同步"
+                    >
+                      ⬜ 空流程
+                    </span>
+                  );
+                }
+                return isValid ? (
+                  <span
+                    className={styles.wfToolbarBtn}
+                    style={{ cursor: "default", fontSize: 16 }}
+                    title={rulesDesc}
+                  >
+                    ✅
+                  </span>
+                ) : (
+                  <span
+                    className={styles.wfToolbarBtn}
+                    style={{ cursor: "default", fontSize: 16, color: "#e74c3c" }}
+                    title={"流程校验未通过：\n" + rulesDesc}
+                  >
+                    ❌
+                  </span>
+                );
+              })()}
+            <button
+              className={styles.wfToolbarBtn}
               onClick={async () => {
                 const validation = validateWorkflow(nodes, edges);
                 if (!validation.valid) {
                   alert("流程校验失败：\n" + validation.error);
+                  if (activeGroupId) {
+                    invoke("set_workflow_group_valid", { id: activeGroupId, isValid: false }).catch(
+                      console.error
+                    );
+                    setWorkflowGroups((prev) =>
+                      prev.map((g) => (g.id === activeGroupId ? { ...g, isValid: false } : g))
+                    );
+                  }
                   return;
                 }
 
@@ -1473,6 +1567,12 @@ function WorkflowDesignerInner({
                     });
                   }
                   await invoke("sync_workflow_to_file", { projectId });
+                  if (activeGroupId) {
+                    await invoke("set_workflow_group_valid", { id: activeGroupId, isValid: true });
+                    setWorkflowGroups((prev) =>
+                      prev.map((g) => (g.id === activeGroupId ? { ...g, isValid: true } : g))
+                    );
+                  }
                   await loadWorkflows();
                   alert("同步成功");
                 } catch (err) {
@@ -1499,10 +1599,7 @@ function WorkflowDesignerInner({
             className={`${styles.wfDetailPanel} ${isDragging ? styles.wfDetailPanelDragging : ""}`}
             style={{ left: detailPanelPos.x, top: detailPanelPos.y }}
           >
-            <div
-              className={styles.wfDetailHeader}
-              onMouseDown={handleDetailPanelDragStart}
-            >
+            <div className={styles.wfDetailHeader} onMouseDown={handleDetailPanelDragStart}>
               <span>
                 {(selectedNode.data as RoleNodeType["data"]).icon}{" "}
                 {(selectedNode.data as RoleNodeType["data"]).label}
@@ -1536,9 +1633,7 @@ function WorkflowDesignerInner({
                     <div key={w.id} className={styles.wfDetailWfItem}>
                       <span>
                         {w.fromRoleId && w.fromRoleId !== "start" && w.fromRoleId !== "end"
-                          ? roleMap.get(w.fromRoleId)?.icon +
-                            " " +
-                            roleMap.get(w.fromRoleId)?.name
+                          ? roleMap.get(w.fromRoleId)?.icon + " " + roleMap.get(w.fromRoleId)?.name
                           : t("studio.workflowStart")}
                         → [{w.artifactType || "-"}] →
                         {w.toRoleId === "end"
@@ -1575,10 +1670,7 @@ function WorkflowDesignerInner({
             className={`${styles.wfDetailPanel} ${isDragging ? styles.wfDetailPanelDragging : ""}`}
             style={{ left: detailPanelPos.x, top: detailPanelPos.y }}
           >
-            <div
-              className={styles.wfDetailHeader}
-              onMouseDown={handleDetailPanelDragStart}
-            >
+            <div className={styles.wfDetailHeader} onMouseDown={handleDetailPanelDragStart}>
               <span>🔗 连线属性</span>
               <button className={styles.wfDetailClose} onClick={() => setSelectedEdge(null)}>
                 ✕

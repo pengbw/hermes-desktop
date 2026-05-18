@@ -327,7 +327,11 @@
   padding: 8px 20px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 85%, #000));
+  background: linear-gradient(
+    135deg,
+    var(--color-primary),
+    color-mix(in srgb, var(--color-primary) 85%, #000)
+  );
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -3079,6 +3083,23 @@
   border-color: var(--primary, #6c5ce7);
 }
 
+.wfGroupTabDelete {
+  display: none;
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0.5;
+  padding: 0 2px;
+}
+
+.wfGroupTab:hover .wfGroupTabDelete {
+  display: inline;
+}
+
+.wfGroupTabDelete:hover {
+  opacity: 1;
+  color: #e74c3c;
+}
+
 .wfGroupTabAdd {
   padding: 4px 8px;
   border-radius: 4px;
@@ -5706,7 +5727,6 @@
   font-weight: 600;
 }
 
-
 .taskDetailSkills {
   display: flex;
   flex-wrap: wrap;
@@ -6979,7 +6999,9 @@
 .studioTemplateCard.selected {
   border-color: var(--color-primary, #6c5ce7);
   background: linear-gradient(135deg, rgba(108, 92, 231, 0.04), rgba(108, 92, 231, 0.08));
-  box-shadow: 0 0 0 1px var(--color-primary, #6c5ce7), 0 2px 8px rgba(108, 92, 231, 0.1);
+  box-shadow:
+    0 0 0 1px var(--color-primary, #6c5ce7),
+    0 2px 8px rgba(108, 92, 231, 0.1);
 }
 
 .studioTemplateCardHeader {
