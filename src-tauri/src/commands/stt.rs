@@ -140,7 +140,7 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
     let python = find_python().ok_or_else(|| "Python not found in Hermes Agent venv".to_string())?;
 
     let _ = app.emit("stt-install-progress", InstallProgress {
-        line: "正在安装语音识别组件 (faster-whisper + ctranslate2)...\n首次安装需下载约 500MB，请耐心等待".to_string(),
+        line: "正在安装语音识别组件 (faster-whisper + ctranslate2)...\n首次安装需下载约 140MB，请耐心等待".to_string(),
         done: false,
         success: false,
     });
