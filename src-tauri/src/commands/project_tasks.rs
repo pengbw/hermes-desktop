@@ -145,6 +145,7 @@ pub async fn update_project_task(app: AppHandle, id: String, req: db::UpdateProj
     };
 
     let sql = format!(
+        // SAFETY: started_at_update and completed_at_update are internal string literals, not user input
         "UPDATE project_tasks SET title = ?, body = ?, assignee = ?, status = ?, priority = ?, result = ?, skills = ?, max_retries = ?, workspace_kind = ?, workspace_path = ?, started_at = {}, completed_at = {}, updated_at = ? WHERE id = ?",
         started_at_update, completed_at_update
     );

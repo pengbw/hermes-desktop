@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -240,7 +241,7 @@ export default function FilePreviewModal({ filePath, fileName, onClose }: FilePr
           {!loading && !error && fileType !== "pdf" && fileType !== "html" && (
             <div
               className="file-preview-content"
-              dangerouslySetInnerHTML={{ __html: renderedHtml }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderedHtml) }}
             />
           )}
         </div>

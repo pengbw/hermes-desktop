@@ -159,7 +159,7 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
         .map_err(|e| format!("Failed to run pip: {}", e))?;
 
     let mut child = child;
-    let stderr = child.stderr.take().unwrap();
+    let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
     use std::io::{BufRead, BufReader};
     let app_clone = app.clone();
     let stderr_handle = std::thread::spawn(move || -> String {
@@ -358,7 +358,7 @@ pub async fn transcribe_audio(
         .spawn()
         .map_err(|e| format!("Failed to run whisper: {}", e))?;
 
-    let stdout = child.stdout.take().unwrap();
+    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
     use std::io::{BufRead, BufReader};
     let app_clone = app.clone();
     let stdout_handle = std::thread::spawn(move || -> Vec<String> {
@@ -420,8 +420,8 @@ pub async fn transcribe_audio(
     let last_line = all_lines.last().cloned().unwrap_or_default();
     log::info!("[stt] Whisper last output: {}", last_line);
 
-    let audio_duration = if final_audio_path.is_some() {
-        get_audio_duration_secs(final_audio_path.as_ref().unwrap())
+    let audio_duration = if let Some(ref path) = final_audio_path {
+        get_audio_duration_secs(path)
     } else {
         None
     };

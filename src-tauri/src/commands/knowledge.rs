@@ -487,7 +487,10 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
 
     let skip_dirs = ["node_modules", ".git", ".svn", ".hg", "target", "build", "dist", ".idea", ".vscode", "__pycache__", ".gradle", ".mvn", "vendor", "Pods", ".next", ".nuxt", "out", "bin", "obj"];
 
-    fn scan_dir(path: &std::path::Path, supported: &[&str], skip: &[&str], files: &mut Vec<(std::path::PathBuf, String, String, i64, i64)>) {
+    fn scan_dir(path: &std::path::Path, supported: &[&str], skip: &[&str], files: &mut Vec<(std::path::PathBuf, String, String, i64, i64)>, depth: u32) {
+        if depth > 20 {
+            return;
+        }
         if let Ok(entries) = std::fs::read_dir(path) {
             for entry in entries.flatten() {
                 let file_path = entry.path();
@@ -498,7 +501,11 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
                     if dir_name.starts_with('.') || skip.contains(&dir_name.as_str()) {
                         continue;
                     }
-                    scan_dir(&file_path, supported, skip, files);
+                    let is_symlink = std::fs::symlink_metadata(&file_path).map(|m| m.file_type().is_symlink()).unwrap_or(false);
+                    if is_symlink {
+                        continue;
+                    }
+                    scan_dir(&file_path, supported, skip, files, depth + 1);
                 } else if file_path.is_file() {
                     let ext = file_path.extension()
                         .map(|e| e.to_string_lossy().to_lowercase())
@@ -509,11 +516,15 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
                     let file_name = file_path.file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    let metadata = std::fs::metadata(&file_path).unwrap_or_else(|_| std::fs::symlink_metadata(&file_path).unwrap());
-                    let file_size = metadata.len() as i64;
-                    let modified_at = metadata.modified()
-                        .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64)
-                        .unwrap_or(0);
+                    let (file_size, modified_at): (i64, i64) = std::fs::metadata(&file_path)
+                        .or_else(|_| std::fs::symlink_metadata(&file_path))
+                        .map(|m| {
+                            (m.len() as i64,
+                             m.modified()
+                                .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64)
+                                .unwrap_or(0))
+                        })
+                        .unwrap_or((0, 0));
                     files.push((file_path, file_name, ext, file_size, modified_at));
                 }
             }
@@ -525,7 +536,7 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
         if !path.exists() || !path.is_dir() {
             continue;
         }
-        scan_dir(path, &supported_exts, &skip_dirs, &mut all_files);
+        scan_dir(path, &supported_exts, &skip_dirs, &mut all_files, 0);
     }
 
     let total = all_files.len();
@@ -980,6 +991,7 @@ pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str,
         .collect();
 
     if !keywords.is_empty() {
+        // SAFETY: conditions contain only "content LIKE ?" literals (parametrized), no user input in SQL text
         let conditions: Vec<String> = keywords.iter().map(|_| "content LIKE ?".to_string()).collect();
         let where_clause = conditions.join(" OR ");
 

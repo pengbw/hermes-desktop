@@ -46,13 +46,43 @@ pub async fn set_config(
 }
 
 #[tauri::command]
-pub async fn read_text_file(path: String) -> Result<String, String> {
+pub async fn read_text_file(app: AppHandle, path: String) -> Result<String, String> {
+    validate_read_path(&app, &path).await.map_err(|e| e)?;
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn read_binary_file(path: String) -> Result<Vec<u8>, String> {
+pub async fn read_binary_file(app: AppHandle, path: String) -> Result<Vec<u8>, String> {
+    validate_read_path(&app, &path).await.map_err(|e| e)?;
     std::fs::read(&path).map_err(|e| e.to_string())
+}
+
+async fn validate_read_path(app: &AppHandle, path: &str) -> Result<(), String> {
+    let canonical = std::fs::canonicalize(path).map_err(|_| "文件不存在".to_string())?;
+
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_default();
+    let home_path = std::path::Path::new(&home);
+
+    let temp = std::env::temp_dir();
+
+    // 获取工作空间根目录
+    let pool = get_pool(app)?;
+    let ws: Option<String> = sqlx::query_scalar("SELECT value FROM app_config WHERE key = 'workspace_root'")
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .flatten();
+
+    let allowed = canonical.starts_with(&temp)
+        || (canonical.starts_with(home_path))
+        || (ws.as_ref().map_or(false, |w| canonical.starts_with(std::path::Path::new(w))));
+
+    if !allowed {
+        return Err("无权访问该路径".to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]

@@ -117,7 +117,7 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
             "project_id": project_id,
         });
 
-        for (key, val) in template_vars.as_object().unwrap() {
+        for (key, val) in template_vars.as_object().unwrap_or(&serde_json::Map::new()) {
             let pattern = format!("{{{{{}}}}}", key);
             if let Some(s) = val.as_str() {
                 skill_detail = skill_detail.replace(&pattern, s);
@@ -2056,7 +2056,13 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                     log::info!("confirm_workflow_step(rejected): triggering AI rework for role_id={}", step_role_id);
 
                     // Find the latest artifact for this role to update
-                    let pool_retry = get_pool(&app_retry).unwrap();
+                    let pool_retry = match get_pool(&app_retry) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            log::error!("confirm_workflow_step: get_pool failed: {}", e);
+                            return;
+                        }
+                    };
 
                     // Update existing submitted artifact to rejected
                     let now_retry = chrono::Utc::now().timestamp_millis();
@@ -2947,7 +2953,7 @@ pub async fn scan_project_files(app: AppHandle, project_id: String, role_id: Opt
     let mut new_records: Vec<db::ProjectFileRecord> = Vec::new();
     let default_role = role_id.clone().unwrap_or_default();
 
-    if let Ok(entries) = scan_dir_recursive(workspace_dir, workspace_dir) {
+    if let Ok(entries) = scan_dir_recursive(workspace_dir, workspace_dir, 0) {
         for (relative_path, file_name, file_size) in entries {
             if existing_set.contains(&relative_path) {
                 continue;
@@ -2984,7 +2990,10 @@ pub async fn scan_project_files(app: AppHandle, project_id: String, role_id: Opt
     Ok(new_records)
 }
 
-fn scan_dir_recursive(base: &std::path::Path, dir: &std::path::Path) -> Result<Vec<(String, String, u64)>, String> {
+fn scan_dir_recursive(base: &std::path::Path, dir: &std::path::Path, depth: u32) -> Result<Vec<(String, String, u64)>, String> {
+    if depth > 20 {
+        return Ok(Vec::new());
+    }
     let mut results = Vec::new();
     let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
     let excluded_dirs = ["node_modules", ".git", "dist", "build", "target", "__pycache__", ".next", ".nuxt", "vendor", "Pods"];
@@ -2999,7 +3008,11 @@ fn scan_dir_recursive(base: &std::path::Path, dir: &std::path::Path) -> Result<V
         }
 
         if path.is_dir() {
-            let sub_results = scan_dir_recursive(base, &path)?;
+            let is_symlink = std::fs::symlink_metadata(&path).map(|m| m.file_type().is_symlink()).unwrap_or(false);
+            if is_symlink {
+                continue;
+            }
+            let sub_results = scan_dir_recursive(base, &path, depth + 1)?;
             results.extend(sub_results);
         } else {
             let full_path = path.to_string_lossy().to_string();
@@ -3123,7 +3136,7 @@ pub async fn record_chat_files(app: AppHandle, project_id: String, role_id: Stri
         }
     }
 
-    if let Ok(entries) = scan_dir_recursive(workspace_dir, workspace_dir) {
+    if let Ok(entries) = scan_dir_recursive(workspace_dir, workspace_dir, 0) {
         let now = chrono::Utc::now().timestamp_millis();
         for (relative_path, file_name, file_size) in entries {
             if existing_set.contains(&relative_path) {

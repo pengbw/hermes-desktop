@@ -2817,7 +2817,13 @@ export class OfficeScene3D {
     const bubble = document.createElement("div");
     bubble.className = "office3d-bubble";
     bubble.dataset.memberId = memberId;
-    bubble.innerHTML = `<div class="office3d-bubble-content">${text}</div><div class="office3d-bubble-arrow"></div>`;
+    const contentEl = document.createElement("div");
+    contentEl.className = "office3d-bubble-content";
+    contentEl.textContent = text;
+    bubble.appendChild(contentEl);
+    const arrowEl = document.createElement("div");
+    arrowEl.className = "office3d-bubble-arrow";
+    bubble.appendChild(arrowEl);
     bubble.style.cssText = `
       position:absolute;
       background:rgba(255,255,255,0.95);

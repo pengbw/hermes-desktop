@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -126,7 +127,10 @@ function ArtifactPreviewModal({
               <p>渲染中...</p>
             </div>
           ) : isMd ? (
-            <div className="file-preview-content" dangerouslySetInnerHTML={{ __html: html }} />
+            <div
+              className="file-preview-content"
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
+            />
           ) : (
             <pre
               style={{
