@@ -338,8 +338,8 @@ export default function GestureEditor({
         }
       },
       undefined,
-      (err) => {
-        console.error("Failed to load VRM for gesture editor:", err);
+      (_err) => {
+        // console.error("Failed to load VRM for gesture editor:", _err);
         setLoading(false);
       }
     );
@@ -389,7 +389,7 @@ export default function GestureEditor({
           node.quaternion.set(q.x, q.y, q.z, q.w);
         }
       } catch (err) {
-        console.warn("Failed to apply gesture pose:", err);
+// console.warn("Failed to apply gesture pose:", err);
       }
     }
   }

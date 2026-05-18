@@ -52,7 +52,7 @@ function RoleSkillPanel({
       const roleData = await invoke<RoleSkill[]>("list_role_skills", { roleId });
       setRoleSkills(roleData);
     } catch (err) {
-      console.error("Failed to load role skills:", err);
+// console.error("Failed to load role skills:", err);
     }
     try {
       const memberData = await invoke<ProjectMemberSkill[]>("list_member_skills", {
@@ -61,7 +61,7 @@ function RoleSkillPanel({
       });
       setMemberSkills(memberData);
     } catch (err) {
-      console.error("Failed to load member skills:", err);
+// console.error("Failed to load member skills:", err);
     }
   }, [roleId, projectId, memberId]);
 
@@ -74,7 +74,7 @@ function RoleSkillPanel({
       await invoke("unbind_role_skill", { id });
       loadSkills();
     } catch (err) {
-      console.error("Failed to unbind role skill:", err);
+// console.error("Failed to unbind role skill:", err);
     }
   };
 
@@ -83,7 +83,7 @@ function RoleSkillPanel({
       await invoke("bind_member_skill", { projectId, memberId, skillName });
       loadSkills();
     } catch (err) {
-      console.error("Failed to bind member skill:", err);
+// console.error("Failed to bind member skill:", err);
     }
   };
 
@@ -92,7 +92,7 @@ function RoleSkillPanel({
       await invoke("unbind_member_skill", { id });
       loadSkills();
     } catch (err) {
-      console.error("Failed to unbind member skill:", err);
+// console.error("Failed to unbind member skill:", err);
     }
   };
 
@@ -272,7 +272,7 @@ function RoleManager({
       const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", { projectId });
       onArtifactsUpdate(artifacts);
     } catch (err) {
-      console.error("Failed to add member:", err);
+// console.error("Failed to add member:", err);
     }
   };
 
@@ -284,7 +284,7 @@ function RoleManager({
       const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", { projectId });
       onArtifactsUpdate(artifacts);
     } catch (err) {
-      console.error("Failed to remove member:", err);
+// console.error("Failed to remove member:", err);
     }
   };
 

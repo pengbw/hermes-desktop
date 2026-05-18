@@ -18,7 +18,7 @@ export function useProviders() {
       const result = await invoke<Provider[]>("list_providers");
       setProviders(result);
     } catch (err) {
-      console.error("Failed to load providers:", err);
+// console.error("Failed to load providers:", err);
     } finally {
       setLoading(false);
     }

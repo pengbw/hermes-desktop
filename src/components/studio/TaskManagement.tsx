@@ -84,7 +84,7 @@ function TaskManagement({
       setShowCreateForm(false);
       refreshTasks();
     } catch (err) {
-      console.error("Failed to create task:", err);
+// console.error("Failed to create task:", err);
     }
   };
 
@@ -93,7 +93,7 @@ function TaskManagement({
       await invoke("update_project_task", { id: taskId, req: updates });
       refreshTasks();
     } catch (err) {
-      console.error("Failed to update task:", err);
+// console.error("Failed to update task:", err);
     }
   };
 
@@ -103,7 +103,7 @@ function TaskManagement({
       if (editingTask?.id === taskId) setEditingTask(null);
       refreshTasks();
     } catch (err) {
-      console.error("Failed to delete task:", err);
+// console.error("Failed to delete task:", err);
     }
   };
 

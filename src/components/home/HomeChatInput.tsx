@@ -89,7 +89,7 @@ function HomeChatInput({ sendMessage, isStreaming, placeholder, voiceEnabled, t 
         });
         result.push({ name: f.name, path: tempPath });
       } catch (e) {
-        console.error("Failed to save temp file:", f.name, e);
+// console.error("Failed to save temp file:", f.name, e);
       }
     }
     return result;

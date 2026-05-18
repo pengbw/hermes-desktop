@@ -23,7 +23,7 @@ export function useMessageHandler({
         }
         return result;
       } catch (err) {
-        console.error("Failed to load messages:", err);
+// console.error("Failed to load messages:", err);
         return [];
       }
     },

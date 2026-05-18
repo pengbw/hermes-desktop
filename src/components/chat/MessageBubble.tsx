@@ -53,7 +53,7 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
   const [showTranscript, setShowTranscript] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const isVoiceMessage = message.messageType === "voice";
-  console.log("[MessageBubble]", message.id, message.role, "type:", message.messageType, "voice:", isVoiceMessage, "audio:", message.audioPath);
+// console.log("[MessageBubble]", message.id, message.role, "type:", message.messageType, "voice:", isVoiceMessage, "audio:", message.audioPath);
 
   const handleTts = useCallback(async () => {
     if (ttsPaused && audioRef.current) {
@@ -113,10 +113,10 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
         setTtsPlaying(true);
         setTtsPaused(false);
       } else {
-        console.warn("TTS failed:", result.error);
+// console.warn("TTS failed:", result.error);
       }
     } catch (err) {
-      console.warn("TTS error:", err);
+// console.warn("TTS error:", err);
     } finally {
       setTtsLoading(false);
     }

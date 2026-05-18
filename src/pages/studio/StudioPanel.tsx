@@ -107,7 +107,7 @@ function StudioPanel() {
       );
       setProjectMembersMap(membersMap);
     } catch (err) {
-      console.error("Failed to load projects:", err);
+// console.error("Failed to load projects:", err);
     } finally {
       setLoading(false);
     }
@@ -118,7 +118,7 @@ function StudioPanel() {
       const list = await invoke<AiRoleItem[]>("list_ai_roles");
       setAllRoles(list);
     } catch (err) {
-      console.error("Failed to load roles:", err);
+// console.error("Failed to load roles:", err);
     }
   };
 
@@ -140,7 +140,7 @@ function StudioPanel() {
       });
       loadProjects();
     } catch (err) {
-      console.error("Failed to toggle favorite:", err);
+// console.error("Failed to toggle favorite:", err);
     }
   };
 
@@ -152,7 +152,7 @@ function StudioPanel() {
       }
       loadProjects();
     } catch (err) {
-      console.error("Failed to delete project:", err);
+// console.error("Failed to delete project:", err);
     }
   };
 
@@ -161,7 +161,7 @@ function StudioPanel() {
       await invoke("update_project", { req: { id: project.id, status: "archived" } });
       loadProjects();
     } catch (err) {
-      console.error("Failed to archive project:", err);
+// console.error("Failed to archive project:", err);
     }
   };
 
@@ -182,7 +182,7 @@ function StudioPanel() {
       setProjectTasks(tasks);
       invoke("recover_role_energy").catch(console.error);
     } catch (err) {
-      console.error("Failed to load project data:", err);
+// console.error("Failed to load project data:", err);
     }
   };
 
@@ -214,7 +214,7 @@ function StudioPanel() {
       });
       setProjectMessages(msgs);
     } catch (err) {
-      console.error("Failed to send message:", err);
+// console.error("Failed to send message:", err);
     }
   };
 

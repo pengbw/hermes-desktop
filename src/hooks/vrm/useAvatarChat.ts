@@ -63,7 +63,7 @@ export function useAvatarChat({
       hermesSessionIdRef.current = conv.hermesSessionId;
       return conv.id;
     } catch (e) {
-      console.error("[Avatar] 获取/创建会话失败:", e);
+// console.error("[Avatar] 获取/创建会话失败:", e);
       return null;
     }
   }, []);
@@ -96,7 +96,7 @@ export function useAvatarChat({
             sendContent = `${sendContent}\n\n附件文件路径：\n${fileList}`;
           }
         } catch (err) {
-          console.warn("Failed to parse attached files:", err);
+// console.warn("Failed to parse attached files:", err);
         }
       }
 
@@ -125,7 +125,7 @@ export function useAvatarChat({
           },
         });
       } catch (e) {
-        console.error("[Avatar] 保存用户消息失败:", e);
+// console.error("[Avatar] 保存用户消息失败:", e);
       }
 
       onChatWindowOpen();
@@ -166,7 +166,7 @@ export function useAvatarChat({
                   },
                 });
               } catch (e) {
-                console.error("[Avatar] 保存AI消息失败:", e);
+// console.error("[Avatar] 保存AI消息失败:", e);
               }
             })();
 
@@ -194,7 +194,7 @@ export function useAvatarChat({
           conversationId: convId,
         });
       } catch (err) {
-        console.error("[Avatar] Chat error:", err);
+// console.error("[Avatar] Chat error:", err);
         setIsThinking(false);
         isThinkingRef.current = false;
         setIsWaitingResponse(false);
@@ -209,7 +209,7 @@ export function useAvatarChat({
             },
           });
         } catch (e) {
-          console.error("[Avatar] 保存错误消息失败:", e);
+// console.error("[Avatar] 保存错误消息失败:", e);
         }
       }
     },

@@ -75,7 +75,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       const list = await invoke<AiRoleItem[]>("list_ai_roles");
       setRoles(list);
     } catch (err) {
-      console.error("Failed to load AI roles:", err);
+// console.error("Failed to load AI roles:", err);
     } finally {
       setLoading(false);
     }
@@ -126,7 +126,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
         try {
           await invoke("bind_role_skill", { roleId: created.id, skillName });
         } catch (err) {
-          console.error("Failed to bind skill:", skillName, err);
+// console.error("Failed to bind skill:", skillName, err);
         }
       }
       setEditForm({ ...EMPTY_FORM });
@@ -135,7 +135,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       loadRoles();
       showToast("✅ 角色创建成功");
     } catch (err) {
-      console.error("Failed to create role:", err);
+// console.error("Failed to create role:", err);
       showToast("❌ 创建失败：" + String(err));
     }
   };
@@ -164,7 +164,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       loadRoles();
       showToast("✅ 角色保存成功");
     } catch (err) {
-      console.error("Failed to update role:", err);
+// console.error("Failed to update role:", err);
       showToast("❌ 保存失败：" + String(err));
     }
   };
@@ -174,7 +174,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       await invoke("delete_ai_role", { id });
       loadRoles();
     } catch (err) {
-      console.error("Failed to delete role:", err);
+// console.error("Failed to delete role:", err);
     }
   };
 
@@ -451,7 +451,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                                   await invoke("unbind_role_skill", { id: skill.id });
                                   loadRoleSkills(editingRole.id);
                                 } catch (err) {
-                                  console.error("Failed to unbind skill:", err);
+// console.error("Failed to unbind skill:", err);
                                 }
                               }}
                             >
@@ -525,7 +525,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                                       });
                                       loadRoleSkills(editingRole.id);
                                     } catch (err) {
-                                      console.error("Failed to bind skill:", err);
+// console.error("Failed to bind skill:", err);
                                     }
                                   }}
                                 >

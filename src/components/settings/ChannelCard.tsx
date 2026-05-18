@@ -83,7 +83,12 @@ export default function ChannelCard({
         {!isConnected &&
           !isConnecting &&
           (meta.setupMode === "qr" || meta.setupMode === "both") && (
-            <button className={channelStyles.btnPrimary} onClick={() => onSetupQr(meta.id)}>
+            <button
+              className={channelStyles.btnPrimary}
+              onClick={() => onSetupQr(meta.id)}
+              disabled={meta.id !== "weixin" && meta.id !== "qqbot"}
+              title={meta.id !== "weixin" && meta.id !== "qqbot" ? "暂不可用" : ""}
+            >
               {t("channel.scanToConnect")}
             </button>
           )}
@@ -92,7 +97,12 @@ export default function ChannelCard({
           (meta.setupMode === "token" ||
             meta.setupMode === "server" ||
             meta.setupMode === "both") && (
-            <button className={channelStyles.btnPrimary} onClick={() => onSetupToken(meta.id)}>
+            <button
+              className={channelStyles.btnPrimary}
+              onClick={() => onSetupToken(meta.id)}
+              disabled={meta.id !== "weixin" && meta.id !== "qqbot"}
+              title={meta.id !== "weixin" && meta.id !== "qqbot" ? "暂不可用" : ""}
+            >
               {t("channel.configureConnect")}
             </button>
           )}

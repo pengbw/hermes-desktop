@@ -13,9 +13,9 @@ async function bootstrap() {
   try {
     const win = getCurrentWindow();
     label = win.label;
-    console.log("[Hermes] Window label:", label);
+// console.log("[Hermes] Window label:", label);
   } catch (e) {
-    console.warn("[Hermes] Could not get window label, using default:", e);
+// console.warn("[Hermes] Could not get window label, using default:", e);
   }
 
   try {
@@ -61,7 +61,7 @@ async function bootstrap() {
       );
     }
   } catch (error) {
-    console.error("[Hermes] Failed to bootstrap app:", error);
+// console.error("[Hermes] Failed to bootstrap app:", error);
     const root = document.getElementById("root") as HTMLElement;
     root.innerHTML = `<div style="padding: 20px; color: red; font-family: monospace;">
       <h2>Hermes Desktop - Bootstrap Error</h2>

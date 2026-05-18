@@ -83,7 +83,7 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
       );
       setPreviewChunks(chunks);
     } catch (e) {
-      console.error("Failed to preview file:", e);
+// console.error("Failed to preview file:", e);
     }
   };
 
@@ -96,15 +96,15 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
         if (updated) updateSelectedKb(updated);
       }
     } catch (e) {
-      console.error("Failed to load knowledge bases:", e);
+// console.error("Failed to load knowledge bases:", e);
     }
     try {
       const config =
         await invoke<Record<string, string | number | boolean>>("get_knowledge_config");
-      console.log("[kb] loaded config:", config);
+// console.log("[kb] loaded config:", config);
       setKbGlobalConfig(config);
     } catch (e) {
-      console.error("Failed to load kb config:", e);
+// console.error("Failed to load kb config:", e);
     }
   };
 
@@ -115,7 +115,7 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
       });
       setKbFiles(files);
     } catch (e) {
-      console.error("Failed to load knowledge files:", e);
+// console.error("Failed to load knowledge files:", e);
     }
   };
 
@@ -142,7 +142,7 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
           try {
             await invoke("index_knowledge_base", { id });
           } catch (e) {
-            console.warn("[kb] auto-reindex failed:", e);
+// console.warn("[kb] auto-reindex failed:", e);
           }
         }
         pendingKbs.clear();
@@ -175,25 +175,25 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
       resetForm();
       loadKnowledgeBases();
       const shouldAutoIndex = result.retrievalMode !== "off" || kbGlobalConfig.globalAutoRetrieve;
-      console.log("[kb] handleCreate auto-index check:", {
-        retrievalMode: result.retrievalMode,
-        globalAutoRetrieve: kbGlobalConfig.globalAutoRetrieve,
-        shouldAutoIndex,
-        directoriesLen: form.directories.length,
-      });
+      // console.log("[kb] handleCreate auto-index check:", {
+      //   retrievalMode: result.retrievalMode,
+      //   globalAutoRetrieve: kbGlobalConfig.globalAutoRetrieve,
+      //   shouldAutoIndex,
+      //   directoriesLen: form.directories.length,
+      // });
       if (result?.id && form.directories.length > 0 && shouldAutoIndex) {
         setIndexingKbId(result.id);
         setIndexProgress({ status: "scanning", current: 0, total: 0, file: "" });
         try {
           await invoke("index_knowledge_base", { id: result.id });
         } catch (e) {
-          console.error("Auto-index failed:", e);
+// console.error("Auto-index failed:", e);
           setIndexingKbId(null);
           setIndexProgress(null);
         }
       }
     } catch (e) {
-      console.error("Failed to create knowledge base:", e);
+// console.error("Failed to create knowledge base:", e);
     }
   };
 
@@ -237,7 +237,7 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
       if (selectedKb?.id === deleteTargetId) updateSelectedKb(null);
       loadKnowledgeBases();
     } catch (e) {
-      console.error("Failed to delete knowledge base:", e);
+// console.error("Failed to delete knowledge base:", e);
     } finally {
       setShowDeleteConfirm(false);
       setDeleteTargetId(null);
@@ -250,7 +250,7 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
     try {
       await invoke("index_knowledge_base", { id });
     } catch (e) {
-      console.error("Failed to index knowledge base:", e);
+// console.error("Failed to index knowledge base:", e);
       setIndexingKbId(null);
       setIndexProgress(null);
     }
@@ -269,7 +269,7 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
       );
       setSearchResults(result);
     } catch (e) {
-      console.error("Failed to search knowledge base:", e);
+// console.error("Failed to search knowledge base:", e);
     }
   };
 
@@ -416,7 +416,7 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
                     await invoke("import_knowledge_base", { id: selectedKb.id, data: json });
                     loadKnowledgeBases();
                   } catch (e) {
-                    console.error("Import failed:", e);
+// console.error("Import failed:", e);
                   }
                 }}
               >

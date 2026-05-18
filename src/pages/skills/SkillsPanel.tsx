@@ -47,7 +47,7 @@ function SkillsPanel({
       setCatalogResult(result);
       setSkillPage(page);
     } catch (err) {
-      console.error("Failed to load skill catalog:", err);
+// console.error("Failed to load skill catalog:", err);
     } finally {
       setLoading(false);
     }
@@ -57,7 +57,7 @@ function SkillsPanel({
     try {
       await invoke<number>("load_skill_catalog_from_file");
     } catch (err) {
-      console.error("Reload catalog failed:", err);
+// console.error("Reload catalog failed:", err);
     }
     loadCatalog(skillPage);
   };
@@ -139,7 +139,7 @@ function SkillsPanel({
       loadCatalog(skillPage);
       setMenuOpen(null);
     } catch (err) {
-      console.error("Uninstall failed:", err);
+// console.error("Uninstall failed:", err);
     }
   };
 
@@ -170,7 +170,7 @@ function SkillsPanel({
       setConfigSkill(null);
       loadCatalog(skillPage);
     } catch (err) {
-      console.error("Save config failed:", err);
+// console.error("Save config failed:", err);
     }
   };
 

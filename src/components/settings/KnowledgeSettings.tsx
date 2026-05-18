@@ -53,7 +53,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
           ollamaModel: cfg.ollamaModel || "nomic-embed-text",
         });
       } catch (e) {
-        console.error("Failed to load knowledge config:", e);
+// console.error("Failed to load knowledge config:", e);
       }
     })();
     (async () => {
@@ -64,7 +64,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
           >("list_providers");
         setProviders(list || []);
       } catch (e) {
-        console.error("Failed to load providers:", e);
+// console.error("Failed to load providers:", e);
       }
     })();
     (async () => {
@@ -139,7 +139,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
       setSaveMsg("success");
       setTimeout(() => setSaveMsg(null), 2000);
     } catch (e) {
-      console.error("Failed to save knowledge config:", e);
+// console.error("Failed to save knowledge config:", e);
       setSaveMsg("error");
     } finally {
       setSaving(false);
@@ -212,7 +212,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
       setLocalModelStatus("ready");
       unlisten();
     } catch (e) {
-      console.error("Failed to install local model:", e);
+// console.error("Failed to install local model:", e);
       setLocalModelStatus("missing");
     }
   };
@@ -224,7 +224,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
         setLocalModelStatus("onnx_ready");
       }
     } catch (e) {
-      console.error("Failed to install ONNX model:", e);
+// console.error("Failed to install ONNX model:", e);
     }
   };
 

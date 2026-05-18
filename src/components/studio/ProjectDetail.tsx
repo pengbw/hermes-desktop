@@ -64,7 +64,7 @@ function ActivityFeed({
         });
         setActivities(data);
       } catch (err) {
-        console.error("Failed to load activities:", err);
+// console.error("Failed to load activities:", err);
       }
     };
     load();
@@ -325,7 +325,7 @@ function ProjectDetail({
       });
       onMessagesUpdate(msgs);
     } catch (err) {
-      console.error("Failed to send message:", err);
+// console.error("Failed to send message:", err);
     }
 
     const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
@@ -358,7 +358,7 @@ function ProjectDetail({
                 },
               });
             } catch (err) {
-              console.error("Failed to save AI message:", err);
+// console.error("Failed to save AI message:", err);
             }
           }
           const msgs = await invoke<ProjectMessage[]>("list_project_messages", {
@@ -381,7 +381,7 @@ function ProjectDetail({
           eventId,
         });
       } catch (err) {
-        console.error("Failed to chat with roles:", err);
+// console.error("Failed to chat with roles:", err);
         setProjectChatStreaming(false);
         setProjectChatStreamed("");
         unlisten();
@@ -416,7 +416,7 @@ function ProjectDetail({
             });
             onMessagesUpdate(msgs);
           } catch (err) {
-            console.error("Failed to save AI message:", err);
+// console.error("Failed to save AI message:", err);
           }
           setProjectChatStreaming(false);
           setProjectChatStreamed("");
@@ -436,7 +436,7 @@ function ProjectDetail({
         eventId,
       });
     } catch (err) {
-      console.error("Failed to chat with role:", err);
+// console.error("Failed to chat with role:", err);
       setProjectChatStreaming(false);
       setProjectChatStreamed("");
       unlisten();
@@ -1058,7 +1058,7 @@ function ProjectDetail({
                           onMessagesUpdate(msgs);
                           setChatInput("");
                         } catch (err) {
-                          console.error("Auto delegate failed:", err);
+// console.error("Auto delegate failed:", err);
                         } finally {
                           setAutoDelegateRunning(false);
                         }

@@ -1153,6 +1153,9 @@ fn write_channel_env(
     if let Some(obj) = config.as_object() {
         let mut lines_to_add: Vec<(String, String)> = Vec::new();
         for (key, value) in obj {
+            if key == "proxy" {
+                continue;
+            }
             let env_key = format!("{}_{}", prefix, key.to_uppercase().replace('-', "_"));
             let val_str = match value {
                 serde_json::Value::String(s) => s.clone(),
@@ -1172,6 +1175,17 @@ fn write_channel_env(
             lines_to_add.push(("WHATSAPP_ENABLED".to_string(), "true".to_string()));
         }
 
+        if let Some(proxy_val) = obj.get("proxy") {
+            let proxy_str = match proxy_val {
+                serde_json::Value::String(s) => s.clone(),
+                _ => proxy_val.to_string(),
+            };
+            if !proxy_str.is_empty() {
+                lines_to_add.push(("HTTPS_PROXY".to_string(), proxy_str.clone()));
+                lines_to_add.push(("HTTP_PROXY".to_string(), proxy_str));
+            }
+        }
+
         let mut existing_lines: Vec<String> = Vec::new();
         if std::path::Path::new(env_path).exists() {
             if let Ok(content) = std::fs::read_to_string(env_path) {
@@ -1189,6 +1203,11 @@ fn write_channel_env(
                     existing_keys.insert(key_upper);
                 }
             }
+        }
+
+        if obj.contains_key("proxy") {
+            existing_keys.insert("HTTPS_PROXY".to_string());
+            existing_keys.insert("HTTP_PROXY".to_string());
         }
 
         let mut result_lines: Vec<String> = existing_lines
@@ -1236,7 +1255,9 @@ fn remove_channel_env(env_path: &str, channel_type: &str) -> Result<(), String> 
             }
             if let Some((k, _)) = trimmed.split_once('=') {
                 let key_upper = k.trim().to_uppercase();
-                return !key_upper.starts_with(&prefix);
+                if key_upper.starts_with(&prefix) {
+                    return false;
+                }
             }
             true
         })

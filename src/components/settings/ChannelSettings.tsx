@@ -39,7 +39,7 @@ export default function ChannelSettings({ t }: ChannelSettingsProps) {
       });
       setStatuses(map);
     } catch (e) {
-      console.error("Failed to load channel statuses:", e);
+// console.error("Failed to load channel statuses:", e);
     } finally {
       setLoading(false);
     }
@@ -64,7 +64,7 @@ export default function ChannelSettings({ t }: ChannelSettingsProps) {
       await TauriCommands.channelDisconnect(channelType);
       await loadStatuses();
     } catch (e) {
-      console.error("Failed to disconnect channel:", e);
+// console.error("Failed to disconnect channel:", e);
     }
   };
 
@@ -73,7 +73,7 @@ export default function ChannelSettings({ t }: ChannelSettingsProps) {
       await TauriCommands.channelSetHome(channelType);
       await loadStatuses();
     } catch (e) {
-      console.error("Failed to set home channel:", e);
+// console.error("Failed to set home channel:", e);
     }
   };
 

@@ -59,7 +59,7 @@ export default function ProjectSettingsModal({
       const proj = project;
       setProjectGuidelines(proj?.projectGuidelines || "");
     } catch (err) {
-      console.error("Failed to load project data:", err);
+// console.error("Failed to load project data:", err);
     }
   };
 
@@ -86,7 +86,7 @@ export default function ProjectSettingsModal({
       const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", { projectId });
       setProjectArtifacts(artifacts);
     } catch (err) {
-      console.error("Failed to add member:", err);
+// console.error("Failed to add member:", err);
     }
   };
 
@@ -99,7 +99,7 @@ export default function ProjectSettingsModal({
       const artifacts = await invoke<ProjectArtifact[]>("list_project_artifacts", { projectId });
       setProjectArtifacts(artifacts);
     } catch (err) {
-      console.error("Failed to remove member:", err);
+// console.error("Failed to remove member:", err);
     }
   };
 
@@ -111,7 +111,7 @@ export default function ProjectSettingsModal({
         setProjectMembers(members);
       }
     } catch (err) {
-      console.error("Failed to update equipment:", err);
+// console.error("Failed to update equipment:", err);
     }
   };
 
@@ -126,7 +126,7 @@ export default function ProjectSettingsModal({
       });
       onProjectsUpdate();
     } catch (err) {
-      console.error("Failed to save guidelines:", err);
+// console.error("Failed to save guidelines:", err);
     }
   };
 
@@ -142,7 +142,7 @@ export default function ProjectSettingsModal({
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("Export failed:", err);
+// console.error("Export failed:", err);
     }
   };
 
@@ -308,7 +308,7 @@ export default function ProjectSettingsModal({
                             );
                             setProjectArtifacts(artifacts);
                           } catch (err) {
-                            console.error("Failed to approve:", err);
+// console.error("Failed to approve:", err);
                           }
                         }}
                       >
@@ -330,7 +330,7 @@ export default function ProjectSettingsModal({
                             );
                             setProjectArtifacts(artifacts);
                           } catch (err) {
-                            console.error("Failed to reject:", err);
+// console.error("Failed to reject:", err);
                           }
                         }}
                       >
@@ -703,7 +703,7 @@ function MemoriesTab({
       });
       setMemories(data);
     } catch (err) {
-      console.error("Failed to load memories:", err);
+// console.error("Failed to load memories:", err);
     }
   };
 
@@ -727,7 +727,7 @@ function MemoriesTab({
       setNewMemory({ category: "general", content: "" });
       loadMemories();
     } catch (err) {
-      console.error("Failed to add memory:", err);
+// console.error("Failed to add memory:", err);
     }
   };
 
@@ -736,7 +736,7 @@ function MemoriesTab({
       await invoke("delete_project_memory", { id });
       loadMemories();
     } catch (err) {
-      console.error("Failed to delete memory:", err);
+// console.error("Failed to delete memory:", err);
     }
   };
 

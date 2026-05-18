@@ -66,7 +66,7 @@ function TaskDetailPanel({
       const data = await invoke<TaskComment[]>("list_task_comments", { taskId: task.id });
       setComments(data);
     } catch (err) {
-      console.error("Failed to load comments:", err);
+// console.error("Failed to load comments:", err);
     }
   }, [task.id]);
 
@@ -75,7 +75,7 @@ function TaskDetailPanel({
       const data = await invoke<TaskLink[]>("list_task_links", { taskId: task.id });
       setLinks(data);
     } catch (err) {
-      console.error("Failed to load links:", err);
+// console.error("Failed to load links:", err);
     }
   }, [task.id]);
 
@@ -84,7 +84,7 @@ function TaskDetailPanel({
       const data = await invoke<TaskEvent[]>("list_task_events", { taskId: task.id });
       setEvents(data);
     } catch (err) {
-      console.error("Failed to load events:", err);
+// console.error("Failed to load events:", err);
     }
   }, [task.id]);
 
@@ -103,7 +103,7 @@ function TaskDetailPanel({
       setNewComment("");
       loadComments();
     } catch (err) {
-      console.error("Failed to add comment:", err);
+// console.error("Failed to add comment:", err);
     }
   };
 
@@ -118,7 +118,7 @@ function TaskDetailPanel({
       setLinkToTaskId("");
       loadLinks();
     } catch (err) {
-      console.error("Failed to link tasks:", err);
+// console.error("Failed to link tasks:", err);
     }
   };
 
@@ -127,7 +127,7 @@ function TaskDetailPanel({
       await invoke("unlink_tasks", { linkId });
       loadLinks();
     } catch (err) {
-      console.error("Failed to unlink:", err);
+// console.error("Failed to unlink:", err);
     }
   };
 
@@ -137,7 +137,7 @@ function TaskDetailPanel({
       setIsEditingBody(false);
       onTaskUpdate();
     } catch (err) {
-      console.error("Failed to update task:", err);
+// console.error("Failed to update task:", err);
     }
   };
 
@@ -404,7 +404,7 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
       setNewTaskTitle("");
       refreshTasks();
     } catch (err) {
-      console.error("Failed to create task:", err);
+// console.error("Failed to create task:", err);
     }
   };
 
@@ -413,7 +413,7 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
     if (task) {
       const allowed = VALID_STATUS_TRANSITIONS[task.status] || [];
       if (allowed.length > 0 && !allowed.includes(status)) {
-        console.warn(`Invalid status transition: ${task.status} -> ${status}`);
+// console.warn(`Invalid status transition: ${task.status} -> ${status}`);
         return;
       }
     }
@@ -421,7 +421,7 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
       await invoke("update_project_task", { id: taskId, req: { status } });
       refreshTasks();
     } catch (err) {
-      console.error("Failed to update task:", err);
+// console.error("Failed to update task:", err);
     }
   };
 
@@ -431,7 +431,7 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
       if (selectedTask?.id === taskId) setSelectedTask(null);
       refreshTasks();
     } catch (err) {
-      console.error("Failed to delete task:", err);
+// console.error("Failed to delete task:", err);
     }
   };
 
@@ -444,7 +444,7 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
         await handleUpdateTaskStatus(data.taskId, targetStatus);
       }
     } catch (err) {
-      console.warn("Failed to update task status:", err);
+// console.warn("Failed to update task status:", err);
     }
   };
 

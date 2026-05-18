@@ -99,7 +99,7 @@ function SettingsPanel() {
       setProviders(list);
       return list;
     } catch (err) {
-      console.error("Failed to load providers:", err);
+// console.error("Failed to load providers:", err);
       return [];
     }
   };
@@ -114,7 +114,7 @@ function SettingsPanel() {
       });
       setModelList(list);
     } catch (err) {
-      console.error("Failed to fetch model list:", err);
+// console.error("Failed to fetch model list:", err);
       setModelList([]);
       setModelListError(String(err));
     } finally {
@@ -277,12 +277,12 @@ function SettingsPanel() {
           await invoke("restart_hermes");
           setSaveMessage({ text: "设置已保存，网关已重启", type: "success" });
         } catch (restartErr) {
-          console.error("Failed to restart gateway:", restartErr);
+// console.error("Failed to restart gateway:", restartErr);
           setSaveMessage({ text: "设置已保存，但网关重启失败，请手动重启", type: "error" });
         }
       }
     } catch (err) {
-      console.error("Failed to save config:", err);
+// console.error("Failed to save config:", err);
       setSaveMessage({ text: `${t("settings.saveFailed")}: ${err}`, type: "error" });
     } finally {
       setSaving(false);
@@ -295,7 +295,7 @@ function SettingsPanel() {
       const list = await invoke<AvatarGesture[]>("get_avatar_gestures");
       setGestures(list);
     } catch (err) {
-      console.error("Failed to load gestures:", err);
+// console.error("Failed to load gestures:", err);
     }
   };
 
@@ -325,7 +325,7 @@ function SettingsPanel() {
         cfg.workspaceRoot = wsRoot || "";
         setConfig(cfg);
       } catch (err) {
-        console.warn("Failed to parse config:", err);
+// console.warn("Failed to parse config:", err);
       }
       try {
         const savedApiBase = await invoke<string>("get_config", { key: "hermes_api_base" });
@@ -333,14 +333,14 @@ function SettingsPanel() {
         if (savedApiBase) setHermesApiBase(savedApiBase);
         if (savedApiKey) setHermesApiKey(savedApiKey);
       } catch (err) {
-        console.warn("Failed to load API config:", err);
+// console.warn("Failed to load API config:", err);
       }
       setDirtyFields(new Set());
       if (result.provider) {
         fetchModelList(result.provider);
       }
     } catch (err) {
-      console.error("Failed to load hermes config:", err);
+// console.error("Failed to load hermes config:", err);
     } finally {
       setLoading(false);
     }

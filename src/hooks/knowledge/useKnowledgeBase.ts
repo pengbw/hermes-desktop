@@ -28,7 +28,7 @@ export function useKnowledgeBase() {
         if (updated) updateSelectedKb(updated);
       }
     } catch (e) {
-      console.error("Failed to load knowledge bases:", e);
+// console.error("Failed to load knowledge bases:", e);
     }
   }, [updateSelectedKb]);
 
@@ -74,7 +74,7 @@ export function useKnowledgeBase() {
     try {
       await invoke("index_knowledge_base", { id });
     } catch (e) {
-      console.error("Failed to index knowledge base:", e);
+// console.error("Failed to index knowledge base:", e);
     } finally {
       setIndexingKbId(null);
     }
@@ -114,7 +114,7 @@ export function useKnowledgeFiles(kbId: string | null) {
       });
       setFiles(result);
     } catch (e) {
-      console.error("Failed to load knowledge files:", e);
+// console.error("Failed to load knowledge files:", e);
     }
   }, [kbId]);
 
@@ -163,7 +163,7 @@ export function useKnowledgeSearch() {
       setSearchResults(results);
       return results;
     } catch (e) {
-      console.error("Search failed:", e);
+// console.error("Search failed:", e);
       return null;
     } finally {
       setIsSearching(false);

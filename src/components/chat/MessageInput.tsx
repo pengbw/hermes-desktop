@@ -45,7 +45,7 @@ export default function MessageInput({
   const { voiceState, installError, progressText, micError, toggleRecording, installStt } = useVoiceInput({
     onResult: () => {},
     onRecordingComplete: (audioPath) => {
-      console.log("[MessageInput] onRecordingComplete, audioPath:", audioPath);
+// console.log("[MessageInput] onRecordingComplete, audioPath:", audioPath);
       const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
       onSend({
         voiceInfo: { audioPath, audioDuration: 0 },
@@ -98,7 +98,7 @@ export default function MessageInput({
           >("list_providers");
         setProviders(list);
       } catch (e) {
-        console.error("Failed to load providers:", e);
+// console.error("Failed to load providers:", e);
       }
     };
     const loadCurrentModel = async () => {
@@ -107,7 +107,7 @@ export default function MessageInput({
         setCurrentModel(config.model);
         setCurrentProvider(config.provider);
       } catch (e) {
-        console.error("Failed to load model config:", e);
+// console.error("Failed to load model config:", e);
       }
     };
     loadProviders();
@@ -138,7 +138,7 @@ export default function MessageInput({
         });
         setModelList(list);
       } catch (e) {
-        console.error("Failed to load model list:", e);
+// console.error("Failed to load model list:", e);
         setModelList([]);
       }
     })();
@@ -157,7 +157,7 @@ export default function MessageInput({
         });
         result.push({ name: f.name, path: tempPath });
       } catch (e) {
-        console.error("Failed to save temp file:", f.name, e);
+// console.error("Failed to save temp file:", f.name, e);
       }
     }
     return result;

@@ -76,7 +76,7 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
           try {
             await TauriCommands.channelConfirmQr(channel.id);
           } catch (e) {
-            console.error("[ChannelQrModal] channelConfirmQr failed:", e);
+// console.error("[ChannelQrModal] channelConfirmQr failed:", e);
           }
           onConnected();
           onClose();

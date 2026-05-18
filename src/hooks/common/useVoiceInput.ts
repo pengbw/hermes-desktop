@@ -120,7 +120,7 @@ export function useVoiceInput({
       await startRecording();
       setVoiceState("recording");
     } catch (e: unknown) {
-      console.warn("Failed to start mic recording:", e);
+// console.warn("Failed to start mic recording:", e);
       const errMsg = e instanceof Error ? e.message : String(e ?? "Unknown error");
       const lowerMsg = errMsg.toLowerCase();
       // 检测麦克风权限相关错误（macOS/Windows 通用）
@@ -147,13 +147,13 @@ export function useVoiceInput({
     try {
       audioPath = await stopRecording();
     } catch (e) {
-      console.warn("Failed to stop mic recording:", e);
+// console.warn("Failed to stop mic recording:", e);
       setVoiceState("ready");
       return;
     }
 
     if (!audioPath) {
-      console.warn("No audio path returned from stopRecording");
+// console.warn("No audio path returned from stopRecording");
       setVoiceState("ready");
       return;
     }
@@ -195,10 +195,10 @@ export function useVoiceInput({
           onSttCompleteRef.current("", result.audioPath ?? audioPath, result.audioDuration ?? undefined);
         }
       } else if (result.error) {
-        console.warn("Transcription failed:", result.error);
+// console.warn("Transcription failed:", result.error);
       }
     } catch (e) {
-      console.warn("Transcription error:", e);
+// console.warn("Transcription error:", e);
     } finally {
       setVoiceState("ready");
       setProgressText(null);
@@ -221,7 +221,7 @@ export function useVoiceInput({
       await invoke("install_stt");
     } catch (e: any) {
       const msg = typeof e === "string" ? e : e?.toString() || "Unknown error";
-      console.warn("Failed to install STT:", msg);
+// console.warn("Failed to install STT:", msg);
       setInstallError(msg);
       setVoiceState("install-error");
     }

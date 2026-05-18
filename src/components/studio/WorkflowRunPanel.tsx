@@ -41,7 +41,7 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       const data = await invoke<WorkflowRun[]>("list_workflow_runs", { projectId });
       setRuns(data);
     } catch (err) {
-      console.error("Failed to load workflow runs:", err);
+// console.error("Failed to load workflow runs:", err);
     }
   }, [projectId]);
 
@@ -50,7 +50,7 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       const data = await invoke<WorkflowRunStatus>("get_workflow_run_status", { runId });
       setRunStatus(data);
     } catch (err) {
-      console.error("Failed to load run status:", err);
+// console.error("Failed to load run status:", err);
     }
   }, []);
 
@@ -112,7 +112,7 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       await loadRuns();
       setSelectedRunId(run.id);
     } catch (err) {
-      console.error("Failed to start workflow run:", err);
+// console.error("Failed to start workflow run:", err);
       alert("启动工作流失败: " + err);
     }
   };
@@ -123,7 +123,7 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       await loadRuns();
       if (selectedRunId === runId) await loadRunStatus(runId);
     } catch (err) {
-      console.error("Failed to pause:", err);
+// console.error("Failed to pause:", err);
     }
   };
 
@@ -133,7 +133,7 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       await loadRuns();
       if (selectedRunId === runId) await loadRunStatus(runId);
     } catch (err) {
-      console.error("Failed to resume:", err);
+// console.error("Failed to resume:", err);
     }
   };
 
@@ -152,7 +152,7 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       await loadRuns();
       await loadRunStatus(runId);
     } catch (err) {
-      console.error("Failed to confirm step:", err);
+// console.error("Failed to confirm step:", err);
     }
   };
 

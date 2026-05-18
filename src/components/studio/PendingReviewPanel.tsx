@@ -138,7 +138,7 @@ function ArtifactPreviewModal({
                 wordBreak: "break-word",
                 fontSize: 13,
                 lineHeight: 1.6,
-                color: "#333",
+                color: "var(--text-primary)",
                 margin: 0,
               }}
             >
@@ -174,7 +174,7 @@ export default function PendingReviewPanel({
         return data.length > 0 ? data[0] : null;
       });
     } catch (err) {
-      console.error("Failed to load pending review tasks:", err);
+// console.error("Failed to load pending review tasks:", err);
     }
   }, [projectId]);
 
@@ -218,7 +218,7 @@ export default function PendingReviewPanel({
       await loadPending();
       onReviewComplete();
     } catch (err) {
-      console.error("Failed to review artifact:", err);
+// console.error("Failed to review artifact:", err);
     } finally {
       setReviewing(false);
     }
@@ -239,7 +239,7 @@ export default function PendingReviewPanel({
   };
 
   if (pendingTasks.length === 0) {
-    return <div style={{ padding: 32, textAlign: "center", color: "#999" }}>🎉 暂无待审核任务</div>;
+    return <div style={{ padding: 32, textAlign: "center", color: "var(--text-tertiary)" }}>🎉 暂无待审核任务</div>;
   }
 
   return (
@@ -248,9 +248,10 @@ export default function PendingReviewPanel({
         <div
           style={{
             width: 240,
-            borderRight: "1px solid #e9ecef",
+            borderRight: "1px solid var(--color-border)",
             overflow: "auto",
             flexShrink: 0,
+            background: "var(--color-sidebar-bg)",
           }}
         >
           <div
@@ -258,8 +259,8 @@ export default function PendingReviewPanel({
               padding: "8px 12px",
               fontWeight: 600,
               fontSize: 12,
-              color: "#666",
-              borderBottom: "1px solid #e9ecef",
+              color: "var(--color-text-secondary)",
+              borderBottom: "1px solid var(--color-border)",
             }}
           >
             待审核 ({pendingTasks.length})
@@ -271,12 +272,13 @@ export default function PendingReviewPanel({
               style={{
                 padding: "10px 12px",
                 cursor: "pointer",
-                borderBottom: "1px solid #f0f0f0",
-                background: selectedTask?.task.id === pt.task.id ? "#eef0ff" : "transparent",
+                borderBottom: "1px solid var(--color-border)",
+                background: selectedTask?.task.id === pt.task.id ? "var(--color-nav-active)" : "transparent",
+                color: "var(--color-text)",
               }}
             >
               <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>{pt.task.title}</div>
-              <div style={{ fontSize: 11, color: "#888", display: "flex", gap: 8 }}>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", display: "flex", gap: 8 }}>
                 <span>
                   {getRoleIcon(pt.task.assignee)} {getRoleName(pt.task.assignee)}
                 </span>
@@ -297,10 +299,11 @@ export default function PendingReviewPanel({
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
+                  color: "var(--color-text)",
                 }}
               >
                 {selectedTask.task.title}
-                <span style={{ fontSize: 11, color: "#888", fontWeight: 400 }}>
+                <span style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 400 }}>
                   {getRoleIcon(selectedTask.task.assignee)}{" "}
                   {getRoleName(selectedTask.task.assignee)}
                 </span>
@@ -309,7 +312,7 @@ export default function PendingReviewPanel({
               <div
                 style={{
                   fontSize: 12,
-                  color: "#666",
+                  color: "var(--color-text-secondary)",
                   marginBottom: 12,
                 }}
               >
@@ -320,10 +323,11 @@ export default function PendingReviewPanel({
                 <div
                   key={artifact.id}
                   style={{
-                    border: "1px solid #e9ecef",
+                    border: "1px solid var(--color-border)",
                     borderRadius: 8,
                     marginBottom: 12,
                     overflow: "hidden",
+                    background: "var(--color-surface)",
                   }}
                 >
                   <div
@@ -332,25 +336,27 @@ export default function PendingReviewPanel({
                       alignItems: "center",
                       gap: 8,
                       padding: "10px 12px",
-                      background: "#f8f9fa",
+                      background: "var(--color-section-bg)",
                       cursor: "pointer",
+                      color: "var(--color-text)",
                     }}
                     onClick={() => setPreviewArtifact(artifact)}
                   >
                     <span>📄</span>
                     <span style={{ fontWeight: 500, fontSize: 13 }}>{artifact.title}</span>
-                    <span style={{ fontSize: 11, color: "#888" }}>{artifact.artifactType}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{artifact.artifactType}</span>
                     <span
                       style={{
                         fontSize: 11,
                         padding: "1px 6px",
                         borderRadius: 3,
-                        background: "#fff3cd",
+                        background: "var(--color-dirty-badge-bg)",
+                        color: "var(--color-dirty-badge-text)",
                       }}
                     >
                       {ARTIFACT_STATUS_LABEL[artifact.status] || artifact.status}
                     </span>
-                    <span style={{ marginLeft: "auto", fontSize: 11, color: "#999" }}>
+                    <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-tertiary)" }}>
                       {getRoleIcon(artifact.roleId)} {getRoleName(artifact.roleId)} ·{" "}
                       {formatTime(artifact.createdAt)}
                     </span>
@@ -360,8 +366,8 @@ export default function PendingReviewPanel({
                           fontSize: 11,
                           padding: "2px 8px",
                           borderRadius: 4,
-                          background: "#e8f4fd",
-                          color: "#0984e3",
+                          background: "var(--color-file-tag-bg)",
+                          color: "var(--color-file-tag-text)",
                           cursor: "pointer",
                         }}
                       >
@@ -373,7 +379,8 @@ export default function PendingReviewPanel({
                   <div
                     style={{
                       padding: "8px 12px",
-                      borderTop: "1px solid #e9ecef",
+                      borderTop: "1px solid var(--color-border)",
+                      background: "var(--color-surface)",
                     }}
                   >
                     <textarea
@@ -384,12 +391,14 @@ export default function PendingReviewPanel({
                       style={{
                         width: "100%",
                         padding: "8px 10px",
-                        border: "1px solid #ddd",
+                        border: "1px solid var(--color-border)",
                         borderRadius: 4,
                         fontSize: 13,
                         resize: "vertical",
                         boxSizing: "border-box",
                         marginBottom: 8,
+                        background: "var(--color-input-bg)",
+                        color: "var(--color-text)",
                       }}
                     />
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -398,9 +407,9 @@ export default function PendingReviewPanel({
                         disabled={reviewing}
                         style={{
                           padding: "6px 16px",
-                          background: "#00b894",
-                          color: "#fff",
-                          border: "none",
+                          background: "var(--color-toast-success-bg)",
+                          color: "var(--color-toast-success-text)",
+                          border: "1px solid var(--color-toast-success-text)",
                           borderRadius: 4,
                           cursor: reviewing ? "not-allowed" : "pointer",
                           fontSize: 13,
@@ -413,9 +422,9 @@ export default function PendingReviewPanel({
                         disabled={reviewing}
                         style={{
                           padding: "6px 16px",
-                          background: "#e17055",
-                          color: "#fff",
-                          border: "none",
+                          background: "var(--color-toast-error-bg)",
+                          color: "var(--color-toast-error-text)",
+                          border: "1px solid var(--color-toast-error-text)",
                           borderRadius: 4,
                           cursor: reviewing ? "not-allowed" : "pointer",
                           fontSize: 13,
@@ -429,7 +438,7 @@ export default function PendingReviewPanel({
               ))}
             </>
           ) : (
-            <div style={{ padding: 32, textAlign: "center", color: "#999" }}>
+            <div style={{ padding: 32, textAlign: "center", color: "var(--text-tertiary)" }}>
               请选择左侧任务查看详情
             </div>
           )}

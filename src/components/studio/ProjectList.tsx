@@ -191,17 +191,6 @@ function ProjectList({
             >
               {t("studio.allProjects")}
             </button>
-            <button
-              className={
-                styles.studioTab + " " + (activeFilter === "ungrouped" ? styles.active : "")
-              }
-              onClick={() => {
-                onFilterChange("ungrouped");
-                onPageChange(1);
-              }}
-            >
-              {t("studio.ungrouped")}
-            </button>
           </div>
           <div className={styles.studioHeaderActions}>
             <div className={styles.studioViewToggle}>

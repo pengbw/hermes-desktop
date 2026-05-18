@@ -20,7 +20,7 @@ export function useLocalStorage<T>(
         try {
           localStorage.setItem(key, JSON.stringify(nextValue));
         } catch {
-          console.warn(`Failed to save localStorage key "${key}"`);
+// console.warn(`Failed to save localStorage key "${key}"`);
         }
         return nextValue;
       });

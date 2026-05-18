@@ -881,7 +881,7 @@ function WorkflowDesignerInner({
       setNodes(flowNodes);
       setEdges(flowEdges);
     } catch (err) {
-      console.error("Failed to load workflows:", err);
+// console.error("Failed to load workflows:", err);
     }
   }, [projectId, roles, setNodes, setEdges, activeGroupId]);
 
@@ -1169,7 +1169,7 @@ function WorkflowDesignerInner({
             try {
               await invoke("remove_project_workflow", { id: workflowId });
             } catch (err) {
-              console.error("Failed to remove old workflow:", err);
+// console.error("Failed to remove old workflow:", err);
             }
           }
           loadWorkflows();
@@ -1194,7 +1194,7 @@ function WorkflowDesignerInner({
           try {
             await invoke("remove_project_workflow", { id: wf.id });
           } catch (err) {
-            console.error("Failed to remove workflow:", err);
+// console.error("Failed to remove workflow:", err);
           }
         }
       }
@@ -1237,7 +1237,7 @@ function WorkflowDesignerInner({
             await loadWorkflows();
             invoke("sync_workflow_to_file", { projectId }).catch(console.error);
           } catch (err) {
-            console.error("Failed to remove workflow:", err);
+// console.error("Failed to remove workflow:", err);
           }
         }
       }
@@ -1316,7 +1316,7 @@ function WorkflowDesignerInner({
                       await invoke("update_workflow_group", { id: g.id, name: newName });
                       loadWorkflows();
                     } catch (err) {
-                      console.error("Failed to rename workflow group:", err);
+// console.error("Failed to rename workflow group:", err);
                     }
                   }
                   setEditingGroupId(null);
@@ -1400,7 +1400,7 @@ function WorkflowDesignerInner({
                 setActiveGroupId(newGroup.id);
                 invoke("sync_workflow_to_file", { projectId }).catch(console.error);
               } catch (err) {
-                console.error("Failed to create workflow group:", err);
+// console.error("Failed to create workflow group:", err);
               }
             }}
             className={styles.wfGroupTabAdd}
@@ -1576,7 +1576,7 @@ function WorkflowDesignerInner({
                   await loadWorkflows();
                   alert("同步成功");
                 } catch (err) {
-                  console.error("Failed to sync workflow:", err);
+// console.error("Failed to sync workflow:", err);
                   alert("同步失败: " + err);
                 }
               }}

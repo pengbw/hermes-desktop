@@ -183,6 +183,17 @@
   opacity: 0.9;
 }
 
+.btnPrimary:disabled {
+  background: var(--color-border);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.btnPrimary:disabled:hover {
+  opacity: 0.7;
+}
+
 .btnSecondary {
   padding: 6px 14px;
   border: 1px solid var(--color-border);

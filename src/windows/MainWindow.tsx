@@ -57,7 +57,7 @@ export default function MainWindow() {
       const visible = await invoke<boolean>("toggle_avatar_window");
       setShowAvatar(visible);
     } catch (err) {
-      console.error("Failed to toggle avatar window:", err);
+// console.error("Failed to toggle avatar window:", err);
     }
   };
 

@@ -258,9 +258,19 @@ export const CHANNEL_LIST: ChannelMeta[] = [
         helpText: "在飞书开放平台创建应用后获取",
         helpTextEn: "Get from Feishu Open Platform after creating an app",
       },
+      {
+        key: "proxy",
+        label: "代理地址",
+        labelEn: "Proxy URL",
+        type: "url",
+        required: false,
+        placeholder: "http://proxy.company.com:8080",
+        helpText: "公司网络环境下可填写代理地址，解决飞书连接不上的问题",
+        helpTextEn: "Fill in corporate proxy URL if Feishu cannot connect in company network",
+      },
     ],
     setupGuide:
-      "1. 前往飞书开放平台创建企业自建应用\n2. 添加「机器人」能力\n3. 获取 App ID 和 App Secret\n4. 点击「配置接入」填入凭证\n5. 在飞书中搜索机器人发消息测试",
+      "1. 前往飞书开放平台创建企业自建应用\n2. 添加「机器人」能力\n3. 获取 App ID 和 App Secret\n4. 点击「配置接入」填入凭证，如处于公司网络请填写代理地址\n5. 在飞书中搜索机器人发消息测试",
     setupGuideEn:
       "1. Go to Feishu Open Platform to create an app\n2. Add 'Bot' capability\n3. Get App ID and App Secret\n4. Click 'Configure' and fill in credentials\n5. Search bot in Feishu and send a test message",
     envPrefix: "FEISHU",
