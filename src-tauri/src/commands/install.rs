@@ -1,6 +1,6 @@
 use crate::commands::helpers::{
     command, copy_dir_recursive, ensure_gateway_config, hermes_command,
-    home_dir, kill_hermes_process, try_install_python_via_uv,
+    kill_hermes_process,
     AppState, InstallProgress,
     sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
 };
@@ -339,30 +339,8 @@ pub async fn get_hermes_config(app: AppHandle) -> Result<serde_json::Value, Stri
 
 #[tauri::command]
 pub async fn set_hermes_config(key: String, value: String) -> Result<String, String> {
-    let mut cmd = hermes_command();
-    cmd.args(&["config", "set", &key, &value]);
-
-    #[cfg(unix)]
-    {
-        let hermes_tmp = format!("{}/.hermes", home_dir());
-        let _ = std::fs::create_dir_all(&hermes_tmp);
-        cmd.env("TMPDIR", &hermes_tmp);
-    }
-
-    let output = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to modify config: {}", e))?;
-
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        Ok(stdout.trim().to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        Err(format!("{}{}", stdout, stderr).trim().to_string())
-    }
+    crate::commands::helpers::hermes_config_set(&key, &value)?;
+    Ok(String::new())
 }
 
 #[cfg(not(target_os = "windows"))]

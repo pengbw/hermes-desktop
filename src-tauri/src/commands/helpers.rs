@@ -433,84 +433,36 @@ pub(crate) fn tool_label(tool_name: &str) -> &str {
     }
 }
 
-pub(crate) fn hermes_env_path() -> Option<String> {
-    let env_path_output = match hermes_command()
-        .args(&["config", "env-path"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
+pub(crate) fn hermes_config_set(key: &str, value: &str) -> Result<(), String> {
+    let mut cmd = hermes_command();
+    cmd.args(&["config", "set", key, value]);
+
+    #[cfg(unix)]
     {
-        Ok(o) => o,
-        Err(_) => {
-            let fallback = format!("{}{}.env", hermes_home_dir(), std::path::MAIN_SEPARATOR);
-            if std::path::Path::new(&fallback).exists() {
-                log::info!("[sync_env] hermes command not found, using fallback .env path: {}", fallback);
-                return Some(fallback);
-            }
-            let parent = hermes_home_dir();
-            if std::path::Path::new(&parent).exists() {
-                log::info!("[sync_env] hermes command not found, using fallback .env path: {}", fallback);
-                return Some(fallback);
-            }
-            log::warn!("[sync_env] hermes command not found and hermes home does not exist, cannot determine .env path");
-            return None;
-        }
-    };
-    let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
-    if env_path.is_empty() {
-        let fallback = format!("{}{}.env", hermes_home_dir(), std::path::MAIN_SEPARATOR);
-        if std::path::Path::new(&fallback).exists() || std::path::Path::new(&hermes_home_dir()).exists() {
-            log::info!("[sync_env] hermes config env-path returned empty, using fallback: {}", fallback);
-            return Some(fallback);
-        }
-        log::warn!("[sync_env] .env path is empty and no fallback available");
-        return None;
+        let hermes_tmp = format!("{}/.hermes", home_dir());
+        let _ = std::fs::create_dir_all(&hermes_tmp);
+        cmd.env("TMPDIR", &hermes_tmp);
     }
-    Some(env_path)
+
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("hermes config set failed: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        Err(format!("{}{}", stdout, stderr).trim().to_string())
+    }
 }
 
 pub(crate) fn sync_single_env_key(_app: &tauri::AppHandle, env_key: &str, env_value: &str) {
-    let env_path = match hermes_env_path() {
-        Some(p) => p,
-        None => {
-            log::warn!("[sync_env] Cannot determine .env path, skipping sync of {}", env_key);
-            return;
-        }
-    };
-
-    if let Some(parent) = std::path::Path::new(&env_path).parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-
-    let mut lines: Vec<String> = Vec::new();
-    let mut found = false;
-    if std::path::Path::new(&env_path).exists() {
-        if let Ok(content) = std::fs::read_to_string(&env_path) {
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    lines.push(line.to_string());
-                    continue;
-                }
-                if let Some((k, _)) = trimmed.split_once('=') {
-                    if k.trim().to_uppercase() == env_key.to_uppercase() {
-                        lines.push(format!("{}={}", env_key, env_value));
-                        found = true;
-                        continue;
-                    }
-                }
-                lines.push(line.to_string());
-            }
-        }
-    }
-
-    if !found {
-        lines.push(format!("{}={}", env_key, env_value));
-    }
-
-    match std::fs::write(&env_path, lines.join("\n")) {
-        Ok(_) => log::info!("[sync_env] Written {} to .env", env_key),
-        Err(e) => log::warn!("[sync_env] Failed to write .env: {}", e),
+    match hermes_config_set(env_key, env_value) {
+        Ok(_) => log::info!("[sync_env] Written {} via hermes config set", env_key),
+        Err(e) => log::warn!("[sync_env] Failed to write {} via hermes config set: {}", env_key, e),
     }
 }
 
@@ -523,39 +475,6 @@ pub(crate) async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
         }
     };
 
-    let env_path_output = match hermes_command()
-        .args(&["config", "env-path"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-    {
-        Ok(o) => o,
-        Err(_) => return,
-    };
-    let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
-    if env_path.is_empty() {
-        return;
-    }
-
-    if let Some(parent) = std::path::Path::new(&env_path).parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-
-    let mut env_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    if std::path::Path::new(&env_path).exists() {
-        if let Ok(content) = std::fs::read_to_string(&env_path) {
-            for line in content.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                if let Some((k, v)) = line.split_once('=') {
-                    env_map.insert(k.trim().to_uppercase(), v.trim().trim_matches('"').trim_matches('\'').to_string());
-                }
-            }
-        }
-    }
-
     let providers: Vec<(String, String)> = sqlx::query_as::<_, (String, String)>(
         "SELECT api_key_env, api_key FROM providers WHERE api_key != '' AND api_key_env != ''"
     )
@@ -566,17 +485,11 @@ pub(crate) async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
         Vec::new()
     });
 
-    let mut changed = false;
+    let mut synced = 0u32;
     for (key_env, api_key) in &providers {
-        let key_upper = key_env.to_uppercase();
-        if let Some(existing) = env_map.get(&key_upper) {
-            if existing != api_key {
-                env_map.insert(key_upper, api_key.clone());
-                changed = true;
-            }
-        } else {
-            env_map.insert(key_upper, api_key.clone());
-            changed = true;
+        match hermes_config_set(key_env, api_key) {
+            Ok(_) => synced += 1,
+            Err(e) => log::warn!("Failed to sync {} via hermes config set: {}", key_env, e),
         }
     }
 
@@ -590,19 +503,14 @@ pub(crate) async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
     .filter(|v: &String| !v.is_empty());
 
     if let Some(hak) = &hermes_api_key {
-        let key = "API_SERVER_KEY";
-        if env_map.get(key) != Some(hak) {
-            env_map.insert(key.to_string(), hak.clone());
-            changed = true;
+        match hermes_config_set("API_SERVER_KEY", hak) {
+            Ok(_) => synced += 1,
+            Err(e) => log::warn!("Failed to sync API_SERVER_KEY via hermes config set: {}", e),
         }
     }
 
-    if changed {
-        let content: String = env_map.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join("\n");
-        match std::fs::write(&env_path, content) {
-            Ok(_) => log::info!("Synced {} API keys to Hermes .env", env_map.len()),
-            Err(e) => log::warn!("Failed to write .env: {}", e),
-        }
+    if synced > 0 {
+        log::info!("Synced {} API keys via hermes config set", synced);
     }
 }
 
@@ -790,56 +698,47 @@ pub(crate) struct InstallProgress {
 pub(crate) fn ensure_gateway_config(app: &AppHandle) {
     let hermes_home = hermes_home_dir();
     let config_path = format!("{}{}config.yaml", hermes_home, std::path::MAIN_SEPARATOR);
-    let env_path = format!("{}{}.env", hermes_home, std::path::MAIN_SEPARATOR);
 
     if let Err(e) = std::fs::create_dir_all(&hermes_home) {
         log::warn!("Failed to create hermes home directory: {}", e);
         return;
     }
 
-    let mut env_content = String::new();
-    if let Ok(existing) = std::fs::read_to_string(&env_path) {
-        env_content = existing;
-    }
+    let env_content = std::fs::read_to_string(format!("{}{}.env", hermes_home, std::path::MAIN_SEPARATOR)).unwrap_or_default();
     if !env_content.contains("GATEWAY_ALLOW_ALL_USERS") {
-        env_content.push_str("\nGATEWAY_ALLOW_ALL_USERS=true\n");
-        if let Err(e) = std::fs::write(&env_path, &env_content) {
-            log::warn!("Failed to write gateway env config: {}", e);
-        } else {
-            let _ = app.emit("install-progress", InstallProgress {
-                line: "Gateway API access configured".to_string(), done: false, success: false,
-            });
+        match hermes_config_set("GATEWAY_ALLOW_ALL_USERS", "true") {
+            Ok(_) => {
+                let _ = app.emit("install-progress", InstallProgress {
+                    line: "Gateway API access configured".to_string(), done: false, success: false,
+                });
+            }
+            Err(e) => log::warn!("Failed to set GATEWAY_ALLOW_ALL_USERS via hermes config set: {}", e),
         }
     }
 
-    let mut config_content = String::new();
-    if let Ok(existing) = std::fs::read_to_string(&config_path) {
-        config_content = existing;
-    }
+    let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
     if !config_content.contains("api_server") {
-        config_content.push_str("\n\nplatforms:\n  api_server:\n    port: 8642\n    enabled: true\n");
-        if let Err(e) = std::fs::write(&config_path, &config_content) {
-            log::warn!("Failed to write gateway api_server config: {}", e);
-        } else {
-            let _ = app.emit("install-progress", InstallProgress {
-                line: "Local API Server enabled (port 8642)".to_string(), done: false, success: false,
-            });
+        match hermes_config_set("platforms.api_server.port", "8642") {
+            Ok(_) => {
+                let _ = hermes_config_set("platforms.api_server.enabled", "true");
+                let _ = app.emit("install-progress", InstallProgress {
+                    line: "Local API Server enabled (port 8642)".to_string(), done: false, success: false,
+                });
+            }
+            Err(e) => log::warn!("Failed to set api_server config via hermes config set: {}", e),
         }
     }
 
     if !config_content.contains("max_iterations") {
-        let agent_block = if !config_content.contains("agent:") {
-            "\n\nagent:\n  max_iterations: 10\n  gateway_timeout: 300\n  gateway_notify_interval: 0\n"
-        } else {
-            "\n  max_iterations: 10\n  gateway_timeout: 300\n  gateway_notify_interval: 0\n"
-        };
-        config_content.push_str(agent_block);
-        if let Err(e) = std::fs::write(&config_path, &config_content) {
-            log::warn!("Failed to write gateway agent config: {}", e);
-        } else {
-            let _ = app.emit("install-progress", InstallProgress {
-                line: "Gateway agent max_iterations=10 configured".to_string(), done: false, success: false,
-            });
+        match hermes_config_set("agent.max_iterations", "10") {
+            Ok(_) => {
+                let _ = hermes_config_set("agent.gateway_timeout", "300");
+                let _ = hermes_config_set("agent.gateway_notify_interval", "0");
+                let _ = app.emit("install-progress", InstallProgress {
+                    line: "Gateway agent max_iterations=10 configured".to_string(), done: false, success: false,
+                });
+            }
+            Err(e) => log::warn!("Failed to set agent config via hermes config set: {}", e),
         }
     }
 }

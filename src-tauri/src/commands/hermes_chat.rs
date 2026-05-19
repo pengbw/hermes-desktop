@@ -391,6 +391,8 @@ pub async fn chat_with_hermes_api(
         request_body["hermes_session_id"] = serde_json::json!(sid);
     }
 
+    log::info!("[chat_api] api_base={}, api_key={}chars, request body: {}", api_base, api_key.len(), serde_json::to_string(&request_body).unwrap_or_default());
+
     let response = match call_hermes_api_streaming(&api_base, &api_key, "", request_body).await {
         Ok(r) => r,
         Err(e) => {
@@ -444,27 +446,33 @@ pub async fn chat_with_hermes_api(
     while let Some(chunk_result) = stream.next().await {
         match chunk_result {
             Ok(chunk) => {
-                buffer.push_str(&String::from_utf8_lossy(&chunk));
+                let chunk_str = String::from_utf8_lossy(&chunk).to_string();
+                log::info!("[chat_api] received chunk: {} bytes, first 200 chars: {:?}", chunk.len(), &chunk_str[..chunk_str.len().min(200)]);
+                buffer.push_str(&chunk_str);
 
                 if first_chunk && buffer.trim_start().starts_with('{') {
+                    log::warn!("[chat_api] first chunk starts with '{{', treating as potential error response, buffer len={}", buffer.len());
                     if let Ok(err) = serde_json::from_str::<serde_json::Value>(buffer.trim()) {
-                        let msg = err["error"]["message"].as_str().unwrap_or("Unknown error");
-                        log::error!("[chat_api] API returned error: {}", msg);
-                        let _ = app.emit(&event_id, ChatStreamEvent {
-                            event_type: Some("error".to_string()),
-                            tool_name: None,
-                            tool_label: None,
-                            chunk: format!("[Error] {}", msg),
-                            done: false,
-                        });
-                        let _ = app.emit(&event_id, ChatStreamEvent {
-                            event_type: None,
-                            tool_name: None,
-                            tool_label: None,
-                            chunk: "".to_string(),
-                            done: true,
-                        });
-                        return Ok(());
+                        if let Some(msg) = err["error"]["message"].as_str() {
+                            log::error!("[chat_api] API returned error: {}", msg);
+                            let _ = app.emit(&event_id, ChatStreamEvent {
+                                event_type: Some("error".to_string()),
+                                tool_name: None,
+                                tool_label: None,
+                                chunk: format!("[Error] {}", msg),
+                                done: false,
+                            });
+                            let _ = app.emit(&event_id, ChatStreamEvent {
+                                event_type: None,
+                                tool_name: None,
+                                tool_label: None,
+                                chunk: "".to_string(),
+                                done: true,
+                            });
+                            return Ok(());
+                        } else {
+                            log::warn!("[chat_api] first chunk is JSON but not an error response, content keys: {:?}", err.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+                        }
                     }
                 }
                 first_chunk = false;
@@ -482,10 +490,15 @@ pub async fn chat_with_hermes_api(
                         continue;
                     }
 
-                    if line.starts_with("data: ") {
-                        let data = line[6..].trim();
+                    if line.starts_with("data: ") || line.starts_with("data:") {
+                        let data = if line.starts_with("data: ") {
+                            line[6..].trim()
+                        } else {
+                            line[5..].trim()
+                        };
 
                         if data == "[DONE]" {
+                            log::info!("[chat_api] received [DONE] signal");
                             continue;
                         }
 
@@ -513,6 +526,11 @@ pub async fn chat_with_hermes_api(
                                             chunk: delta.to_string(),
                                             done: false,
                                         });
+                                    } else {
+                                        let has_choices = parsed["choices"].is_array();
+                                        let has_delta = parsed["choices"][0]["delta"].is_object();
+                                        let delta_keys: Vec<&str> = parsed["choices"][0]["delta"].as_object().map(|o| o.keys().map(|k| k.as_str()).collect()).unwrap_or_default();
+                                        log::warn!("[chat_api] SSE data has no content: has_choices={}, has_delta={}, delta_keys={:?}", has_choices, has_delta, delta_keys);
                                     }
                                 }
                             }
@@ -520,6 +538,8 @@ pub async fn chat_with_hermes_api(
                                 log::warn!("[chat_api] failed to parse SSE data: {} data={}", e, data);
                             }
                         }
+                    } else if !line.starts_with("id:") && !line.starts_with("retry:") {
+                        log::warn!("[chat_api] skipping unrecognized line: {:?}", &line[..line.len().min(100)]);
                     }
                 }
             }

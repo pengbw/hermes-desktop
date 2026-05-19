@@ -1176,18 +1176,62 @@ async fn sync_status_from_env(
 }
 
 fn write_channel_env(
-    env_path: &str,
+    _env_path: &str,
     channel_type: &str,
     config: &serde_json::Value,
 ) -> Result<(), String> {
-    if let Some(parent) = std::path::Path::new(env_path).parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-
     let prefix = get_env_prefix(channel_type);
 
     if let Some(obj) = config.as_object() {
-        let mut lines_to_add: Vec<(String, String)> = Vec::new();
+        let env_path_output = crate::commands::helpers::hermes_command()
+            .args(&["config", "env-path"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .map_err(|e| format!("Failed to get env path: {}", e))?;
+        let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
+        if env_path.is_empty() {
+            return Err("Cannot get Hermes env file path".to_string());
+        }
+
+        let prefix_upper = prefix.to_uppercase();
+        if std::path::Path::new(&env_path).exists() {
+            if let Ok(content) = std::fs::read_to_string(&env_path) {
+                let mut existing_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    if let Some((k, _)) = trimmed.split_once('=') {
+                        let key_upper = k.trim().to_uppercase();
+                        if key_upper.starts_with(&prefix_upper) {
+                            existing_keys.insert(key_upper);
+                        }
+                    }
+                }
+                if obj.contains_key("proxy") {
+                    existing_keys.insert("HTTPS_PROXY".to_string());
+                    existing_keys.insert("HTTP_PROXY".to_string());
+                }
+
+                let filtered: Vec<String> = content
+                    .lines()
+                    .filter(|line| {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() || trimmed.starts_with('#') {
+                            return true;
+                        }
+                        if let Some((k, _)) = trimmed.split_once('=') {
+                            let key_upper = k.trim().to_uppercase();
+                            return !existing_keys.contains(&key_upper);
+                        }
+                        true
+                    })
+                    .map(String::from)
+                    .collect();
+                std::fs::write(&env_path, filtered.join("\n"))
+                    .map_err(|e| format!("Failed to clean old channel env: {}", e))?;
+            }
+        }
+
         for (key, value) in obj {
             if key == "proxy" {
                 continue;
@@ -1199,16 +1243,15 @@ fn write_channel_env(
                 serde_json::Value::Bool(b) => b.to_string(),
                 _ => value.to_string(),
             };
-            lines_to_add.push((env_key, val_str));
+            crate::commands::helpers::hermes_config_set(&env_key, &val_str)?;
         }
 
         if channel_type == "webhooks" {
-            lines_to_add.push(("WEBHOOK_ENABLED".to_string(), "true".to_string()));
+            crate::commands::helpers::hermes_config_set("WEBHOOK_ENABLED", "true")?;
         }
 
         if channel_type == "whatsapp" {
-            lines_to_add.retain(|(k, _)| k != "WHATSAPP_ENABLED");
-            lines_to_add.push(("WHATSAPP_ENABLED".to_string(), "true".to_string()));
+            crate::commands::helpers::hermes_config_set("WHATSAPP_ENABLED", "true")?;
         }
 
         if let Some(proxy_val) = obj.get("proxy") {
@@ -1217,70 +1260,30 @@ fn write_channel_env(
                 _ => proxy_val.to_string(),
             };
             if !proxy_str.is_empty() {
-                lines_to_add.push(("HTTPS_PROXY".to_string(), proxy_str.clone()));
-                lines_to_add.push(("HTTP_PROXY".to_string(), proxy_str));
+                crate::commands::helpers::hermes_config_set("HTTPS_PROXY", &proxy_str)?;
+                crate::commands::helpers::hermes_config_set("HTTP_PROXY", &proxy_str)?;
             }
         }
-
-        let mut existing_lines: Vec<String> = Vec::new();
-        if std::path::Path::new(env_path).exists() {
-            if let Ok(content) = std::fs::read_to_string(env_path) {
-                existing_lines = content.lines().map(String::from).collect();
-            }
-        }
-
-        let prefix_upper = prefix.to_uppercase();
-        let mut existing_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for line in &existing_lines {
-            let trimmed = line.trim();
-            if let Some((k, _)) = trimmed.split_once('=') {
-                let key_upper = k.trim().to_uppercase();
-                if key_upper.starts_with(&prefix_upper) {
-                    existing_keys.insert(key_upper);
-                }
-            }
-        }
-
-        if obj.contains_key("proxy") {
-            existing_keys.insert("HTTPS_PROXY".to_string());
-            existing_keys.insert("HTTP_PROXY".to_string());
-        }
-
-        let mut result_lines: Vec<String> = existing_lines
-            .iter()
-            .filter(|line| {
-                let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with('#') {
-                    return true;
-                }
-                if let Some((k, _)) = trimmed.split_once('=') {
-                    let key_upper = k.trim().to_uppercase();
-                    return !existing_keys.contains(&key_upper);
-                }
-                true
-            })
-            .cloned()
-            .collect();
-
-        for (key, value) in &lines_to_add {
-            result_lines.push(format!("{}={}", key, value));
-        }
-
-        std::fs::write(env_path, result_lines.join("\n"))
-            .map_err(|e| format!("Failed to write .env: {}", e))?;
     }
 
     Ok(())
 }
 
-fn remove_channel_env(env_path: &str, channel_type: &str) -> Result<(), String> {
-    if !std::path::Path::new(env_path).exists() {
+fn remove_channel_env(_env_path: &str, channel_type: &str) -> Result<(), String> {
+    let env_path_output = crate::commands::helpers::hermes_command()
+        .args(&["config", "env-path"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .map_err(|e| format!("Failed to get env path: {}", e))?;
+    let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
+    if env_path.is_empty() || !std::path::Path::new(&env_path).exists() {
         return Ok(());
     }
 
     let prefix = get_env_prefix(channel_type).to_uppercase();
 
-    let content = std::fs::read_to_string(env_path).map_err(|e| format!("Failed to read .env: {}", e))?;
+    let content = std::fs::read_to_string(&env_path).map_err(|e| format!("Failed to read .env: {}", e))?;
 
     let filtered: Vec<String> = content
         .lines()
@@ -1300,44 +1303,14 @@ fn remove_channel_env(env_path: &str, channel_type: &str) -> Result<(), String> 
         .map(String::from)
         .collect();
 
-    std::fs::write(env_path, filtered.join("\n"))
+    std::fs::write(&env_path, filtered.join("\n"))
         .map_err(|e| format!("Failed to write .env: {}", e))?;
 
     Ok(())
 }
 
-fn write_env_key(env_path: &str, key: &str, value: &str) -> Result<(), String> {
-    if let Some(parent) = std::path::Path::new(env_path).parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-
-    let mut lines: Vec<String> = Vec::new();
-    let mut found = false;
-
-    if std::path::Path::new(env_path).exists() {
-        if let Ok(content) = std::fs::read_to_string(env_path) {
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if let Some((k, _)) = trimmed.split_once('=') {
-                    if k.trim().to_uppercase() == key.to_uppercase() {
-                        lines.push(format!("{}={}", key, value));
-                        found = true;
-                        continue;
-                    }
-                }
-                lines.push(line.to_string());
-            }
-        }
-    }
-
-    if !found {
-        lines.push(format!("{}={}", key, value));
-    }
-
-    std::fs::write(env_path, lines.join("\n"))
-        .map_err(|e| format!("Failed to write .env: {}", e))?;
-
-    Ok(())
+fn write_env_key(_env_path: &str, key: &str, value: &str) -> Result<(), String> {
+    crate::commands::helpers::hermes_config_set(key, value)
 }
 
 fn get_env_prefix(channel_type: &str) -> String {

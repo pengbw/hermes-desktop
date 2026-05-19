@@ -249,50 +249,5 @@ pub async fn verify_provider_api_key(base_url: String, api_key: String) -> Resul
 }
 
 fn write_hermes_env(key: &str, value: &str) -> Result<(), String> {
-    let env_path_output = command(&hermes_bin())
-        .args(&["config", "env-path"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to get env path: {}", e))?;
-    let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
-
-    if env_path.is_empty() {
-        return Err("Cannot get Hermes env file path".to_string());
-    }
-
-    if !std::path::Path::new(&env_path).exists() {
-        if let Some(parent) = std::path::Path::new(&env_path).parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        std::fs::write(&env_path, "")
-            .map_err(|e| format!("Failed to create env file: {}", e))?;
-    }
-
-    let env_content = std::fs::read_to_string(&env_path)
-        .map_err(|e| format!("Failed to read env file: {}", e))?;
-
-    let mut lines: Vec<String> = env_content.lines().map(|s| s.to_string()).collect();
-    let key_upper = key.to_uppercase();
-    let mut key_found = false;
-
-    for line in lines.iter_mut() {
-        if let Some((k, _)) = line.split_once('=') {
-            if k.trim().to_uppercase() == key_upper {
-                *line = format!("{}={}", key, value);
-                key_found = true;
-                break;
-            }
-        }
-    }
-
-    if !key_found {
-        lines.push(format!("{}={}", key, value));
-    }
-
-    let new_content = lines.join("\n");
-    std::fs::write(&env_path, new_content)
-        .map_err(|e| format!("Failed to write env file: {}", e))?;
-
-    Ok(())
+    crate::commands::helpers::hermes_config_set(key, value)
 }

@@ -1162,19 +1162,13 @@ pub async fn set_knowledge_config(app: AppHandle, config: serde_json::Value) -> 
         .map_err(|e| e.to_string())?;
 
     if let Some(model) = config.get("defaultEmbeddingModel").and_then(|v| v.as_str()) {
-        let _ = crate::commands::helpers::command(&crate::commands::helpers::hermes_bin())
-            .args(&["config", "set", "knowledgebase.embedding_model", model])
-            .output();
+        let _ = crate::commands::helpers::hermes_config_set("knowledgebase.embedding_model", model);
     }
     if let Some(auto) = config.get("globalAutoRetrieve").and_then(|v| v.as_bool()) {
-        let _ = crate::commands::helpers::command(&crate::commands::helpers::hermes_bin())
-            .args(&["config", "set", "knowledgebase.auto_retrieve", &auto.to_string()])
-            .output();
+        let _ = crate::commands::helpers::hermes_config_set("knowledgebase.auto_retrieve", &auto.to_string());
     }
     if let Some(chunks) = config.get("defaultMaxContextChunks").and_then(|v| v.as_i64()) {
-        let _ = crate::commands::helpers::command(&crate::commands::helpers::hermes_bin())
-            .args(&["config", "set", "knowledgebase.max_context_chunks", &chunks.to_string()])
-            .output();
+        let _ = crate::commands::helpers::hermes_config_set("knowledgebase.max_context_chunks", &chunks.to_string());
     }
 
     let _ = now;
