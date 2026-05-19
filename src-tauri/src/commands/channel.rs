@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 use std::process::Stdio;
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::helpers::{hermes_command, home_dir, path_with_local_bin, AgentProcess, get_ssl_cert_file};
+use super::helpers::{hermes_command, hermes_home_dir, hermes_agent_dir, hermes_venv_python, hermes_env_file_path, path_with_local_bin, AgentProcess, get_ssl_cert_file};
 
 fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
     let state = app.state::<crate::commands::helpers::AppState>();
@@ -346,14 +346,14 @@ pub async fn channel_confirm_qr(
 pub(crate) async fn restart_gateway_internal(app: &AppHandle) -> Result<(), String> {
     // 1. Gracefully stop the old gateway via hermes CLI
     let new_path = path_with_local_bin();
-    let env_path = get_hermes_env_path().unwrap_or_else(|_| format!("{}/.hermes/.env", home_dir()));
+    let env_path = get_hermes_env_path().unwrap_or_else(|_| hermes_env_file_path().unwrap_or_default());
     let ssl_cert_file = get_ssl_cert_file();
 
     let mut stop_cmd = hermes_command();
     stop_cmd
         .args(["gateway", "stop"])
         .env("PATH", &new_path)
-        .env("HERMES_HOME", format!("{}/.hermes", home_dir()))
+        .env("HERMES_HOME", hermes_home_dir())
         .env("HERMES_ENV_FILE", &env_path);
     if let Some(ref cert) = ssl_cert_file {
         stop_cmd.env("SSL_CERT_FILE", cert);
@@ -399,18 +399,23 @@ pub(crate) async fn restart_gateway_internal(app: &AppHandle) -> Result<(), Stri
             .await
             .map_err(|e| e.to_string())?
             .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| format!("{}/hermes-workspace", home_dir()))
+            .unwrap_or_else(|| {
+                #[cfg(not(target_os = "windows"))]
+                { format!("{}/hermes-workspace", home_dir()) }
+                #[cfg(target_os = "windows")]
+                { format!("{}\\hermes-workspace", std::env::var("USERPROFILE").unwrap_or_default()) }
+            })
     };
     let _ = std::fs::create_dir_all(&workspace_root);
 
-    let env_path2 = get_hermes_env_path().unwrap_or_else(|_| format!("{}/.hermes/.env", home_dir()));
+    let env_path2 = get_hermes_env_path().unwrap_or_else(|_| hermes_env_file_path().unwrap_or_default());
     let new_path2 = path_with_local_bin();
     let ssl_cert_file2 = get_ssl_cert_file();
     let mut gateway_cmd = hermes_command();
     gateway_cmd
         .args(["gateway", "run", "--accept-hooks"])
         .env("PATH", &new_path2)
-        .env("HERMES_HOME", format!("{}/.hermes", home_dir()))
+        .env("HERMES_HOME", hermes_home_dir())
         .env("HERMES_ENV_FILE", &env_path2)
         .current_dir(&workspace_root)
         .stdin(Stdio::null())
@@ -592,10 +597,10 @@ asyncio.run(main())
         "qqbot" => {
             let url = fetch_qqbot_qr_url(&python_path, &project_root)?;
             let script = r#"
-import json, sys, os, time, traceback
+import json, sys, os, time, traceback, tempfile
 try:
     from gateway.platforms.qqbot.onboard import _poll_bind_result, decrypt_secret, BindStatus, ONBOARD_POLL_INTERVAL
-    session_file = os.path.join(os.environ.get("TMPDIR", "/tmp"), "hermes_qr_qqbot.json")
+    session_file = os.path.join(tempfile.gettempdir(), "hermes_qr_qqbot.json")
     with open(session_file) as f:
         session = json.load(f)
     task_id = session["task_id"]
@@ -628,11 +633,11 @@ except Exception as e:
         "feishu" => {
             let url = fetch_feishu_qr_url(&python_path, &project_root)?;
             let script = r#"
-import json, sys, os, ssl, traceback
+import json, sys, os, ssl, traceback, tempfile
 ssl._create_default_https_context = ssl._create_unverified_context
 try:
     from gateway.platforms.feishu import _poll_registration, probe_bot
-    session_file = os.path.join(os.environ.get("TMPDIR", "/tmp"), "hermes_qr_feishu.json")
+    session_file = os.path.join(tempfile.gettempdir(), "hermes_qr_feishu.json")
     with open(session_file) as f:
         session = json.load(f)
     result = _poll_registration(
@@ -662,12 +667,12 @@ except Exception as e:
         "wecom" => {
             let url = fetch_wecom_qr_url(&python_path, &project_root)?;
             let script = r#"
-import json, sys, os, time, ssl, traceback
+import json, sys, os, time, ssl, traceback, tempfile
 ssl._create_default_https_context = ssl._create_unverified_context
 try:
     import urllib.request
     import urllib.parse
-    session_file = os.path.join(os.environ.get("TMPDIR", "/tmp"), "hermes_qr_wecom.json")
+    session_file = os.path.join(tempfile.gettempdir(), "hermes_qr_wecom.json")
     with open(session_file) as f:
         session = json.load(f)
     scode = session["scode"]
@@ -722,8 +727,8 @@ except Exception as e:
             cmd.args(&["-c", &poll_script])
                 .env("PYTHONPATH", &project_root_clone)
                 .env("PYTHONUNBUFFERED", "1")
-                .env("HERMES_HOME", format!("{}/.hermes", home_dir()))
-                .env("HERMES_ENV_FILE", get_hermes_env_path().unwrap_or_else(|_| format!("{}/.hermes/.env", home_dir())));
+                .env("HERMES_HOME", hermes_home_dir())
+                .env("HERMES_ENV_FILE", get_hermes_env_path().unwrap_or_else(|_| hermes_env_file_path().unwrap_or_default()));
             if let Some(cert) = get_ssl_cert_file() {
                 cmd.env("SSL_CERT_FILE", &cert);
             }
@@ -838,8 +843,8 @@ asyncio.run(main())
     let mut cmd = std::process::Command::new(python_path);
     cmd.args(&["-c", script])
         .env("PYTHONPATH", project_root)
-        .env("HERMES_HOME", format!("{}/.hermes", home_dir()))
-        .env("HERMES_ENV_FILE", get_hermes_env_path().unwrap_or_else(|_| format!("{}/.hermes/.env", home_dir())));
+        .env("HERMES_HOME", hermes_home_dir())
+        .env("HERMES_ENV_FILE", get_hermes_env_path().unwrap_or_else(|_| hermes_env_file_path().unwrap_or_default()));
     if let Some(cert) = get_ssl_cert_file() {
         cmd.env("SSL_CERT_FILE", &cert);
     }
@@ -881,12 +886,12 @@ asyncio.run(main())
 
 fn fetch_qqbot_qr_url(python_path: &str, project_root: &str) -> Result<String, String> {
     let script = r#"
-import json, sys, os
+import json, sys, os, tempfile
 try:
     from gateway.platforms.qqbot.onboard import _create_bind_task, build_connect_url
     task_id, aes_key = _create_bind_task()
     url = build_connect_url(task_id)
-    session_file = os.path.join(os.environ.get("TMPDIR", "/tmp"), "hermes_qr_qqbot.json")
+    session_file = os.path.join(tempfile.gettempdir(), "hermes_qr_qqbot.json")
     with open(session_file, "w") as f:
         json.dump({"task_id": task_id, "aes_key": aes_key}, f)
     print(f"QR_URL:{url}")
@@ -897,8 +902,8 @@ except Exception as e:
     let mut cmd = std::process::Command::new(python_path);
     cmd.args(&["-c", script])
         .env("PYTHONPATH", project_root)
-        .env("HERMES_HOME", format!("{}/.hermes", home_dir()))
-        .env("HERMES_ENV_FILE", get_hermes_env_path().unwrap_or_else(|_| format!("{}/.hermes/.env", home_dir())));
+        .env("HERMES_HOME", hermes_home_dir())
+        .env("HERMES_ENV_FILE", get_hermes_env_path().unwrap_or_else(|_| hermes_env_file_path().unwrap_or_default()));
     if let Some(cert) = get_ssl_cert_file() {
         cmd.env("SSL_CERT_FILE", &cert);
     }
@@ -930,7 +935,7 @@ except Exception as e:
 
 fn fetch_feishu_qr_url(python_path: &str, project_root: &str) -> Result<String, String> {
     let script = r#"
-import json, sys, os, ssl
+import json, sys, os, ssl, tempfile
 ssl._create_default_https_context = ssl._create_unverified_context
 try:
     from gateway.platforms.feishu import _init_registration, _begin_registration
@@ -938,7 +943,7 @@ try:
     begin = _begin_registration("feishu")
     qr_url = begin.get("qr_url", "")
     if qr_url:
-        session_file = os.path.join(os.environ.get("TMPDIR", "/tmp"), "hermes_qr_feishu.json")
+        session_file = os.path.join(tempfile.gettempdir(), "hermes_qr_feishu.json")
         with open(session_file, "w") as f:
             json.dump({
                 "device_code": begin.get("device_code"),
@@ -956,7 +961,7 @@ except Exception as e:
     let mut cmd = std::process::Command::new(python_path);
     cmd.args(&["-c", script])
         .env("PYTHONPATH", project_root)
-        .env("HERMES_HOME", format!("{}/.hermes", home_dir()));
+        .env("HERMES_HOME", hermes_home_dir());
     if let Some(cert) = get_ssl_cert_file() {
         cmd.env("SSL_CERT_FILE", &cert);
     }
@@ -988,7 +993,7 @@ except Exception as e:
 
 fn fetch_wecom_qr_url(python_path: &str, project_root: &str) -> Result<String, String> {
     let script = r#"
-import json, sys, os, ssl
+import json, sys, os, ssl, tempfile
 ssl._create_default_https_context = ssl._create_unverified_context
 try:
     from gateway.platforms.wecom import _QR_CODE_PAGE, _QR_GENERATE_URL
@@ -1002,7 +1007,7 @@ try:
     scode = data.get("scode", "")
     if scode:
         page_url = f"{_QR_CODE_PAGE}{urllib.parse.quote(scode)}"
-        session_file = os.path.join(os.environ.get("TMPDIR", "/tmp"), "hermes_qr_wecom.json")
+        session_file = os.path.join(tempfile.gettempdir(), "hermes_qr_wecom.json")
         with open(session_file, "w") as f:
             json.dump({"scode": scode}, f)
         print(f"QR_URL:{page_url}")
@@ -1015,8 +1020,8 @@ except Exception as e:
     let mut cmd = std::process::Command::new(python_path);
     cmd.args(&["-c", script])
         .env("PYTHONPATH", project_root)
-        .env("HERMES_HOME", format!("{}/.hermes", home_dir()))
-        .env("HERMES_ENV_FILE", get_hermes_env_path().unwrap_or_else(|_| format!("{}/.hermes/.env", home_dir())));
+        .env("HERMES_HOME", hermes_home_dir())
+        .env("HERMES_ENV_FILE", get_hermes_env_path().unwrap_or_else(|_| hermes_env_file_path().unwrap_or_default()));
     if let Some(cert) = get_ssl_cert_file() {
         cmd.env("SSL_CERT_FILE", &cert);
     }
@@ -1047,35 +1052,19 @@ except Exception as e:
 }
 
 fn get_hermes_python() -> Result<String, String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let venv_python = format!("{}/.hermes/hermes-agent/venv/bin/python", home);
-    if std::path::Path::new(&venv_python).exists() {
-        return Ok(venv_python);
-    }
-    Err("Hermes Python venv not found. Please install Hermes Agent first.".to_string())
+    hermes_venv_python()
 }
 
 fn get_hermes_project_root() -> Result<String, String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let project_root = format!("{}/.hermes/hermes-agent", home);
-    if std::path::Path::new(&project_root).exists() {
-        return Ok(project_root);
-    }
-    Err("Hermes project root not found.".to_string())
+    hermes_agent_dir()
 }
 
 fn get_hermes_env_path() -> Result<String, String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let env_path = format!("{}/.hermes/.env", home);
-    if std::path::Path::new(&env_path).exists() {
-        return Ok(env_path);
-    }
-    Ok(format!("{}/.hermes/.env", home))
+    hermes_env_file_path()
 }
 
 fn get_hermes_home_path() -> Result<String, String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    Ok(format!("{}/.hermes", home))
+    Ok(hermes_home_dir())
 }
 
 fn check_weixin_connected() -> bool {

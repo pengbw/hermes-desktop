@@ -121,6 +121,71 @@ pub(crate) fn home_dir() -> String {
     }
 }
 
+pub(crate) fn hermes_home_dir() -> String {
+    #[cfg(not(target_os = "windows"))]
+    {
+        format!("{}/.hermes", home_dir())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        format!("{}\\hermes", local_appdata)
+    }
+}
+
+pub(crate) fn hermes_agent_dir() -> Result<String, String> {
+    let dir = {
+        #[cfg(not(target_os = "windows"))]
+        {
+            format!("{}/.hermes/hermes-agent", home_dir())
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+            format!("{}\\hermes\\hermes-agent", local_appdata)
+        }
+    };
+    if std::path::Path::new(&dir).exists() {
+        Ok(dir)
+    } else {
+        Err("Hermes project root not found.".to_string())
+    }
+}
+
+pub(crate) fn hermes_venv_python() -> Result<String, String> {
+    let candidates = {
+        #[cfg(not(target_os = "windows"))]
+        {
+            let home = home_dir();
+            vec![
+                format!("{}/.hermes/hermes-agent/venv/bin/python3", home),
+                format!("{}/.hermes/hermes-agent/venv/bin/python", home),
+                format!("{}/.hermes/hermes-agent/.venv/bin/python3", home),
+                format!("{}/.hermes/hermes-agent/.venv/bin/python", home),
+            ]
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+            vec![
+                format!("{}\\hermes\\hermes-agent\\venv\\Scripts\\python.exe", local_appdata),
+                format!("{}\\hermes\\hermes-agent\\.venv\\Scripts\\python.exe", local_appdata),
+            ]
+        }
+    };
+    for path in &candidates {
+        if std::path::Path::new(path).exists() {
+            return Ok(path.clone());
+        }
+    }
+    Err("Hermes Python venv not found. Please install Hermes Agent first.".to_string())
+}
+
+pub(crate) fn hermes_env_file_path() -> Result<String, String> {
+    let env_path = format!("{}{}.env", hermes_home_dir(), std::path::MAIN_SEPARATOR);
+    Ok(env_path)
+}
+
 pub(crate) fn which_exists(cmd: &str) -> bool {
     command("which")
         .arg(cmd)
@@ -377,26 +442,24 @@ pub(crate) fn hermes_env_path() -> Option<String> {
     {
         Ok(o) => o,
         Err(_) => {
-            let home = std::env::var("HOME").unwrap_or_default();
-            let fallback = format!("{}/.hermes/.env", home);
+            let fallback = format!("{}{}.env", hermes_home_dir(), std::path::MAIN_SEPARATOR);
             if std::path::Path::new(&fallback).exists() {
                 log::info!("[sync_env] hermes command not found, using fallback .env path: {}", fallback);
                 return Some(fallback);
             }
-            let parent = format!("{}/.hermes", home);
+            let parent = hermes_home_dir();
             if std::path::Path::new(&parent).exists() {
                 log::info!("[sync_env] hermes command not found, using fallback .env path: {}", fallback);
                 return Some(fallback);
             }
-            log::warn!("[sync_env] hermes command not found and ~/.hermes does not exist, cannot determine .env path");
+            log::warn!("[sync_env] hermes command not found and hermes home does not exist, cannot determine .env path");
             return None;
         }
     };
     let env_path = String::from_utf8_lossy(&env_path_output.stdout).trim().to_string();
     if env_path.is_empty() {
-        let home = std::env::var("HOME").unwrap_or_default();
-        let fallback = format!("{}/.hermes/.env", home);
-        if std::path::Path::new(&fallback).exists() || std::path::Path::new(&format!("{}/.hermes", home)).exists() {
+        let fallback = format!("{}{}.env", hermes_home_dir(), std::path::MAIN_SEPARATOR);
+        if std::path::Path::new(&fallback).exists() || std::path::Path::new(&hermes_home_dir()).exists() {
             log::info!("[sync_env] hermes config env-path returned empty, using fallback: {}", fallback);
             return Some(fallback);
         }
@@ -681,17 +744,9 @@ pub struct AppState {
 pub(crate) struct AgentProcess(pub(crate) Mutex<Option<std::process::Child>>);
 
 pub(crate) fn get_ssl_cert_file() -> Option<String> {
-    // Resolve certifi via hermes venv Python — works cross-platform and any Python version
-    let venv_python = {
-        let home = home_dir();
-        #[cfg(windows)]
-        let py = format!("{}\\.hermes\\hermes-agent\\venv\\Scripts\\python.exe", home);
-        #[cfg(not(windows))]
-        let py = format!("{}/.hermes/hermes-agent/venv/bin/python", home);
-        if std::path::Path::new(&py).exists() {
-            py
-        } else {
-            // Fallback: try to find any Python with certifi
+    let venv_python = match hermes_venv_python() {
+        Ok(p) => p,
+        Err(_) => {
             #[cfg(windows)]
             { "python".to_string() }
             #[cfg(not(windows))]
@@ -733,13 +788,12 @@ pub(crate) struct InstallProgress {
 }
 
 pub(crate) fn ensure_gateway_config(app: &AppHandle) {
-    let home = home_dir();
-    let hermes_home = format!("{}/.hermes", home);
-    let config_path = format!("{}/config.yaml", hermes_home);
-    let env_path = format!("{}/.env", hermes_home);
+    let hermes_home = hermes_home_dir();
+    let config_path = format!("{}{}config.yaml", hermes_home, std::path::MAIN_SEPARATOR);
+    let env_path = format!("{}{}.env", hermes_home, std::path::MAIN_SEPARATOR);
 
     if let Err(e) = std::fs::create_dir_all(&hermes_home) {
-        log::warn!("Failed to create .hermes directory: {}", e);
+        log::warn!("Failed to create hermes home directory: {}", e);
         return;
     }
 

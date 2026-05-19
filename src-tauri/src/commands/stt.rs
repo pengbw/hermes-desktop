@@ -1,7 +1,7 @@
 use std::process::Stdio;
 use tauri::{Emitter, Manager};
 
-use crate::commands::helpers::{command, InstallProgress};
+use crate::commands::helpers::{command, InstallProgress, hermes_venv_python, hermes_home_dir};
 
 #[cfg(not(target_os = "windows"))]
 use crate::commands::helpers::home_dir;
@@ -25,27 +25,13 @@ pub struct TranscribeResult {
 }
 
 fn find_python() -> Option<String> {
-    #[cfg(target_os = "windows")]
-    {
-        let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
-        let candidates = [
-            format!("{}\\hermes\\hermes-agent\\venv\\Scripts\\python.exe", local_appdata),
-            format!("{}\\hermes\\hermes-agent\\.venv\\Scripts\\python.exe", local_appdata),
-        ];
-        for path in &candidates {
-            if std::path::Path::new(path).exists() {
-                return Some(path.clone());
-            }
-        }
+    if let Ok(p) = hermes_venv_python() {
+        return Some(p);
     }
     #[cfg(not(target_os = "windows"))]
     {
         let home = home_dir();
         let candidates = [
-            format!("{}/.hermes/hermes-agent/venv/bin/python3", home),
-            format!("{}/.hermes/hermes-agent/.venv/bin/python3", home),
-            format!("{}/.hermes/hermes-agent/venv/bin/python", home),
-            format!("{}/.hermes/hermes-agent/.venv/bin/python", home),
             format!("{}/Library/Application Support/hermes/hermes-agent/venv/bin/python3", home),
             format!("{}/Library/Application Support/hermes/hermes-agent/.venv/bin/python3", home),
             format!("{}/Library/Application Support/hermes/hermes-agent/venv/bin/python", home),
@@ -71,6 +57,7 @@ fn find_python() -> Option<String> {
 fn check_faster_whisper_installed(python: &str) -> bool {
     let output = command(python)
         .args(["-c", "import faster_whisper; print(faster_whisper.__version__)"])
+        .env("HERMES_HOME", hermes_home_dir())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .output();
@@ -94,7 +81,7 @@ try:
     audio_path = sys.argv[1]
     lang = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else None
 
-    model_dir = os.path.join(os.path.expanduser("~"), ".hermes", "whisper-models", "base")
+    model_dir = os.path.join(os.environ.get("HERMES_HOME", os.path.join(os.path.expanduser("~"), ".hermes")), "whisper-models", "base")
     os.makedirs(model_dir, exist_ok=True)
 
     if not os.path.exists(os.path.join(model_dir, "model.bin")):
@@ -153,6 +140,7 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
             "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
             "--trusted-host", "pypi.tuna.tsinghua.edu.cn",
         ])
+        .env("HERMES_HOME", hermes_home_dir())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -224,7 +212,8 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
     });
 
     let model_download = command(&python)
-        .args(["-c", r#"import os; from faster_whisper import WhisperModel; model_dir = os.path.join(os.path.expanduser("~"), ".hermes", "whisper-models", "base"); os.makedirs(model_dir, exist_ok=True); WhisperModel("base", device="cpu", compute_type="int8", download_root=model_dir); print("model_ready")"#])
+        .args(["-c", r#"import os; from faster_whisper import WhisperModel; model_dir = os.path.join(os.environ.get("HERMES_HOME", os.path.join(os.path.expanduser("~"), ".hermes")), "whisper-models", "base"); os.makedirs(model_dir, exist_ok=True); WhisperModel("base", device="cpu", compute_type="int8", download_root=model_dir); print("model_ready")"#])
+        .env("HERMES_HOME", hermes_home_dir())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output();
@@ -353,6 +342,7 @@ pub async fn transcribe_audio(
         .arg(&script_path)
         .arg(&audio_path)
         .arg(lang.unwrap_or_default())
+        .env("HERMES_HOME", hermes_home_dir())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

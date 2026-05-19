@@ -1,4 +1,4 @@
-use crate::commands::helpers::{hermes_command, strip_ansi, AppState};
+use crate::commands::helpers::{hermes_command, strip_ansi, AppState, hermes_home_dir};
 use crate::database::models::SkillCatalogItem;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -45,8 +45,7 @@ pub struct SkillCategory {
 }
 
 fn parse_skill_frontmatter(category: &str, skill_name: &str) -> (String, String, Vec<String>) {
-    let home = dirs::home_dir().unwrap_or_default();
-    let skill_path = format!("{}/.hermes/skills/{}/{}/SKILL.md", home.display(), category, skill_name);
+    let skill_path = format!("{}{}skills{}{}{}{}SKILL.md", hermes_home_dir(), std::path::MAIN_SEPARATOR, std::path::MAIN_SEPARATOR, category, std::path::MAIN_SEPARATOR, skill_name);
 
     let content = match std::fs::read_to_string(&skill_path) {
         Ok(c) => c,
@@ -97,8 +96,7 @@ fn parse_skill_frontmatter(category: &str, skill_name: &str) -> (String, String,
 }
 
 fn parse_category_description(category: &str) -> String {
-    let home = dirs::home_dir().unwrap_or_default();
-    let desc_path = format!("{}/.hermes/skills/{}/DESCRIPTION.md", home.display(), category);
+    let desc_path = format!("{}{}skills{}{}{}DESCRIPTION.md", hermes_home_dir(), std::path::MAIN_SEPARATOR, std::path::MAIN_SEPARATOR, category, std::path::MAIN_SEPARATOR);
 
     let content = match std::fs::read_to_string(&desc_path) {
         Ok(c) => c,
@@ -484,8 +482,7 @@ pub async fn inspect_skill(identifier: String) -> Result<String, String> {
         return Ok(stdout);
     }
 
-    let home = dirs::home_dir().unwrap_or_default();
-    let local_path = format!("{}/.hermes/skills/{}/SKILL.md", home.display(), identifier);
+    let local_path = format!("{}{}skills{}{}{}SKILL.md", hermes_home_dir(), std::path::MAIN_SEPARATOR, std::path::MAIN_SEPARATOR, identifier, std::path::MAIN_SEPARATOR);
     if let Ok(content) = std::fs::read_to_string(&local_path) {
         return Ok(content);
     }
@@ -493,7 +490,7 @@ pub async fn inspect_skill(identifier: String) -> Result<String, String> {
     let parts: Vec<&str> = identifier.split('/').collect();
     if parts.len() >= 2 {
         let cat_name = format!("{}/{}", parts[parts.len() - 2], parts[parts.len() - 1]);
-        let local_path2 = format!("{}/.hermes/skills/{}/SKILL.md", home.display(), cat_name);
+        let local_path2 = format!("{}{}skills{}{}{}SKILL.md", hermes_home_dir(), std::path::MAIN_SEPARATOR, std::path::MAIN_SEPARATOR, cat_name, std::path::MAIN_SEPARATOR);
         if let Ok(content) = std::fs::read_to_string(&local_path2) {
             return Ok(content);
         }

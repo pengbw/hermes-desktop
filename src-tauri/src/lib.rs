@@ -5,7 +5,7 @@ mod services;
 use commands::helpers::{
     hermes_command, ensure_gateway_config, kill_hermes_process,
     show_error_dialog, sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
-    AppState, AgentProcess, home_dir, path_with_local_bin, get_ssl_cert_file,
+    AppState, AgentProcess, home_dir, hermes_home_dir, path_with_local_bin, get_ssl_cert_file,
 };
 use sqlx::SqlitePool;
 use std::process::Stdio;
@@ -173,15 +173,18 @@ pub fn run() {
                             .flatten()
                             .filter(|v| !v.is_empty())
                             .unwrap_or_else(|| {
-                                format!("{}/hermes-workspace", home_dir())
+                                #[cfg(not(target_os = "windows"))]
+                                { format!("{}/hermes-workspace", home_dir()) }
+                                #[cfg(target_os = "windows")]
+                                { format!("{}\\hermes-workspace", home_dir()) }
                             })
                     })
                 };
                 let _ = std::fs::create_dir_all(&workspace_root);
 
                 let new_path = path_with_local_bin();
-                let hermes_home = format!("{}/.hermes", home_dir());
-                let hermes_env = format!("{}/.env", hermes_home);
+                let hermes_home = hermes_home_dir();
+                let hermes_env = format!("{}{}.env", hermes_home, std::path::MAIN_SEPARATOR);
                 let mut gateway_cmd = hermes_command();
                 gateway_cmd
                     .args(["gateway", "run", "--accept-hooks"])
