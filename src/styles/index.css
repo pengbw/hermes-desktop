@@ -86,7 +86,7 @@ code,
 }
 
 .file-preview-modal {
-  background: #fff;
+  background: var(--color-surface);
   border-radius: 12px;
   width: 100%;
   max-width: 860px;
@@ -102,7 +102,7 @@ code,
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
@@ -116,15 +116,15 @@ code,
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .file-preview-type-badge {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  background: #e8f4fd;
-  color: #0984e3;
+  background: var(--color-file-tag-bg);
+  color: var(--color-file-tag-text);
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -134,15 +134,15 @@ code,
   border: none;
   cursor: pointer;
   font-size: 18px;
-  color: #999;
+  color: var(--text-tertiary);
   padding: 4px 8px;
   border-radius: 6px;
   transition: all 0.2s;
 }
 
 .file-preview-close:hover {
-  background: #f0f0f0;
-  color: #333;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .file-preview-body {
@@ -158,7 +158,7 @@ code,
   align-items: center;
   justify-content: center;
   padding: 60px 0;
-  color: #999;
+  color: var(--text-tertiary);
 }
 
 .file-preview-loading .loading-spinner {
@@ -169,7 +169,7 @@ code,
 .file-preview-error {
   padding: 40px;
   text-align: center;
-  color: #e74c3c;
+  color: var(--color-toast-error-text);
   font-size: 14px;
 }
 
@@ -184,7 +184,7 @@ code,
 .file-preview-content {
   font-size: 14px;
   line-height: 1.7;
-  color: #333;
+  color: var(--text-primary);
   word-break: break-word;
 }
 
@@ -196,17 +196,17 @@ code,
 .file-preview-content h6 {
   margin: 1.2em 0 0.6em;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--color-text);
 }
 
 .file-preview-content h1 {
   font-size: 1.6em;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 0.3em;
 }
 .file-preview-content h2 {
   font-size: 1.4em;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 0.3em;
 }
 .file-preview-content h3 {
@@ -233,18 +233,19 @@ code,
 .file-preview-content blockquote {
   margin: 0.8em 0;
   padding: 8px 16px;
-  border-left: 4px solid #4fc3f7;
-  background: #f8f9fa;
+  border-left: 4px solid var(--color-primary);
+  background: var(--color-section-bg);
   border-radius: 0 6px 6px 0;
-  color: #555;
+  color: var(--color-text-secondary);
 }
 
 .file-preview-content code {
-  background: #f0f0f0;
+  background: var(--color-section-bg);
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 0.9em;
   font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  color: var(--color-text);
 }
 
 .file-preview-content pre {
@@ -271,14 +272,19 @@ code,
 
 .file-preview-content th,
 .file-preview-content td {
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   padding: 8px 12px;
   text-align: left;
 }
 
 .file-preview-content th {
-  background: #f8f9fa;
+  background: var(--color-section-bg);
   font-weight: 600;
+  color: var(--color-text);
+}
+
+.file-preview-content td {
+  color: var(--text-primary);
 }
 
 .file-preview-content img {
@@ -287,7 +293,7 @@ code,
 }
 
 .file-preview-content a {
-  color: #4fc3f7;
+  color: var(--color-primary);
   text-decoration: none;
 }
 
@@ -297,6 +303,6 @@ code,
 
 .file-preview-content hr {
   border: none;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--color-border);
   margin: 1.5em 0;
 }
