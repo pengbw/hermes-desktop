@@ -62,9 +62,10 @@ export default function ChannelSettings({ t }: ChannelSettingsProps) {
   const handleDisconnect = async (channelType: string) => {
     try {
       await TauriCommands.channelDisconnect(channelType);
-      await loadStatuses();
     } catch {
       // console.error("Failed to disconnect channel:", e);
+    } finally {
+      await loadStatuses();
     }
   };
 

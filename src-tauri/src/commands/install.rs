@@ -1,12 +1,12 @@
 use crate::commands::helpers::{
     command, copy_dir_recursive, ensure_gateway_config, hermes_command,
-    home_dir, kill_hermes_process, path_with_local_bin, try_install_python_via_uv,
-    AgentProcess, AppState, InstallProgress,
+    home_dir, kill_hermes_process, try_install_python_via_uv,
+    AppState, InstallProgress,
     sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
 };
 use serde::Serialize;
 use std::process::Stdio;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Serialize, Clone)]
 pub struct HermesInfo {
@@ -192,102 +192,34 @@ pub async fn install_hermes_agent(app: AppHandle, method: String) -> Result<bool
 }
 
 #[tauri::command]
-pub async fn start_hermes_agent(app: AppHandle, state: State<'_, AgentProcess>) -> Result<String, String> {
-    use crate::commands::helpers::path_with_local_bin;
-
-    kill_hermes_process();
-    std::thread::sleep(std::time::Duration::from_millis(300));
-
-    let workspace_root = {
-        let state = app.state::<AppState>();
-        let pool = state.db_pool.clone();
-        sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'workspace_root'")
-            .fetch_optional(&pool)
-            .await
-            .ok()
-            .flatten()
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| format!("{}/hermes-workspace", home_dir()))
-    };
-    let _ = std::fs::create_dir_all(&workspace_root);
-
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    let _ = guard.take();
-
-    let new_path = path_with_local_bin();
-
-    match hermes_command()
-        .args(["gateway", "run", "--accept-hooks"])
-        .env("PATH", &new_path)
-        .current_dir(&workspace_root)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
-        Ok(child) => {
-            log::info!("Hermes Agent started (cwd: {})", workspace_root);
-            *guard = Some(child);
-            Ok("Hermes Agent started".to_string())
-        }
-        Err(e) => {
-            log::error!("Failed to start Hermes Agent: {}", e);
-            Err(format!("Failed to start Hermes Agent: {}", e))
-        }
-    }
+pub async fn start_hermes_agent(app: AppHandle) -> Result<String, String> {
+    super::channel::restart_gateway_internal(&app)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok("Hermes Agent started".to_string())
 }
 
 #[tauri::command]
-pub fn restart_hermes(app: AppHandle, state: State<'_, AgentProcess>) -> Result<String, String> {
-    {
-        let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-        let _ = guard.take();
-    }
-
-    kill_hermes_process();
-
-    std::thread::sleep(std::time::Duration::from_millis(500));
-
-    let app_state = app.state::<AppState>();
-    let pool = app_state.db_pool.clone();
-    let workspace_root = tauri::async_runtime::block_on(async {
-        sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'workspace_root'")
-            .fetch_optional(&pool)
-            .await
-            .ok()
-            .flatten()
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| format!("{}/hermes-workspace", home_dir()))
-    });
-    let _ = std::fs::create_dir_all(&workspace_root);
-
-    let api_key: String = tauri::async_runtime::block_on(async {
-        sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'hermes_api_key'")
-            .fetch_optional(&pool)
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or_default()
-    });
+pub async fn restart_hermes(app: AppHandle) -> Result<String, String> {
+    let pool = {
+        let app_state = app.state::<AppState>();
+        app_state.db_pool.clone()
+    };
+    let api_key: String = sqlx::query_scalar::<_, String>(
+        "SELECT value FROM app_config WHERE key = 'hermes_api_key'",
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
     if !api_key.is_empty() {
         crate::commands::helpers::sync_single_env_key(&app, "API_SERVER_KEY", &api_key);
     }
 
-    let new_path = path_with_local_bin();
-
-    let child = hermes_command()
-        .args(["gateway", "run", "--accept-hooks"])
-        .env("PATH", &new_path)
-        .current_dir(&workspace_root)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to start hermes: {}", e))?;
-
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    *guard = Some(child);
-    log::info!("Hermes Agent restarted (cwd: {})", workspace_root);
+    super::channel::restart_gateway_internal(&app)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok("Hermes Agent restarted".to_string())
 }
 

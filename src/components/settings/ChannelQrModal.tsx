@@ -17,6 +17,7 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
   const [error, setError] = useState<string>("");
   const [countdown, setCountdown] = useState(480);
   const [scanning, setScanning] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
@@ -73,13 +74,17 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
         if (!mountedRef.current) return;
         if (status.status === "connected") {
           if (pollRef.current) clearInterval(pollRef.current);
+          setScanning(false);
+          setConfirming(true);
           try {
             await TauriCommands.channelConfirmQr(channel.id);
-          } catch {
-            // console.error("[ChannelQrModal] channelConfirmQr failed:", e);
+            onConnected();
+            onClose();
+          } catch (e) {
+            console.error("[ChannelQrModal] confirm/restart failed:", e);
+            setConfirming(false);
+            setError(String(e));
           }
-          onConnected();
-          onClose();
         } else if (status.status === "error") {
           if (pollRef.current) clearInterval(pollRef.current);
           setScanning(false);
@@ -140,24 +145,40 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
           {!loading && !error && qrData && (
             <div className={channelStyles.qrArea}>
               {qrType === "url" ? (
-                <>
+                <div className={channelStyles.qrImageWrap}>
                   <img
                     className={channelStyles.qrImage}
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrData)}`}
                     alt="QR Code"
                   />
-                  {scanning && countdown > 0 && (
-                    <div className={channelStyles.scanHint}>
-                      <span className={channelStyles.pulseDot} />
-                      <span>{t("channel.waitingForScan")}</span>
+                  {confirming && (
+                    <div className={channelStyles.qrConfirming}>
+                      <span className={channelStyles.spinner} />
+                      <span>{t("channel.connecting")}</span>
                     </div>
                   )}
-                </>
+                </div>
               ) : (
-                <pre className={channelStyles.qrText}>{qrData}</pre>
+                <div className={channelStyles.qrImageWrap}>
+                  <pre className={channelStyles.qrText}>{qrData}</pre>
+                  {confirming && (
+                    <div className={channelStyles.qrConfirming}>
+                      <span className={channelStyles.spinner} />
+                      <span>{t("channel.connecting")}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {scanning && countdown > 0 && !confirming && (
+                <div className={channelStyles.scanHint}>
+                  <span className={channelStyles.pulseDot} />
+                  <span>{t("channel.waitingForScan")}</span>
+                </div>
               )}
               <div className={channelStyles.qrCountdown}>
-                {countdown > 0 ? (
+                {confirming ? (
+                  <span>⏳ {t("channel.saving")}</span>
+                ) : countdown > 0 ? (
                   <span>
                     ⏱ {t("channel.qrExpiresIn")} {formatCountdown(countdown)}
                   </span>

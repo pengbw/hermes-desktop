@@ -167,7 +167,13 @@ pub async fn channel_disconnect(
 
     let _ = app.emit("channel-status-changed", &channel_type);
 
-    restart_gateway_internal(&app).await?;
+    let app_clone = app.clone();
+    let ct = channel_type.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = restart_gateway_internal(&app_clone).await {
+            log::warn!("Gateway restart failed after disconnect of {}: {}", ct, e);
+        }
+    });
 
     Ok(())
 }
@@ -327,24 +333,65 @@ pub async fn channel_confirm_qr(
 
     let _ = app.emit("channel-status-changed", &channel_type);
 
-    restart_gateway_internal(&app).await?;
-
-    Ok(())
+    match restart_gateway_internal(&app).await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            update_channel_status(&pool, &channel_type, "error", Some(&format!("Gateway restart failed: {}", e))).await?;
+            let _ = app.emit("channel-status-changed", &channel_type);
+            Err(e)
+        }
+    }
 }
 
-async fn restart_gateway_internal(app: &AppHandle) -> Result<(), String> {
-    // Kill existing gateway child process
-    if let Some(state) = app.try_state::<AgentProcess>() {
-        let mut guard = state.0.lock().map_err(|e| format!("Lock error: {}", e))?;
-        if let Some(mut child) = guard.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+pub(crate) async fn restart_gateway_internal(app: &AppHandle) -> Result<(), String> {
+    // 1. Gracefully stop the old gateway via hermes CLI
+    let new_path = path_with_local_bin();
+    let env_path = get_hermes_env_path().unwrap_or_else(|_| format!("{}/.hermes/.env", home_dir()));
+    let ssl_cert_file = get_ssl_cert_file();
+
+    let mut stop_cmd = hermes_command();
+    stop_cmd
+        .args(["gateway", "stop"])
+        .env("PATH", &new_path)
+        .env("HERMES_HOME", format!("{}/.hermes", home_dir()))
+        .env("HERMES_ENV_FILE", &env_path);
+    if let Some(ref cert) = ssl_cert_file {
+        stop_cmd.env("SSL_CERT_FILE", cert);
+    }
+
+    let stop_output = tokio::task::spawn_blocking(move || stop_cmd.output())
+        .await
+        .map_err(|e| format!("hermes gateway stop spawn failed: {}", e))?
+        .map_err(|e| format!("hermes gateway stop failed: {}", e))?;
+
+    if stop_output.status.success() {
+        log::info!("Old gateway stopped gracefully");
+    } else {
+        // Fallback: kill our tracked child process
+        if let Some(state) = app.try_state::<AgentProcess>() {
+            let child = {
+                let mut guard = state.0.lock().map_err(|e| format!("Lock error: {}", e))?;
+                guard.take()
+            };
+            if let Some(mut child) = child {
+                let _ = child.kill();
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    tokio::task::spawn_blocking(move || child.wait()),
+                )
+                .await;
+                log::info!("Old gateway process killed (fallback)");
+            }
+        } else {
+            log::warn!("hermes gateway stop failed and no tracked child to kill: {}",
+                String::from_utf8_lossy(&stop_output.stderr).trim());
         }
     }
 
-    // Brief wait for port release
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // Wait for port release
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
 
+    // 2. Start new gateway as background child
     let workspace_root = {
         let pool = get_pool(app)?;
         sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'workspace_root'")
@@ -356,21 +403,21 @@ async fn restart_gateway_internal(app: &AppHandle) -> Result<(), String> {
     };
     let _ = std::fs::create_dir_all(&workspace_root);
 
-    let env_path = get_hermes_env_path().unwrap_or_else(|_| format!("{}/.hermes/.env", home_dir()));
-    let new_path = path_with_local_bin();
-    let ssl_cert_file = get_ssl_cert_file();
+    let env_path2 = get_hermes_env_path().unwrap_or_else(|_| format!("{}/.hermes/.env", home_dir()));
+    let new_path2 = path_with_local_bin();
+    let ssl_cert_file2 = get_ssl_cert_file();
     let mut gateway_cmd = hermes_command();
     gateway_cmd
         .args(["gateway", "run", "--accept-hooks"])
-        .env("PATH", &new_path)
+        .env("PATH", &new_path2)
         .env("HERMES_HOME", format!("{}/.hermes", home_dir()))
-        .env("HERMES_ENV_FILE", &env_path)
+        .env("HERMES_ENV_FILE", &env_path2)
         .current_dir(&workspace_root)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
-    if let Some(ref cert) = ssl_cert_file {
+    if let Some(ref cert) = ssl_cert_file2 {
         gateway_cmd.env("SSL_CERT_FILE", cert);
     }
 
