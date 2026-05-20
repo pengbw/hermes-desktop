@@ -8,7 +8,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
     defaultEmbeddingModel: "local",
     defaultRetrievalMode: "off",
     defaultMaxContextChunks: 8,
-    globalAutoRetrieve: false,
+    globalAutoRetrieve: true,
     cloudProvider: "",
     cloudEmbeddingModel: "",
     ollamaEndpoint: "http://localhost:11434",

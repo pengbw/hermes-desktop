@@ -1143,7 +1143,7 @@ pub async fn get_knowledge_config(app: AppHandle) -> Result<serde_json::Value, S
             "defaultEmbeddingModel": "local",
             "defaultRetrievalMode": "off",
             "defaultMaxContextChunks": 8,
-            "globalAutoRetrieve": false
+            "globalAutoRetrieve": true
         })),
     }
 }

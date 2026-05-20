@@ -348,7 +348,7 @@ pub(crate) async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), Stri
         ("content_creation_wf1", "content_creation", Some("builtin_content_creation_planner"), "builtin_content_creation_writer", "内容大纲", "need_confirm", ""),
         ("content_creation_wf2", "content_creation", Some("builtin_content_creation_writer"), "builtin_content_creation_editor", "初稿", "auto_push", ""),
         ("content_creation_wf3", "content_creation", Some("builtin_content_creation_editor"), "builtin_content_creation_auditor", "修改稿", "auto_push", ""),
-        ("content_creation_wf4", "content_creation", Some("builtin_content_creation_auditor"), "end", "结束", "need_confirm", ""),
+        ("content_creation_wf4", "content_creation", Some("builtin_content_creation_auditor"), "end", "结束", "need_confirm", "builtin_content_creation_planner"),
 
         // 数据分析流程
         ("data_analysis_wf0", "data_analysis", Some("start"), "builtin_data_analysis_ba", "分析需求", "auto_push", ""),

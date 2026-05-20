@@ -234,6 +234,9 @@ pub async fn chat_with_hermes_api(
                 .await
                 .unwrap_or_default()
             } else {
+                let mut result: Vec<(String, String)> = Vec::new();
+                let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
                 let conv_kb_ids: Option<String> = if let Some(ref conv_id) = conversation_id {
                     sqlx::query_scalar("SELECT kb_ids FROM conversations WHERE id = ?")
                         .bind(conv_id)
@@ -247,27 +250,34 @@ pub async fn chat_with_hermes_api(
 
                 if let Some(ids_json) = conv_kb_ids {
                     let ids: Vec<String> = serde_json::from_str(&ids_json).unwrap_or_default();
-                    if ids.is_empty() {
-                        vec![]
-                    } else {
-                        let mut result = Vec::new();
-                        for kb_id in ids {
-                            let kb: Option<(String, String)> = sqlx::query_as(
-                                "SELECT id, name FROM knowledge_bases WHERE id = ? AND status = 'ready'"
-                            )
-                            .bind(&kb_id)
-                            .fetch_optional(&pool)
-                            .await
-                            .unwrap_or(None);
-                            if let Some(row) = kb {
-                                result.push(row);
-                            }
+                    for kb_id in ids {
+                        let kb: Option<(String, String)> = sqlx::query_as(
+                            "SELECT id, name FROM knowledge_bases WHERE id = ? AND status = 'ready'"
+                        )
+                        .bind(&kb_id)
+                        .fetch_optional(&pool)
+                        .await
+                        .unwrap_or(None);
+                        if let Some(row) = kb {
+                            seen.insert(row.0.clone());
+                            result.push(row);
                         }
-                        result
                     }
-                } else {
-                    vec![]
                 }
+
+                let auto_kbs: Vec<(String, String)> = sqlx::query_as(
+                    "SELECT id, name FROM knowledge_bases WHERE status = 'ready' AND auto_retrieve = 1"
+                )
+                .fetch_all(&pool)
+                .await
+                .unwrap_or_default();
+                for kb in auto_kbs {
+                    if !seen.contains(&kb.0) {
+                        result.push(kb);
+                    }
+                }
+
+                result
             };
 
             log::info!("[chat_api] target_kbs count={}, kbs={:?}", target_kbs.len(), target_kbs.iter().map(|(_id, name)| name.clone()).collect::<Vec<_>>());
