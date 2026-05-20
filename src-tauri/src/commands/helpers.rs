@@ -186,6 +186,48 @@ pub(crate) fn hermes_env_file_path() -> Result<String, String> {
     Ok(env_path)
 }
 
+/// 直接写入键值对到 ~/.hermes/.env（Windows: %LOCALAPPDATA%\hermes\.env）
+/// 若 key 已存在则更新该行，否则追加到文件末尾。
+/// 文件不存在时会自动创建。
+pub(crate) fn write_env_value(key: &str, value: &str) -> Result<(), String> {
+    let hermes_home = hermes_home_dir();
+    let env_path = format!("{}{}.env", hermes_home, std::path::MAIN_SEPARATOR);
+    // 确保目录存在
+    if let Err(e) = std::fs::create_dir_all(&hermes_home) {
+        log::warn!("Failed to create hermes home dir: {}", e);
+    }
+
+    let mut lines: Vec<String> = if std::path::Path::new(&env_path).exists() {
+        std::fs::read_to_string(&env_path)
+            .unwrap_or_default()
+            .lines()
+            .map(String::from)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let mut found = false;
+    let needle = format!("{}=", key);
+    for line in &mut lines {
+        if line.trim_start().starts_with(&needle) {
+            *line = format!("{}={}", key, value);
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        lines.push(format!("{}={}", key, value));
+    }
+
+    // 统一换行，末尾保留空行
+    let mut content = lines.join("\n");
+    content.push('\n');
+
+    std::fs::write(&env_path, &content)
+        .map_err(|e| format!("Failed to write .env: {}", e))
+}
+
 pub(crate) fn which_exists(cmd: &str) -> bool {
     command("which")
         .arg(cmd)
@@ -504,9 +546,12 @@ pub(crate) async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
     .filter(|v: &String| !v.is_empty());
 
     if let Some(hak) = &hermes_api_key {
-        match hermes_config_set("API_SERVER_KEY", hak) {
+        // 直接写入 .env，避免通过 hermes config set 落入 config.yaml
+        // hermes CLI 的 set_config_value 路由规则遗漏了 _KEY 后缀的 key，
+        // 导致 API_SERVER_KEY 落入 config.yaml 而非 .env
+        match write_env_value("API_SERVER_KEY", hak) {
             Ok(_) => synced += 1,
-            Err(e) => log::warn!("Failed to sync API_SERVER_KEY via hermes config set: {}", e),
+            Err(e) => log::warn!("Failed to sync API_SERVER_KEY via write_env_value: {}", e),
         }
     }
 

@@ -205,7 +205,7 @@ pub async fn restart_hermes(app: AppHandle) -> Result<String, String> {
         let app_state = app.state::<AppState>();
         app_state.db_pool.clone()
     };
-    let api_key: String = sqlx::query_scalar::<_, String>(
+    let _api_key: String = sqlx::query_scalar::<_, String>(
         "SELECT value FROM app_config WHERE key = 'hermes_api_key'",
     )
     .fetch_optional(&pool)
@@ -213,8 +213,9 @@ pub async fn restart_hermes(app: AppHandle) -> Result<String, String> {
     .ok()
     .flatten()
     .unwrap_or_default();
-    if !api_key.is_empty() {
-        crate::commands::helpers::sync_single_env_key(&app, "API_SERVER_KEY", &api_key);
+    if !_api_key.is_empty() {
+        // 直接写入 .env，避免通过 hermes config set 落入 config.yaml
+        let _ = crate::commands::helpers::write_env_value("API_SERVER_KEY", &_api_key);
     }
 
     super::channel::restart_gateway_internal(&app)

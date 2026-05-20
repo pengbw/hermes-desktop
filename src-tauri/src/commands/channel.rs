@@ -344,7 +344,7 @@ pub async fn channel_confirm_qr(
 }
 
 pub(crate) async fn restart_gateway_internal(app: &AppHandle) -> Result<(), String> {
-    // 1. Gracefully stop the old gateway via hermes CLI
+    // 1. 通过 hermes gateway stop 优雅停止旧网关
     let new_path = path_with_local_bin();
     let env_path = get_hermes_env_path().unwrap_or_else(|_| hermes_env_file_path().unwrap_or_default());
     let ssl_cert_file = get_ssl_cert_file();
@@ -367,7 +367,7 @@ pub(crate) async fn restart_gateway_internal(app: &AppHandle) -> Result<(), Stri
     if stop_output.status.success() {
         log::info!("Old gateway stopped gracefully");
     } else {
-        // Fallback: kill our tracked child process
+        // 备用方案：杀死我们记录的 child 进程
         if let Some(state) = app.try_state::<AgentProcess>() {
             let child = {
                 let mut guard = state.0.lock().map_err(|e| format!("Lock error: {}", e))?;
@@ -388,10 +388,10 @@ pub(crate) async fn restart_gateway_internal(app: &AppHandle) -> Result<(), Stri
         }
     }
 
-    // Wait for port release
+    // 等待端口释放
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
 
-    // 2. Start new gateway as background child
+    // 2. 启动新网关（--replace 避免 PID 文件冲突）
     let workspace_root = {
         let pool = get_pool(app)?;
         sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'workspace_root'")
@@ -411,37 +411,126 @@ pub(crate) async fn restart_gateway_internal(app: &AppHandle) -> Result<(), Stri
     let env_path2 = get_hermes_env_path().unwrap_or_else(|_| hermes_env_file_path().unwrap_or_default());
     let new_path2 = path_with_local_bin();
     let ssl_cert_file2 = get_ssl_cert_file();
+    let hermes_home = hermes_home_dir();
+    // PID 文件路径，健康检查用
+    let pid_file_path = format!("{}{}gateway.pid", hermes_home, std::path::MAIN_SEPARATOR);
+
     let mut gateway_cmd = hermes_command();
     gateway_cmd
-        .args(["gateway", "run", "--accept-hooks"])
+        .args(["gateway", "run", "--accept-hooks", "--replace"])
         .env("PATH", &new_path2)
-        .env("HERMES_HOME", hermes_home_dir())
+        .env("HERMES_HOME", &hermes_home)
         .env("HERMES_ENV_FILE", &env_path2)
         .current_dir(&workspace_root)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
 
     if let Some(ref cert) = ssl_cert_file2 {
         gateway_cmd.env("SSL_CERT_FILE", cert);
     }
 
-    match gateway_cmd.spawn() {
-        Ok(child) => {
-            log::info!("Hermes Gateway restarted (+API Server)");
-            if let Some(state) = app.try_state::<AgentProcess>() {
-                let mut guard = state.0.lock().map_err(|e| format!("Lock error: {}", e))?;
-                *guard = Some(child);
+    let mut child = match gateway_cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("Failed to spawn Hermes Gateway: {}", e);
+            return Err(format!("Failed to start gateway: {}", e));
+        }
+    };
+
+    let child_id = child.id();
+    log::info!("Hermes Gateway spawned (PID: {})", child_id);
+
+    // 3. 启动后健康检查：等待最多 5 秒，确认 PID 文件已生成且进程存活
+    let health_timeout = std::time::Duration::from_secs(5);
+    let health_start = std::time::Instant::now();
+    let mut healthy = false;
+
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stderr_output = child.stderr.take()
+                    .map(|mut reader| {
+                        use std::io::Read;
+                        let mut buf = String::new();
+                        let _ = reader.read_to_string(&mut buf);
+                        buf
+                    })
+                    .unwrap_or_default();
+                log::error!(
+                    "Gateway process exited early (status: {}), stderr: {}",
+                    status,
+                    stderr_output.trim()
+                );
+                break;
+            }
+            Ok(None) => {
+                if std::path::Path::new(&pid_file_path).exists() {
+                    healthy = true;
+                    break;
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to check gateway child status: {}", e);
+                break;
             }
         }
-        Err(e) => {
-            log::error!("Failed to restart Hermes Gateway: {}", e);
-            return Err(format!("Failed to restart gateway: {}", e));
+
+        if health_start.elapsed() >= health_timeout {
+            log::warn!(
+                "Gateway health check timed out after {}s, PID file not found but process appears alive",
+                health_timeout.as_secs()
+            );
+            healthy = true;
+            break;
         }
     }
 
-    let _ = app.emit("gateway-restarted", ());
-    Ok(())
+    if healthy {
+        log::info!("Hermes Gateway health check passed (PID: {})", child_id);
+        // 后台消费 stderr，防止管道满阻塞子进程
+        if let Some(stderr) = child.stderr.take() {
+            tokio::task::spawn_blocking(move || {
+                use std::io::{BufRead, BufReader};
+                let reader = BufReader::new(stderr);
+                for _line in reader.lines() {}
+            });
+        }
+
+        if let Some(state) = app.try_state::<AgentProcess>() {
+            let mut guard = state.0.lock().map_err(|e| format!("Lock error: {}", e))?;
+            *guard = Some(child);
+        }
+
+        let _ = app.emit("gateway-restarted", ());
+        Ok(())
+    } else {
+        let _ = child.kill();
+        let _ = child.wait();
+
+        let stderr_output = child.stderr.take()
+            .map(|mut reader| {
+                use std::io::Read;
+                let mut buf = String::new();
+                let _ = reader.read_to_string(&mut buf);
+                buf
+            })
+            .unwrap_or_default();
+
+        let err_msg = if stderr_output.trim().is_empty() {
+            format!(
+                "Gateway process (PID {}) exited unexpectedly during startup. \
+                Check gateway logs at {}/logs/gateway.log for details.",
+                child_id, hermes_home
+            )
+        } else {
+            format!("Gateway startup failed: {}", stderr_output.trim())
+        };
+        log::error!("{}", err_msg);
+        Err(err_msg)
+    }
 }
 
 async fn update_channel_status(

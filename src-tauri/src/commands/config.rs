@@ -39,7 +39,8 @@ pub async fn set_config(
         .map_err(|e| e.to_string())?;
 
     if key == "hermes_api_key" {
-        crate::commands::helpers::sync_single_env_key(&app, "API_SERVER_KEY", &value);
+        // 直接写入 .env，避免通过 hermes config set 落入 config.yaml
+        let _ = crate::commands::helpers::write_env_value("API_SERVER_KEY", &value);
     }
 
     Ok(())
