@@ -1,6 +1,6 @@
 use crate::commands::helpers::{
     command, copy_dir_recursive, ensure_gateway_config, hermes_command,
-    kill_hermes_process, home_dir, try_install_python_via_uv,
+    hermes_home_dir, kill_hermes_process, home_dir, try_install_python_via_uv,
     AppState, InstallProgress,
     sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
 };
@@ -272,6 +272,7 @@ pub async fn get_hermes_config(app: AppHandle) -> Result<serde_json::Value, Stri
 
     let config_path_output = hermes_command()
         .args(&["config", "path"])
+        .env("HERMES_HOME", hermes_home_dir())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -280,6 +281,7 @@ pub async fn get_hermes_config(app: AppHandle) -> Result<serde_json::Value, Stri
 
     let env_path_output = hermes_command()
         .args(&["config", "env-path"])
+        .env("HERMES_HOME", hermes_home_dir())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
