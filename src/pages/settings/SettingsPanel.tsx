@@ -206,12 +206,7 @@ function SettingsPanel() {
 
   const saveSectionConfig = async (section: string) => {
     const sectionFields = SECTION_FIELDS[section] || [];
-    const fieldsToSave = sectionFields.filter((f) => dirtyFields.has(f));
-    if (fieldsToSave.length === 0) {
-      setSaveMessage({ text: t("settings.noChange"), type: "success" });
-      setTimeout(() => setSaveMessage(null), 2000);
-      return;
-    }
+    const fieldsToSave = sectionFields;
 
     setSaving(true);
     setSaveMessage(null);
