@@ -435,7 +435,8 @@ pub(crate) fn tool_label(tool_name: &str) -> &str {
 
 pub(crate) fn hermes_config_set(key: &str, value: &str) -> Result<(), String> {
     let mut cmd = hermes_command();
-    cmd.args(&["config", "set", key, value]);
+    cmd.args(&["config", "set", key, value])
+        .env("HERMES_HOME", hermes_home_dir());
 
     #[cfg(unix)]
     {

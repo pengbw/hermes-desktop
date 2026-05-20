@@ -1,6 +1,6 @@
 use crate::commands::helpers::{
     command, copy_dir_recursive, ensure_gateway_config, hermes_command,
-    kill_hermes_process,
+    kill_hermes_process, home_dir, try_install_python_via_uv,
     AppState, InstallProgress,
     sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
 };

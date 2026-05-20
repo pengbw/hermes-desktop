@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 use std::process::Stdio;
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::helpers::{hermes_command, hermes_home_dir, hermes_agent_dir, hermes_venv_python, hermes_env_file_path, path_with_local_bin, AgentProcess, get_ssl_cert_file};
+use super::helpers::{hermes_command, hermes_home_dir, hermes_agent_dir, hermes_venv_python, hermes_env_file_path, path_with_local_bin, AgentProcess, get_ssl_cert_file, home_dir};
 
 fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
     let state = app.state::<crate::commands::helpers::AppState>();
@@ -1185,6 +1185,7 @@ fn write_channel_env(
     if let Some(obj) = config.as_object() {
         let env_path_output = crate::commands::helpers::hermes_command()
             .args(&["config", "env-path"])
+            .env("HERMES_HOME", hermes_home_dir())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .output()
