@@ -103,6 +103,11 @@ export default function AgentSettings({
                 onChange={(e) => onProviderChange(e.target.value)}
               >
                 <option value="">{t("common.selectProvider")}</option>
+                {provider && !providers.some((p) => p.value === provider) && (
+                  <option value={provider}>
+                    {provider} ({t("common.current")})
+                  </option>
+                )}
                 {providers.map((p) => (
                   <option key={p.id} value={p.value}>
                     {p.name}
