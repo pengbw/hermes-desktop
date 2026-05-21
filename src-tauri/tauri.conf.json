@@ -23,7 +23,7 @@
         "center": true,
         "resizable": true,
         "visible": true,
-        "decorations": true,
+        "decorations": false,
         "dragDropEnabled": false
       },
       {
@@ -48,7 +48,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/**/*"]
+        "scope": ["$APPDATA/**/*", "$RESOURCE/**", "$DESKTOP/**"]
       }
     }
   },

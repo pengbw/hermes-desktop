@@ -1,5 +1,7 @@
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 import type { QuickCard } from "@core/types";
-import styles from "@pages/home/HomePanel.module.css";
 
 interface QuickActionsProps {
   cards: QuickCard[];
@@ -23,43 +25,42 @@ function QuickActions({
   const visibleCards = cards.slice(cardIndex * cardsPerRow, (cardIndex + 1) * cardsPerRow);
 
   return (
-    <div className={styles.homeCardsSection}>
-      <div className={styles.homeCardsGrid}>
+    <div className="w-full max-w-4xl mx-auto flex flex-col gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {visibleCards.map((card, i) => (
-          <div
+          <Card
             key={`${card.id}-${i}`}
-            className={styles.homeCard}
+            className={`cursor-pointer transition-all duration-200 hover:border-primary hover:shadow-md hover:-translate-y-0.5 ${
+              isStreaming ? "opacity-50 pointer-events-none" : ""
+            }`}
             onClick={() => {
               if (!isStreaming) onCardClick(card);
             }}
           >
-            <span className={styles.homeCardIcon}>{card.icon}</span>
-            <div className={styles.homeCardInfo}>
-              <span className={styles.homeCardName}>{t(`home.card.${card.id}`) || card.name}</span>
-              <span className={styles.homeCardDesc}>
-                {t(`home.card.${card.id}Desc`) || card.prompt.slice(0, 30)}
-              </span>
-            </div>
-          </div>
+            <CardContent className="flex flex-col items-center text-center gap-2 p-4">
+              <span className="text-2xl leading-none">{card.icon}</span>
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-semibold text-foreground">
+                  {t(`home.card.${card.id}`) || card.name}
+                </span>
+                <span className="text-xs text-muted-foreground line-clamp-2">
+                  {t(`home.card.${card.id}Desc`) || card.prompt.slice(0, 30)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
       {cards.length > cardsPerRow && (
-        <button className={styles.homeRefreshBtn} onClick={onRefresh} title={t("home.cardRefresh")}>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
-          <span>{t("home.cardRefresh")}</span>
-        </button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="self-end text-muted-foreground hover:text-primary"
+          onClick={onRefresh}
+        >
+          <RefreshCw className="h-3.5 w-3.5 mr-1" />
+          {t("home.cardRefresh")}
+        </Button>
       )}
     </div>
   );

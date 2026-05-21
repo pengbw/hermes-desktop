@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { defaultFont } from "./_font-template";
+
+export const classicTheme: ThemeDefinition = {
+  name: "classic",
+  label: "经典标准",
+  description: "最常见的组合，适用于大多数场景",
+  radius: "0.5rem",
+  font: defaultFont,
+  variables: {
+    light: {
+      background: "#FFFFFF",
+      foreground: "#0F172A",
+      card: "#FFFFFF",
+      cardForeground: "#0F172A",
+      primary: "#3B82F6",
+      primaryForeground: "#FFFFFF",
+      secondary: "#F1F5F9",
+      secondaryForeground: "#0F172A",
+      muted: "#F8FAFC",
+      mutedForeground: "#64748B",
+      accent: "#EFF6FF",
+      accentForeground: "#1D4ED8",
+      border: "#E2E8F0",
+      input: "#E2E8F0",
+      ring: "#3B82F6",
+    },
+    dark: {
+      background: "#0F172A",
+      foreground: "#F8FAFC",
+      card: "#1E293B",
+      cardForeground: "#F8FAFC",
+      primary: "#60A5FA",
+      primaryForeground: "#0F172A",
+      secondary: "#1E293B",
+      secondaryForeground: "#F8FAFC",
+      muted: "#334155",
+      mutedForeground: "#94A3B8",
+      accent: "#1E3A5F",
+      accentForeground: "#93C5FD",
+      border: "#334155",
+      input: "#334155",
+      ring: "#60A5FA",
+    },
+  },
+  preview: {
+    accent: "#3B82F6",
+    bg: "#F8FAFC",
+    text: "#0F172A",
+  },
+};

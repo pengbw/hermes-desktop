@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import settingsStyles from "@pages/settings/SettingsPanel.module.css";
-import studioStyles from "@pages/studio/StudioPanel.module.css";
 import type { SkillItem } from "@core/types";
 
 interface RoleSkill {
@@ -207,60 +205,56 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
 
   if (loading) {
     return (
-      <div className={settingsStyles.settingsSectionCard}>
-        <div className={settingsStyles.skillsLoading}>
-          <span className={settingsStyles.loadingSpinner}>⏳</span>
-          <p>{t("aiRoles.loading")}</p>
+      <div className="animate-[fadeIn_0.2s_ease]">
+        <div className="flex flex-col items-center gap-3 py-10 text-muted-foreground">
+          <span className="text-2xl animate-pulse">⏳</span>
+          <p className="text-sm">{t("aiRoles.loading")}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={settingsStyles.settingsSectionCard}>
-      <div className={settingsStyles.settingsSection}>
-        <div className={settingsStyles.cardManagerHeader}>
-          <h3>{t("aiRoles.title")}</h3>
-          <button className={settingsStyles.cardAddBtn} onClick={() => setShowNewRole(true)}>
+    <div className="animate-[fadeIn_0.2s_ease]">
+      <div className="bg-card rounded-xl p-5 shadow-sm mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[15px] font-semibold text-foreground m-0">{t("aiRoles.title")}</h3>
+          <button
+            className="px-3 py-1.5 border border-primary rounded-md bg-transparent text-primary text-xs cursor-pointer transition-all hover:bg-primary/5"
+            onClick={() => setShowNewRole(true)}
+          >
             + {t("aiRoles.addRole")}
           </button>
         </div>
-        <p className={settingsStyles.settingsDesc}>{t("aiRoles.desc")}</p>
-        <div className={settingsStyles.cardManagerGrid}>
+        <p className="text-[13px] text-muted-foreground mb-4 leading-relaxed">{t("aiRoles.desc")}</p>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
           {roles.map((role) => (
             <div
               key={role.id}
-              className={settingsStyles.cardManagerItem + " " + "custom"}
-              style={role.avatarColor ? { borderLeftColor: role.avatarColor } : undefined}
+              className="bg-card border border-border rounded-xl p-4 flex flex-col gap-2 transition-all hover:border-primary/30 hover:shadow-md hover:-translate-y-px"
+              style={role.avatarColor ? { borderLeftColor: role.avatarColor, borderLeftWidth: 3 } : undefined}
             >
-              <div className={studioStyles.aiRoleCardHeader}>
+              <div className="flex items-center gap-2 flex-wrap">
                 <span
-                  className={settingsStyles.cardManagerIcon}
+                  className="inline-flex items-center justify-center w-7 h-7 rounded-full text-sm"
                   style={
                     role.avatarColor
                       ? {
                           backgroundColor: role.avatarColor + "22",
                           color: role.avatarColor,
-                          borderRadius: "50%",
-                          width: "28px",
-                          height: "28px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "14px",
                         }
                       : undefined
                   }
                 >
                   {role.icon}
                 </span>
-                <span className={settingsStyles.cardManagerName}>{role.name}</span>
+                <span className="text-sm font-semibold text-foreground">{role.name}</span>
                 {role.isBuiltin && (
-                  <span className={studioStyles.aiRoleBuiltinBadge}>{t("aiRoles.builtin")}</span>
+                  <span className="text-[10px] px-1.5 py-px rounded bg-primary/10 text-primary font-medium">{t("aiRoles.builtin")}</span>
                 )}
                 {role.avatarPreset && (
                   <span
-                    className={studioStyles.aiRoleAvatarBadge}
+                    className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-full text-[11px] text-white"
                     style={role.avatarColor ? { backgroundColor: role.avatarColor } : undefined}
                   >
                     {AVATAR_PRESETS.find((p) => p.value === role.avatarPreset)?.label.split(
@@ -269,101 +263,110 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   </span>
                 )}
               </div>
-              <p className={settingsStyles.cardManagerDesc}>{role.description}</p>
-              <p className={studioStyles.aiRoleResp}>{role.responsibilities}</p>
-              <div className={settingsStyles.cardManagerActions}>
-                <button onClick={() => startEdit(role)}>✏️</button>
-                {!role.isBuiltin && <button onClick={() => handleDelete(role.id)}>🗑️</button>}
+              <p className="text-xs text-muted-foreground leading-relaxed m-0 line-clamp-2">{role.description}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed m-0 line-clamp-2">{role.responsibilities}</p>
+              <div className="flex gap-1 mt-auto pt-1">
+                <button
+                  className="w-7 h-7 flex items-center justify-center rounded-md border-none bg-transparent text-muted-foreground cursor-pointer text-sm transition-colors hover:bg-muted hover:text-foreground"
+                  onClick={() => startEdit(role)}
+                >
+                  ✏️
+                </button>
+                {!role.isBuiltin && (
+                  <button
+                    className="w-7 h-7 flex items-center justify-center rounded-md border-none bg-transparent text-muted-foreground cursor-pointer text-sm transition-colors hover:bg-red-500/10 hover:text-red-500"
+                    onClick={() => handleDelete(role.id)}
+                  >
+                    🗑️
+                  </button>
+                )}
               </div>
             </div>
           ))}
         </div>
       </div>
       {(showNewRole || editingRole) && (
-        <div className={studioStyles.studioSettingsOverlay} onClick={cancelEdit}>
-          <div className={studioStyles.studioSettingsModal} onClick={(e) => e.stopPropagation()}>
-            <div className={studioStyles.studioSettingsHeader}>
-              <h3>{editingRole ? t("aiRoles.editRole") : t("aiRoles.addRole")}</h3>
-              <button className={studioStyles.studioSettingsClose} onClick={cancelEdit}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[1000] animate-[fadeIn_0.2s_ease]" onClick={cancelEdit}>
+          <div className="bg-card border border-border rounded-xl w-full max-w-[720px] h-[520px] max-h-[90vh] flex flex-col shadow-xl animate-[modalIn_0.25s_ease] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h3 className="text-lg font-semibold text-foreground m-0">{editingRole ? t("aiRoles.editRole") : t("aiRoles.addRole")}</h3>
+              <button className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors" onClick={cancelEdit}>
                 ✕
               </button>
             </div>
-            <div className={studioStyles.studioSettingsContent}>
-              <div
-                className={studioStyles.aiRoleForm}
-                style={{ margin: 0, border: "none", background: "transparent", padding: 0 }}
-              >
-                <div className={studioStyles.aiRoleFormRow}>
-                  <label>{t("aiRoles.roleIcon")}</label>
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.roleIcon")}</label>
                   <input
-                    className={studioStyles.studioInput}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors"
                     value={editForm.icon}
                     onChange={(e) => setEditForm({ ...editForm, icon: e.target.value })}
                     placeholder="🤖"
                   />
                 </div>
-                <div className={studioStyles.aiRoleFormRow}>
-                  <label>{t("aiRoles.roleName")}</label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.roleName")}</label>
                   <input
-                    className={studioStyles.studioInput}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors"
                     value={editForm.name}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                     placeholder={t("aiRoles.roleNamePlaceholder")}
                   />
                 </div>
-                <div className={studioStyles.aiRoleFormRow}>
-                  <label>角色昵称</label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-foreground">角色昵称</label>
                   <input
-                    className={studioStyles.studioInput}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors"
                     value={editForm.nickname}
                     onChange={(e) => setEditForm({ ...editForm, nickname: e.target.value })}
                     placeholder="如：小刘、老张"
                   />
                 </div>
-                <div className={studioStyles.aiRoleFormRow}>
-                  <label>{t("aiRoles.roleDesc")}</label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.roleDesc")}</label>
                   <input
-                    className={studioStyles.studioInput}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors"
                     value={editForm.description}
                     onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                     placeholder={t("aiRoles.roleDescPlaceholder")}
                   />
                 </div>
-                <div className={studioStyles.aiRoleFormRow}>
-                  <label>{t("aiRoles.roleResp")}</label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.roleResp")}</label>
                   <textarea
-                    className={studioStyles.studioTextarea}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors resize-y min-h-[80px]"
                     value={editForm.responsibilities}
                     onChange={(e) => setEditForm({ ...editForm, responsibilities: e.target.value })}
                     placeholder={t("aiRoles.roleRespPlaceholder")}
                     rows={3}
                   />
                 </div>
-                <div className={studioStyles.aiRoleFormRow}>
-                  <label>{t("aiRoles.roleSoul")}</label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.roleSoul")}</label>
                   <textarea
-                    className={studioStyles.studioTextarea}
+                    className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors resize-y min-h-[80px]"
                     value={editForm.soulContent}
                     onChange={(e) => setEditForm({ ...editForm, soulContent: e.target.value })}
                     placeholder={t("aiRoles.roleSoulPlaceholder")}
                     rows={6}
                   />
                 </div>
-                <div className={studioStyles.aiRoleFormDivider} />
-                <div className={studioStyles.aiRoleFormSectionTitle}>
+                <div className="h-px bg-border my-2" />
+                <div className="text-sm font-semibold text-primary mb-3">
                   {t("aiRoles.avatarSection")}
                 </div>
-                <div className={studioStyles.aiRoleFormRow}>
-                  <label>{t("aiRoles.avatarPreset")}</label>
-                  <div className={studioStyles.aiRoleAvatarPresets}>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.avatarPreset")}</label>
+                  <div className="flex gap-2 flex-wrap">
                     {AVATAR_PRESETS.map((preset) => (
                       <button
                         key={preset.value}
-                        className={
-                          studioStyles.aiRoleAvatarPresetBtn +
-                          " " +
-                          (editForm.avatarPreset === preset.value ? studioStyles.active : "")
-                        }
+                        className={`px-2.5 py-1 border-2 rounded-lg bg-card cursor-pointer text-xs transition-all hover:border-primary hover:bg-primary/5 ${editForm.avatarPreset === preset.value ? "font-semibold bg-primary/5" : "border-border"}`}
+                        style={{
+                          borderColor:
+                            editForm.avatarPreset === preset.value ? preset.color : undefined,
+                        }}
                         onClick={() =>
                           setEditForm({
                             ...editForm,
@@ -371,48 +374,37 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                             avatarColor: preset.color,
                           })
                         }
-                        style={{
-                          borderColor:
-                            editForm.avatarPreset === preset.value ? preset.color : undefined,
-                        }}
                       >
                         {preset.label}
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className={studioStyles.aiRoleFormRow}>
-                  <label>{t("aiRoles.avatarColor")}</label>
-                  <div className={studioStyles.aiRoleColorPicker}>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.avatarColor")}</label>
+                  <div className="flex items-center gap-2">
                     <input
                       type="color"
                       value={editForm.avatarColor || "#6c5ce7"}
                       onChange={(e) => setEditForm({ ...editForm, avatarColor: e.target.value })}
-                      className={studioStyles.aiRoleColorInput}
+                      className="w-9 h-9 border-2 border-border rounded-lg cursor-pointer p-0.5"
                     />
-                    <span className={studioStyles.aiRoleColorValue}>
+                    <span className="text-[13px] text-muted-foreground font-mono">
                       {editForm.avatarColor || "#6c5ce7"}
                     </span>
                   </div>
                 </div>
-                <div className={studioStyles.aiRoleFormRow}>
-                  <label>{t("studio.avatarType")}</label>
-                  <div className={studioStyles.aiRoleAvatarPresets}>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-foreground">{t("studio.avatarType")}</label>
+                  <div className="flex gap-2 flex-wrap">
                     <button
-                      className={
-                        studioStyles.aiRoleAvatarPresetBtn +
-                        " " +
-                        (editForm.avatarType === "default" || !editForm.avatarUrl
-                          ? studioStyles.active
-                          : "")
-                      }
+                      className={`px-2.5 py-1 border-2 rounded-lg bg-card cursor-pointer text-xs transition-all hover:border-primary hover:bg-primary/5 ${editForm.avatarType === "default" || !editForm.avatarUrl ? "font-semibold bg-primary/5 border-primary" : "border-border"}`}
                       onClick={() => setEditForm({ ...editForm, avatarType: "default" })}
                     >
                       {t("studio.avatarTypeDefault")}
                     </button>
                     <button
-                      className={studioStyles.aiRoleAvatarPresetBtn}
-                      style={{ opacity: 0.5, cursor: "not-allowed" }}
+                      className="px-2.5 py-1 border-2 border-border rounded-lg bg-card cursor-not-allowed text-xs opacity-50"
                       onClick={() => showToast("🚧 VRM 功能开发中，敬请期待")}
                     >
                       {t("studio.avatarTypeVrm")} (开发中)
@@ -421,10 +413,10 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                 </div>
                 {editingRole && (
                   <>
-                    <div className={studioStyles.aiRoleFormDivider} />
-                    <div className={studioStyles.aiRoleFormSectionTitle}>🛠️ 技能绑定</div>
-                    <div className={studioStyles.aiRoleFormRow}>
-                      <label>已绑定技能</label>
+                    <div className="h-px bg-border my-2" />
+                    <div className="text-sm font-semibold text-primary mb-3">🛠️ 技能绑定</div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[13px] font-medium text-foreground">已绑定技能</label>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                         {editRoleSkills.length === 0 && (
                           <span style={{ color: "#999", fontSize: 12 }}>暂无绑定技能</span>
@@ -432,7 +424,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                         {editRoleSkills.map((skill) => (
                           <span
                             key={skill.id}
-                            className={studioStyles.roleSkillTag}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs"
                             style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                           >
                             {skill.skillName}
@@ -460,7 +452,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                           </span>
                         ))}
                         <button
-                          className={studioStyles.roleSkillAddBtn}
+                          className="px-2 py-1 border border-dashed border-border rounded-md bg-card text-muted-foreground text-xs cursor-pointer transition-all hover:border-primary hover:text-primary"
                           onClick={() => setShowSkillPicker(true)}
                         >
                           + 添加技能
@@ -469,30 +461,30 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                     </div>
                     {showSkillPicker && (
                       <div
-                        className={studioStyles.skillPickerOverlay}
+                        className="fixed inset-0 bg-black/40 flex items-center justify-center z-[1100] animate-[fadeIn_0.2s_ease]"
                         onClick={() => setShowSkillPicker(false)}
                       >
                         <div
-                          className={studioStyles.skillPickerPanel}
+                          className="bg-card border border-border rounded-xl w-full max-w-[400px] max-h-[70vh] flex flex-col shadow-xl animate-[modalIn_0.25s_ease] overflow-hidden"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className={studioStyles.skillPickerHeader}>
-                            <h4>技能库</h4>
+                          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                            <h4 className="text-base font-semibold text-foreground m-0">技能库</h4>
                             <button
-                              className={studioStyles.taskDetailClose}
+                              className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
                               onClick={() => setShowSkillPicker(false)}
                             >
                               ✕
                             </button>
                           </div>
                           <input
-                            className={studioStyles.skillPickerSearch}
+                            className="mx-4 mt-3 px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors"
                             value={skillSearch}
                             onChange={(e) => setSkillSearch(e.target.value)}
                             placeholder="搜索技能名称..."
                             autoFocus
                           />
-                          <div className={studioStyles.skillPickerList}>
+                          <div className="flex-1 overflow-y-auto p-4 space-y-1">
                             {availableSkills
                               .filter((s) => !editRoleSkills.some((rs) => rs.skillName === s.name))
                               .filter(
@@ -502,7 +494,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                                   (s.description &&
                                     s.description.toLowerCase().includes(skillSearch.toLowerCase()))
                               ).length === 0 && (
-                              <div className={studioStyles.skillPickerEmpty}>无匹配技能</div>
+                              <div className="text-center text-sm text-muted-foreground py-6">无匹配技能</div>
                             )}
                             {availableSkills
                               .filter((s) => !editRoleSkills.some((rs) => rs.skillName === s.name))
@@ -516,7 +508,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                               .map((s) => (
                                 <div
                                   key={s.name}
-                                  className={studioStyles.skillPickerItem}
+                                  className="p-3 rounded-lg cursor-pointer transition-all hover:bg-muted border border-transparent hover:border-border"
                                   onClick={async () => {
                                     try {
                                       await invoke("bind_role_skill", {
@@ -529,16 +521,16 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                                     }
                                   }}
                                 >
-                                  <div className={studioStyles.skillPickerItemName}>
+                                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                                     {s.name}
                                     {s.category && (
-                                      <span className={studioStyles.skillPickerItemCat}>
+                                      <span className="text-[10px] px-1.5 py-px rounded bg-muted text-muted-foreground">
                                         {s.category}
                                       </span>
                                     )}
                                   </div>
                                   {s.description && (
-                                    <div className={studioStyles.skillPickerItemDesc}>
+                                    <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
                                       {s.description}
                                     </div>
                                   )}
@@ -552,10 +544,10 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                 )}
                 {showNewRole && (
                   <>
-                    <div className={studioStyles.aiRoleFormDivider} />
-                    <div className={studioStyles.aiRoleFormSectionTitle}>🛠️ 技能绑定</div>
-                    <div className={studioStyles.aiRoleFormRow}>
-                      <label>已选择技能</label>
+                    <div className="h-px bg-border my-2" />
+                    <div className="text-sm font-semibold text-primary mb-3">🛠️ 技能绑定</div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[13px] font-medium text-foreground">已选择技能</label>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                         {newRoleSkills.length === 0 && (
                           <span style={{ color: "#999", fontSize: 12 }}>
@@ -565,7 +557,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                         {newRoleSkills.map((skillName) => (
                           <span
                             key={skillName}
-                            className={studioStyles.roleSkillTag}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs"
                             style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
                           >
                             {skillName}
@@ -588,7 +580,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                           </span>
                         ))}
                         <button
-                          className={studioStyles.roleSkillAddBtn}
+                          className="px-2 py-1 border border-dashed border-border rounded-md bg-card text-muted-foreground text-xs cursor-pointer transition-all hover:border-primary hover:text-primary"
                           onClick={() => setShowSkillPicker(true)}
                         >
                           + 添加技能
@@ -597,30 +589,30 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                     </div>
                     {showSkillPicker && (
                       <div
-                        className={studioStyles.skillPickerOverlay}
+                        className="fixed inset-0 bg-black/40 flex items-center justify-center z-[1100] animate-[fadeIn_0.2s_ease]"
                         onClick={() => setShowSkillPicker(false)}
                       >
                         <div
-                          className={studioStyles.skillPickerPanel}
+                          className="bg-card border border-border rounded-xl w-full max-w-[400px] max-h-[70vh] flex flex-col shadow-xl animate-[modalIn_0.25s_ease] overflow-hidden"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className={studioStyles.skillPickerHeader}>
-                            <h4>技能库</h4>
+                          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                            <h4 className="text-base font-semibold text-foreground m-0">技能库</h4>
                             <button
-                              className={studioStyles.taskDetailClose}
+                              className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
                               onClick={() => setShowSkillPicker(false)}
                             >
                               ✕
                             </button>
                           </div>
                           <input
-                            className={studioStyles.skillPickerSearch}
+                            className="mx-4 mt-3 px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors"
                             value={skillSearch}
                             onChange={(e) => setSkillSearch(e.target.value)}
                             placeholder="搜索技能名称..."
                             autoFocus
                           />
-                          <div className={studioStyles.skillPickerList}>
+                          <div className="flex-1 overflow-y-auto p-4 space-y-1">
                             {availableSkills
                               .filter((s) => !newRoleSkills.includes(s.name))
                               .filter(
@@ -630,7 +622,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                                   (s.description &&
                                     s.description.toLowerCase().includes(skillSearch.toLowerCase()))
                               ).length === 0 && (
-                              <div className={studioStyles.skillPickerEmpty}>无匹配技能</div>
+                              <div className="text-center text-sm text-muted-foreground py-6">无匹配技能</div>
                             )}
                             {availableSkills
                               .filter((s) => !newRoleSkills.includes(s.name))
@@ -644,21 +636,21 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                               .map((s) => (
                                 <div
                                   key={s.name}
-                                  className={studioStyles.skillPickerItem}
+                                  className="p-3 rounded-lg cursor-pointer transition-all hover:bg-muted border border-transparent hover:border-border"
                                   onClick={() => {
                                     setNewRoleSkills((prev) => [...prev, s.name]);
                                   }}
                                 >
-                                  <div className={studioStyles.skillPickerItemName}>
+                                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                                     {s.name}
                                     {s.category && (
-                                      <span className={studioStyles.skillPickerItemCat}>
+                                      <span className="text-[10px] px-1.5 py-px rounded bg-muted text-muted-foreground">
                                         {s.category}
                                       </span>
                                     )}
                                   </div>
                                   {s.description && (
-                                    <div className={studioStyles.skillPickerItemDesc}>
+                                    <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
                                       {s.description}
                                     </div>
                                   )}
@@ -670,14 +662,14 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                     )}
                   </>
                 )}
-                <div className={studioStyles.aiRoleFormActions}>
+                <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-border">
                   <button
-                    className={studioStyles.studioBtnPrimary}
+                    className="px-5 py-2 rounded-lg bg-primary text-white text-sm font-medium cursor-pointer transition-all hover:bg-primary/90 hover:shadow-md active:scale-[0.98]"
                     onClick={editingRole ? handleUpdate : handleCreate}
                   >
                     {editingRole ? t("aiRoles.save") : t("aiRoles.create")}
                   </button>
-                  <button className={studioStyles.studioBtnSecondary} onClick={cancelEdit}>
+                  <button className="px-5 py-2 rounded-lg border border-border bg-card text-foreground text-sm font-medium cursor-pointer transition-all hover:bg-muted active:scale-[0.98]" onClick={cancelEdit}>
                     {t("studio.cancel")}
                   </button>
                 </div>
@@ -687,22 +679,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
         </div>
       )}
       {saveToast && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 24,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "var(--bg-primary, #fff)",
-            border: "1px solid var(--border-color, #e0e0e0)",
-            borderRadius: 8,
-            padding: "8px 20px",
-            fontSize: 13,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            zIndex: 99999,
-            transition: "opacity 0.3s",
-          }}
-        >
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-card border border-border rounded-lg px-5 py-2 text-[13px] shadow-lg z-[99999] transition-opacity duration-300">
           {saveToast}
         </div>
       )}

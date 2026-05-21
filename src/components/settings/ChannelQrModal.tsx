@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ChannelMeta } from "@constants/channels";
 import { TauriCommands } from "@services/tauri/TauriCommands";
-import channelStyles from "./ChannelSettings.module.css";
 
 interface ChannelQrModalProps {
   channel: ChannelMeta;
@@ -106,76 +105,79 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
   };
 
   return (
-    <div className={channelStyles.modalOverlay} onClick={onClose}>
-      <div className={channelStyles.modalContent} onClick={(e) => e.stopPropagation()}>
-        <div className={channelStyles.modalHeader}>
-          <h3>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl w-[90%] max-w-[520px] max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h3 className="text-base font-semibold text-foreground m-0">
             {t("channel.scanToConnect")} - {channel.name}
           </h3>
-          <button className={channelStyles.modalClose} onClick={onClose}>
+          <button className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors" onClick={onClose}>
             ✕
           </button>
         </div>
 
-        <div className={channelStyles.modalBody}>
+        <div className="p-5">
           {channel.setupGuide && (
-            <div className={channelStyles.setupGuide}>
+            <div className="bg-muted rounded-lg px-4 py-3 mb-4 text-xs text-muted-foreground leading-relaxed">
               {channel.setupGuide.split("\n").map((line, i) => (
-                <p key={i}>{line}</p>
+                <p key={i} className="m-0">{line}</p>
               ))}
             </div>
           )}
 
           {loading && (
-            <div className={channelStyles.qrLoading}>
-              <span className={channelStyles.spinner} />
-              <p>{t("channel.generatingQr")}</p>
+            <div className="flex flex-col items-center gap-3 py-10 text-muted-foreground">
+              <span className="inline-block w-5 h-5 border-2 border-border border-t-primary rounded-full animate-spin" />
+              <p className="text-sm">{t("channel.generatingQr")}</p>
             </div>
           )}
 
           {error && (
-            <div className={channelStyles.qrError}>
-              <p>{error}</p>
-              <button className={channelStyles.btnPrimary} onClick={generateQr}>
+            <div className="text-center py-5 text-red-500">
+              <p className="text-sm m-0 mb-3">{error}</p>
+              <button
+                className="px-3.5 py-1.5 border-none rounded-md text-xs font-medium cursor-pointer bg-primary text-white transition-opacity hover:opacity-90"
+                onClick={generateQr}
+              >
                 {t("channel.retry")}
               </button>
             </div>
           )}
 
           {!loading && !error && qrData && (
-            <div className={channelStyles.qrArea}>
+            <div className="flex flex-col items-center gap-4">
               {qrType === "url" ? (
-                <div className={channelStyles.qrImageWrap}>
+                <div className="relative inline-block">
                   <img
-                    className={channelStyles.qrImage}
+                    className="w-64 h-64 rounded-lg border border-border"
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrData)}`}
                     alt="QR Code"
                   />
                   {confirming && (
-                    <div className={channelStyles.qrConfirming}>
-                      <span className={channelStyles.spinner} />
-                      <span>{t("channel.connecting")}</span>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 rounded-lg text-white gap-2">
+                      <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="text-sm">{t("channel.connecting")}</span>
                     </div>
                   )}
                 </div>
               ) : (
-                <div className={channelStyles.qrImageWrap}>
-                  <pre className={channelStyles.qrText}>{qrData}</pre>
+                <div className="relative inline-block">
+                  <pre className="bg-muted rounded-lg p-4 text-xs text-foreground overflow-auto max-w-full border border-border">{qrData}</pre>
                   {confirming && (
-                    <div className={channelStyles.qrConfirming}>
-                      <span className={channelStyles.spinner} />
-                      <span>{t("channel.connecting")}</span>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 rounded-lg text-white gap-2">
+                      <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="text-sm">{t("channel.connecting")}</span>
                     </div>
                   )}
                 </div>
               )}
               {scanning && countdown > 0 && !confirming && (
-                <div className={channelStyles.scanHint}>
-                  <span className={channelStyles.pulseDot} />
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                   <span>{t("channel.waitingForScan")}</span>
                 </div>
               )}
-              <div className={channelStyles.qrCountdown}>
+              <div className="text-sm text-muted-foreground">
                 {confirming ? (
                   <span>⏳ {t("channel.saving")}</span>
                 ) : countdown > 0 ? (
@@ -183,18 +185,24 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
                     ⏱ {t("channel.qrExpiresIn")} {formatCountdown(countdown)}
                   </span>
                 ) : (
-                  <span className={channelStyles.qrExpired}>{t("channel.qrExpired")}</span>
+                  <span className="text-red-500">{t("channel.qrExpired")}</span>
                 )}
               </div>
             </div>
           )}
         </div>
 
-        <div className={channelStyles.modalFooter}>
-          <button className={channelStyles.btnSecondary} onClick={generateQr}>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-border">
+          <button
+            className="px-3.5 py-1.5 border border-border rounded-md text-xs font-medium cursor-pointer bg-transparent text-foreground transition-colors hover:bg-muted"
+            onClick={generateQr}
+          >
             {t("channel.refreshQr")}
           </button>
-          <button className={channelStyles.btnSecondary} onClick={onClose}>
+          <button
+            className="px-3.5 py-1.5 border border-border rounded-md text-xs font-medium cursor-pointer bg-transparent text-foreground transition-colors hover:bg-muted"
+            onClick={onClose}
+          >
             {t("channel.cancel")}
           </button>
         </div>

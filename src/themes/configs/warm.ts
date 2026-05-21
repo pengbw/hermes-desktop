@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { defaultFont } from "./_font-template";
+
+export const warmTheme: ThemeDefinition = {
+  name: "warm",
+  label: "暖色温馨",
+  description: "暖色调为主，营造友好温暖的氛围",
+  radius: "0.75rem",
+  font: defaultFont,
+  variables: {
+    light: {
+      background: "#FFFBF5",
+      foreground: "#451A03",
+      card: "#FFFFFF",
+      cardForeground: "#451A03",
+      primary: "#D97706",
+      primaryForeground: "#FFFFFF",
+      secondary: "#FEF3C7",
+      secondaryForeground: "#92400E",
+      muted: "#FDE68A",
+      mutedForeground: "#B45309",
+      accent: "#FCD34D",
+      accentForeground: "#78350F",
+      border: "#FDE68A",
+      input: "#FDE68A",
+      ring: "#D97706",
+    },
+    dark: {
+      background: "#451A03",
+      foreground: "#FEF3C7",
+      card: "#78350F",
+      cardForeground: "#FEF3C7",
+      primary: "#FBBF24",
+      primaryForeground: "#451A03",
+      secondary: "#92400E",
+      secondaryForeground: "#FEF3C7",
+      muted: "#78350F",
+      mutedForeground: "#FCD34D",
+      accent: "#B45309",
+      accentForeground: "#FDE68A",
+      border: "#92400E",
+      input: "#92400E",
+      ring: "#FBBF24",
+    },
+  },
+  preview: {
+    accent: "#D97706",
+    bg: "#FFFBF5",
+    text: "#451A03",
+  },
+};

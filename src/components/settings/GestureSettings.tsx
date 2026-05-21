@@ -1,7 +1,6 @@
 import { useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { AvatarGesture } from "@core/types";
-import styles from "@pages/settings/SettingsPanel.module.css";
 
 interface GestureSettingsProps {
   gestures: AvatarGesture[];
@@ -86,7 +85,6 @@ export default function GestureSettings({
         onRefresh();
         alert(`成功导入动作: ${gestureName}`);
       } catch (e) {
-        // console.error("导入失败:", e);
         alert("导入失败: " + String(e));
       }
     };
@@ -94,13 +92,13 @@ export default function GestureSettings({
   };
 
   return (
-    <div className={styles.settingsSectionCard}>
-      <div className={styles.settingsSection}>
-        <div className={styles.gestureSectionHeader}>
-          <h3>{t("gesture.title")}</h3>
-          <div className={styles.gestureHeaderRight}>
+    <div className="animate-[fadeIn_0.2s_ease]">
+      <div className="bg-card rounded-xl p-5 shadow-sm mb-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[15px] font-semibold text-foreground m-0">{t("gesture.title")}</h3>
+          <div className="flex items-center gap-3">
             <button
-              className={styles.gestureAddBtn}
+              className="px-3.5 py-1.5 border border-primary rounded-md bg-transparent text-primary text-xs cursor-pointer transition-all hover:bg-primary/5 whitespace-nowrap"
               onClick={() => {
                 onShowEditor(null, false, {
                   name: "",
@@ -115,55 +113,59 @@ export default function GestureSettings({
               {t("gesture.add")}
             </button>
             <button
-              className={styles.gestureAddBtn}
+              className="px-3.5 py-1.5 border border-primary rounded-md bg-transparent text-primary text-xs cursor-pointer transition-all hover:bg-primary/5 whitespace-nowrap"
               onClick={handleImportGestureJson}
               title={t("gesture.import")}
             >
               {t("gesture.import")}
             </button>
-            <input type="file" ref={gestureFileInputRef} style={{ display: "none" }} />
+            <input type="file" ref={gestureFileInputRef} className="hidden" />
           </div>
         </div>
         <div>
           {gestures.length === 0 && (
-            <div className={styles.gestureEmpty}>
-              <span className={styles.gestureEmptyIcon}>🎭</span>
-              <p>{t("gesture.empty")}</p>
+            <div className="flex flex-col items-center gap-2 py-8 text-muted-foreground">
+              <span className="text-4xl opacity-50">🎭</span>
+              <p className="text-[13px] m-0">{t("gesture.empty")}</p>
             </div>
           )}
-          <div className={styles.gestureCardList}>
+          <div className="flex flex-col gap-2">
             {gestures.map((g, index) => {
               const isSystem = g.source === "system";
               return (
                 <div
                   key={g.id}
-                  className={styles.gestureCard}
+                  className="group flex items-center justify-between px-4 py-3.5 bg-muted/50 border border-border rounded-xl transition-all hover:bg-card hover:border-primary/30 hover:shadow-md hover:-translate-y-px animate-[fadeIn_0.3s_ease_both]"
                   style={{ animationDelay: `${index * 0.05}s` }}
                 >
-                  <div className={styles.gestureCardLeft}>
-                    <div className={styles.gestureCardIcon}>
+                  <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 flex items-center justify-center text-xl shrink-0">
                       {g.name === "greeting" ? "👋" : g.name === "think" ? "🤔" : "🎭"}
                     </div>
-                    <div className={styles.gestureCardInfo}>
-                      <div className={styles.gestureCardNameRow}>
-                        <span className={styles.gestureCardName}>{g.name}</span>
+                    <div className="flex flex-col gap-1.5 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-foreground leading-tight truncate">{g.name}</span>
                         <span
-                          className={`${styles.gestureSourceTag} ${isSystem ? styles.gestureSourceSystem : styles.gestureSourceCustom}`}
+                          className={`text-[10px] font-medium px-2 py-px rounded-full leading-relaxed tracking-wide shrink-0 ${
+                            isSystem
+                              ? "bg-sky-500/10 text-sky-500"
+                              : "bg-purple-500/10 text-purple-500"
+                          }`}
                         >
                           {isSystem ? t("gesture.system") : t("gesture.custom")}
                         </span>
                       </div>
-                      <div className={styles.gestureCardTags}>
-                        <span className={`${styles.gestureTag} ${styles.gestureTagDuration}`}>
+                      <div className="flex gap-1.5 flex-wrap">
+                        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap bg-purple-500/10 text-purple-600 dark:text-purple-400">
                           ⏱ {g.duration}ms
                         </span>
                         {(g.lookAtX !== 0 || g.lookAtY !== 0) && (
-                          <span className={`${styles.gestureTag} ${styles.gestureTagLookat}`}>
+                          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap bg-blue-500/10 text-blue-600 dark:text-blue-400">
                             👁 {g.lookAtX},{g.lookAtY}
                           </span>
                         )}
                         {g.tilt !== 0 && (
-                          <span className={`${styles.gestureTag} ${styles.gestureTagTilt}`}>
+                          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap bg-orange-500/10 text-orange-600 dark:text-orange-400">
                             ↗ {g.tilt}
                           </span>
                         )}
@@ -196,7 +198,7 @@ export default function GestureSettings({
                             return activeBones.map(([key]: [string, unknown]) => (
                               <span
                                 key={key}
-                                className={`${styles.gestureTag} ${styles.gestureTagBone}`}
+                                className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap bg-green-500/10 text-green-600 dark:text-green-400"
                               >
                                 🦴 {key}
                               </span>
@@ -208,9 +210,9 @@ export default function GestureSettings({
                       </div>
                     </div>
                   </div>
-                  <div className={styles.gestureCardActions}>
+                  <div className="flex gap-1.5 shrink-0 opacity-0 translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0">
                     <button
-                      className={`${styles.gestureActionBtn} ${styles.gestureActionView}`}
+                      className="flex items-center gap-1 px-3 py-1.5 border rounded-md text-xs font-medium cursor-pointer transition-all whitespace-nowrap bg-violet-500/5 text-violet-600 dark:text-violet-400 border-violet-500/20 hover:bg-violet-500/15 hover:border-violet-500/40"
                       onClick={() => {
                         onShowEditor(g, true, {
                           name: g.name,
@@ -239,7 +241,7 @@ export default function GestureSettings({
                       {t("gesture.view")}
                     </button>
                     <button
-                      className={`${styles.gestureActionBtn} ${styles.gestureActionEdit}`}
+                      className="flex items-center gap-1 px-3 py-1.5 border rounded-md text-xs font-medium cursor-pointer transition-all whitespace-nowrap bg-sky-500/5 text-sky-600 dark:text-sky-400 border-sky-500/20 hover:bg-sky-500/15 hover:border-sky-500/40 disabled:opacity-35 disabled:cursor-not-allowed disabled:pointer-events-none"
                       disabled={isSystem}
                       onClick={() => {
                         onShowEditor(g, false, {
@@ -269,7 +271,7 @@ export default function GestureSettings({
                       {t("gesture.edit")}
                     </button>
                     <button
-                      className={`${styles.gestureActionBtn} ${styles.gestureActionDelete}`}
+                      className="flex items-center gap-1 px-3 py-1.5 border rounded-md text-xs font-medium cursor-pointer transition-all whitespace-nowrap bg-transparent text-muted-foreground border-black/5 hover:text-red-500 hover:border-red-500/30 hover:bg-red-500/8 disabled:opacity-35 disabled:cursor-not-allowed disabled:pointer-events-none"
                       disabled={isSystem}
                       onClick={async () => {
                         if (confirm(`删除动作「${g.name}」吗？`)) {

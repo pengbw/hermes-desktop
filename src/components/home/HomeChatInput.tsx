@@ -2,8 +2,19 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useVoiceInput } from "@hooks/common";
 import type { AttachedFile } from "@core/types";
-import homeStyles from "@pages/home/HomePanel.module.css";
-import inputStyles from "@components/chat/MessageInput.module.css";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import {
+  Send,
+  Paperclip,
+  BookOpen,
+  Mic,
+  MicOff,
+  Loader2,
+  X,
+  FileText,
+  Upload,
+} from "lucide-react";
 
 interface HomeChatInputProps {
   sendMessage: (
@@ -43,6 +54,7 @@ function HomeChatInput({
         }
       },
     });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
   const lastCompositionEndRef = useRef(0);
@@ -99,7 +111,7 @@ function HomeChatInput({
         });
         result.push({ name: f.name, path: tempPath });
       } catch {
-        // console.error("Failed to save temp file:", f.name, e);
+        /* ignore */
       }
     }
     return result;
@@ -152,9 +164,7 @@ function HomeChatInput({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       const timeSinceComposition = performance.now() - lastCompositionEndRef.current;
-      if (timeSinceComposition < 100) {
-        return;
-      }
+      if (timeSinceComposition < 100) return;
       if (e.nativeEvent.isComposing || isComposingRef.current) {
         isComposingRef.current = false;
         return;
@@ -164,63 +174,81 @@ function HomeChatInput({
     }
   };
 
+  const getVoiceTooltip = () => {
+    switch (voiceState) {
+      case "checking":
+        return "...";
+      case "transcribing":
+        return t("chat.voiceTranscribing") || "Transcribing...";
+      case "installing":
+        return progressText || t("chat.voiceInstalling") || "Installing...";
+      case "install-error":
+        return installError || t("chat.voiceInstallHint") || "Click to retry";
+      case "not-installed":
+        return t("chat.voiceInstallHint") || "Click to install voice recognition";
+      case "mic-error":
+        return micError || "Microphone error - click to retry";
+      case "recording":
+        return t("chat.voiceStop");
+      default:
+        return t("chat.voiceStart");
+    }
+  };
+
+  const getVoiceIcon = () => {
+    if (voiceState === "recording") return <MicOff className="h-4 w-4 text-red-500" />;
+    if (voiceState === "checking" || voiceState === "transcribing" || voiceState === "installing")
+      return <Loader2 className="h-4 w-4 animate-spin" />;
+    if (voiceState === "install-error" || voiceState === "mic-error")
+      return <Mic className="h-4 w-4 text-red-500" />;
+    return <Mic className="h-4 w-4" />;
+  };
+
+  const isVoiceDisabled =
+    isStreaming ||
+    voiceState === "checking" ||
+    voiceState === "transcribing" ||
+    voiceState === "installing";
+
   return (
     <div
-      className={`${homeStyles.homeInputArea} ${isDragging ? homeStyles.homeInputAreaDragging : ""}`}
+      className={`w-full max-w-3xl mx-auto relative ${isDragging ? "ring-2 ring-primary ring-offset-2 rounded-xl" : ""}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className={inputStyles.dragOverlay}>
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          <span>{t("chat.dropFiles")}</span>
-        </div>
-      )}
-      {attachedFiles.length > 0 && (
-        <div className={inputStyles.fileDisplayArea}>
-          <div className={inputStyles.fileDisplayList}>
-            {attachedFiles.map((f, i) => (
-              <div key={i} className={inputStyles.fileDisplayItem}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-                  <polyline points="13 2 13 9 20 9" />
-                </svg>
-                <span className={inputStyles.fileDisplayName}>{f.name}</span>
-                <button className={inputStyles.fileDisplayRemove} onClick={() => removeFile(i)}>
-                  ×
-                </button>
-              </div>
-            ))}
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/5 rounded-xl border-2 border-dashed border-primary">
+          <div className="flex flex-col items-center gap-2 text-primary">
+            <Upload className="h-8 w-8" />
+            <span className="text-sm font-medium">{t("chat.dropFiles")}</span>
           </div>
         </div>
       )}
-      <div className={`${inputStyles.chatInputBox} ${homeStyles.homeInputBox}`}>
-        <textarea
+
+      {attachedFiles.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2 px-1">
+          {attachedFiles.map((f, i) => (
+            <div
+              key={i}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted text-xs text-muted-foreground border"
+            >
+              <FileText className="h-3 w-3" />
+              <span className="max-w-[120px] truncate">{f.name}</span>
+              <button
+                onClick={() => removeFile(i)}
+                className="ml-1 hover:text-destructive transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="relative rounded-xl border bg-card shadow-sm">
+        <Textarea
           ref={textareaRef}
-          className={inputStyles.chatInput}
           value={homeInput}
           onChange={(e) => setHomeInput(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -236,173 +264,126 @@ function HomeChatInput({
           placeholder={placeholder}
           rows={1}
           disabled={isStreaming}
+          className="min-h-[96px] resize-none border-0 bg-transparent px-4 py-3 pr-24 pb-14 focus-visible:ring-0 focus-visible:ring-offset-0"
         />
-        <div className={inputStyles.chatInputToolbar}>
-          <div className={inputStyles.toolbarLeft}>
+
+        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+          <div className="flex items-center gap-0.5">
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              style={{ display: "none" }}
+              className="hidden"
               onChange={handleFileSelect}
             />
-            <button
-              className={inputStyles.toolbarBtn}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
               onClick={() => fileInputRef.current?.click()}
               title="上传附件"
               disabled={isStreaming}
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+              <Paperclip className="h-4 w-4" />
+            </Button>
+
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-8 w-8 text-muted-foreground hover:text-foreground ${pendingKbIds.length > 0 ? "text-primary" : ""}`}
+                onClick={() => setShowKbSelector(!showKbSelector)}
+                title={t("chat.kbRetrieve")}
+                disabled={isStreaming || kbGlobalAutoRetrieve}
               >
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-              </svg>
-            </button>
-            <button
-              className={`${inputStyles.toolbarBtn} ${inputStyles.kbRetrieveBtn}`}
-              onClick={() => setShowKbSelector(!showKbSelector)}
-              title={t("chat.kbRetrieve")}
-              disabled={isStreaming || kbGlobalAutoRetrieve}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                <line x1="9" y1="7" x2="16" y2="7" />
-                <line x1="9" y1="11" x2="14" y2="11" />
-              </svg>
-              {pendingKbIds.length > 0 ? (
-                <span className={inputStyles.kbSelectorCount}>{pendingKbIds.length}</span>
-              ) : null}
-            </button>
-            {showKbSelector && !kbGlobalAutoRetrieve && (
-              <div
-                className={inputStyles.kbSelectorDropdown}
-                ref={kbSelectorRef}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <div className={inputStyles.kbSelectorHeader}>{t("chat.kbSelect")}</div>
-                {kbList.filter((kb) => kb.status === "ready").length === 0 ? (
-                  <div className={inputStyles.kbSelectorEmpty}>{t("kb.empty")}</div>
-                ) : (
-                  kbList
-                    .filter((kb) => kb.status === "ready")
-                    .map((kb) => {
-                      const isSelected = pendingKbIds.includes(kb.id);
-                      return (
-                        <div
-                          key={kb.id}
-                          className={`${inputStyles.kbSelectorItem} ${isSelected ? inputStyles.kbSelectorItemSelected : ""}`}
-                          onClick={() => {
-                            setPendingKbIds((prev) =>
-                              isSelected ? prev.filter((id) => id !== kb.id) : [...prev, kb.id]
-                            );
-                          }}
-                        >
-                          <span className={inputStyles.kbSelectorCheck}>
-                            {isSelected ? "✓" : ""}
-                          </span>
-                          <span className={inputStyles.kbSelectorIcon}>{kb.icon || "📚"}</span>
-                          <span className={inputStyles.kbSelectorName}>{kb.name}</span>
-                        </div>
-                      );
-                    })
+                <BookOpen className="h-4 w-4" />
+                {pendingKbIds.length > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                    {pendingKbIds.length}
+                  </span>
                 )}
-              </div>
-            )}
-            {voiceEnabled && (
-              <button
-                className={`${inputStyles.toolbarBtn} ${inputStyles.micBtn} ${voiceState === "recording" ? inputStyles.micBtnActive : ""} ${voiceState === "mic-error" ? inputStyles.micBtnError : ""}`}
-                title={
-                  voiceState === "checking"
-                    ? "..."
-                    : voiceState === "transcribing"
-                      ? t("chat.voiceTranscribing") || "Transcribing..."
-                      : voiceState === "installing"
-                        ? progressText || t("chat.voiceInstalling") || "Installing..."
-                        : voiceState === "install-error"
-                          ? installError || t("chat.voiceInstallHint") || "Click to retry"
-                          : voiceState === "not-installed"
-                            ? t("chat.voiceInstallHint") || "Click to install voice recognition"
-                            : voiceState === "mic-error"
-                              ? micError || "Microphone error - click to retry"
-                              : voiceState === "recording"
-                                ? t("chat.voiceStop")
-                                : t("chat.voiceStart")
-                }
-                disabled={
-                  isStreaming ||
-                  voiceState === "checking" ||
-                  voiceState === "transcribing" ||
-                  voiceState === "installing"
-                }
-                onClick={
-                  voiceState === "not-installed" || voiceState === "install-error"
-                    ? installStt
-                    : toggleRecording
-                }
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+              </Button>
+
+              {showKbSelector && !kbGlobalAutoRetrieve && (
+                <div
+                  ref={kbSelectorRef}
+                  className="absolute bottom-full left-0 mb-2 w-56 rounded-md border bg-popover shadow-md p-2 z-50"
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="23" />
-                  <line x1="8" y1="23" x2="16" y2="23" />
-                </svg>
-              </button>
-            )}
-            {voiceEnabled &&
-              progressText &&
-              (voiceState === "installing" || voiceState === "transcribing") && (
-                <span style={{ fontSize: 11, color: "#888", whiteSpace: "nowrap" }}>
-                  {progressText}
-                </span>
+                  <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                    {t("chat.kbSelect")}
+                  </div>
+                  {kbList.filter((kb) => kb.status === "ready").length === 0 ? (
+                    <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                      {t("kb.empty")}
+                    </div>
+                  ) : (
+                    kbList
+                      .filter((kb) => kb.status === "ready")
+                      .map((kb) => {
+                        const isSelected = pendingKbIds.includes(kb.id);
+                        return (
+                          <div
+                            key={kb.id}
+                            className={`flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer text-sm transition-colors ${
+                              isSelected ? "bg-accent text-accent-foreground" : "hover:bg-muted"
+                            }`}
+                            onClick={() => {
+                              setPendingKbIds((prev) =>
+                                isSelected ? prev.filter((id) => id !== kb.id) : [...prev, kb.id]
+                              );
+                            }}
+                          >
+                            <span className="text-xs w-4">
+                              {isSelected ? "✓" : ""}
+                            </span>
+                            <span>{kb.icon || "📚"}</span>
+                            <span className="truncate">{kb.name}</span>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
               )}
+            </div>
+
+            {voiceEnabled && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`h-8 w-8 text-muted-foreground hover:text-foreground ${voiceState === "recording" ? "text-red-500" : ""} ${voiceState === "mic-error" || voiceState === "install-error" ? "text-red-500" : ""}`}
+                  title={getVoiceTooltip()}
+                  disabled={isVoiceDisabled}
+                  onClick={
+                    voiceState === "not-installed" || voiceState === "install-error"
+                      ? installStt
+                      : toggleRecording
+                  }
+                >
+                  {getVoiceIcon()}
+                </Button>
+                {voiceEnabled &&
+                  progressText &&
+                  (voiceState === "installing" || voiceState === "transcribing") && (
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {progressText}
+                    </span>
+                  )}
+              </>
+            )}
           </div>
-          <div className={inputStyles.toolbarRight}>
-            <button
-              className={inputStyles.sendBtn}
-              onClick={handleSend}
-              disabled={isStreaming || (!homeInput.trim() && attachedFiles.length === 0)}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </button>
-          </div>
+
+          <Button
+            size="sm"
+            variant="default"
+            className="h-8 px-3 !bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!scale-105 active:!scale-95 transition-all duration-200 ease-out"
+            onClick={handleSend}
+            disabled={isStreaming || (!homeInput.trim() && attachedFiles.length === 0)}
+          >
+            <Send className="h-3.5 w-3.5 mr-1" />
+            {t("chat.send") || "发送"}
+          </Button>
         </div>
       </div>
     </div>

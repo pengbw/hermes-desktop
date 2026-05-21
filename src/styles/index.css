@@ -8,37 +8,78 @@
 @import "./themes/ai-native.css";
 
 @theme {
-  /* 白色主题配色 */
-  --color-primary: #4fc3f7;
-  --color-primary-hover: #29b6f6;
-  --color-bg: #f5f5f7;
-  --color-surface: #ffffff;
-  --color-text: #1a1a1a;
-  --color-text-secondary: #666666;
-  --color-border: #e5e5e5;
-  --color-accent: #4fc3f7;
+  /* shadcn/ui 主题变量 - 由 ThemeContext 动态注入 */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius: var(--radius);
 
-  /* 圆角 */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* 字体变量 - 由 ThemeContext 动态注入 */
+  --font-family: var(--font-family);
+  --font-size-xs: var(--font-size-xs);
+  --font-size-sm: var(--font-size-sm);
+  --font-size-base: var(--font-size-base);
+  --font-size-lg: var(--font-size-lg);
+  --font-size-xl: var(--font-size-xl);
+  --font-size-2xl: var(--font-size-2xl);
+  --font-size-3xl: var(--font-size-3xl);
+  --font-weight-normal: var(--font-weight-normal);
+  --font-weight-medium: var(--font-weight-medium);
+  --font-weight-semibold: var(--font-weight-semibold);
+  --font-weight-bold: var(--font-weight-bold);
+  --line-height-tight: var(--line-height-tight);
+  --line-height-normal: var(--line-height-normal);
+  --line-height-relaxed: var(--line-height-relaxed);
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.08);
+  /* UI 风格变量 - 由 ThemeContext 动态注入 */
+  --spacing-xs: var(--spacing-xs);
+  --spacing-sm: var(--spacing-sm);
+  --spacing-md: var(--spacing-md);
+  --spacing-lg: var(--spacing-lg);
+  --spacing-xl: var(--spacing-xl);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --border-width: var(--border-width);
+
+  /* 兼容旧变量 */
+  --color-primary-hover: var(--primary);
+  --color-bg: var(--background);
+  --color-surface: var(--card);
+  --color-text: var(--foreground);
+  --color-text-secondary: var(--muted-foreground);
+  --color-accent: var(--accent);
 }
 
-/* 全局基础样式 */
+/* 全局基础样式 - 使用暗色作为默认回退，避免初始加载闪白 */
 html {
-  background-color: var(--color-bg);
+  background-color: var(--background, #0F172A);
+  color: var(--foreground, #F8FAFC);
 }
 
 body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  background-color: var(--color-bg);
-  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+  background-color: var(--background);
+  color: var(--foreground);
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -312,4 +353,38 @@ code,
   border: none;
   border-top: 1px solid var(--color-border);
   margin: 1.5em 0;
+}
+
+/* UI 风格密度工具类 - 由 ThemeContext 动态设置 */
+.density-compact {
+  --density-padding-xs: 0.125rem;
+  --density-padding-sm: 0.25rem;
+  --density-padding-md: 0.375rem;
+  --density-padding-lg: 0.5rem;
+  --density-gap-xs: 0.125rem;
+  --density-gap-sm: 0.25rem;
+  --density-gap-md: 0.375rem;
+  --density-gap-lg: 0.5rem;
+}
+
+.density-normal {
+  --density-padding-xs: 0.25rem;
+  --density-padding-sm: 0.5rem;
+  --density-padding-md: 0.75rem;
+  --density-padding-lg: 1rem;
+  --density-gap-xs: 0.25rem;
+  --density-gap-sm: 0.5rem;
+  --density-gap-md: 0.75rem;
+  --density-gap-lg: 1rem;
+}
+
+.density-spacious {
+  --density-padding-xs: 0.5rem;
+  --density-padding-sm: 0.75rem;
+  --density-padding-md: 1rem;
+  --density-padding-lg: 1.5rem;
+  --density-gap-xs: 0.5rem;
+  --density-gap-sm: 0.75rem;
+  --density-gap-md: 1rem;
+  --density-gap-lg: 1.5rem;
 }

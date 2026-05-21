@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { elegantFont } from "./_font-template";
+
+export const subtleTheme: ThemeDefinition = {
+  name: "subtle",
+  label: "柔和优雅",
+  description: "低对比度，适合高端品牌和优雅界面",
+  radius: "0.5rem",
+  font: elegantFont,
+  variables: {
+    light: {
+      background: "#FAF9FB",
+      foreground: "#2E2A30",
+      card: "#FFFFFF",
+      cardForeground: "#2E2A30",
+      primary: "#8B7E8E",
+      primaryForeground: "#FFFFFF",
+      secondary: "#F5F3F7",
+      secondaryForeground: "#4A4450",
+      muted: "#EDE9F2",
+      mutedForeground: "#7A7480",
+      accent: "#E8E0F0",
+      accentForeground: "#5A5070",
+      border: "#DDD5E5",
+      input: "#DDD5E5",
+      ring: "#8B7E8E",
+    },
+    dark: {
+      background: "#1E1A22",
+      foreground: "#F0EDF5",
+      card: "#2E2A35",
+      cardForeground: "#F0EDF5",
+      primary: "#A89BB0",
+      primaryForeground: "#1E1A22",
+      secondary: "#3E3A45",
+      secondaryForeground: "#F0EDF5",
+      muted: "#3E3A45",
+      mutedForeground: "#A89BB0",
+      accent: "#4E4A55",
+      accentForeground: "#C8BDD0",
+      border: "#4E4A55",
+      input: "#4E4A55",
+      ring: "#A89BB0",
+    },
+  },
+  preview: {
+    accent: "#8B7E8E",
+    bg: "#FAF9FB",
+    text: "#2E2A30",
+  },
+};

@@ -22,8 +22,6 @@ import ProjectDetail from "../../components/studio/ProjectDetail";
 import NewProjectModal from "../../components/studio/NewProjectModal";
 import EditProjectModal from "../../components/studio/EditProjectModal";
 import ProjectSettingsModal from "../../components/studio/ProjectSettingsModal";
-import styles from "./StudioPanel.module.css";
-
 function StudioPanel() {
   const { t } = useI18n();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -225,16 +223,16 @@ function StudioPanel() {
   };
 
   const getTagClass = (tag: string) => {
-    if (tag === "key_project") return styles.tagKey;
-    if (tag === "normal") return styles.tagNormal;
+    if (tag === "key_project") return "px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-white bg-gradient-to-br from-red-500 to-red-700";
+    if (tag === "normal") return "px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-white bg-gradient-to-br from-blue-500 to-blue-700";
     return "";
   };
 
   if (loading) {
     return (
-      <div className={`panel ${styles.studioPanel}`}>
-        <div className={styles.skillsLoading}>
-          <span className={styles.loadingSpinner}>⏳</span>
+      <div className="panel p-5 h-full overflow-hidden flex flex-col">
+        <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+          <span className="text-2xl animate-pulse">⏳</span>
           <p>{t("studio.loading")}</p>
         </div>
       </div>

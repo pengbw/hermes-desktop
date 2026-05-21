@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { modernFont } from "./_font-template";
+
+export const coolTheme: ThemeDefinition = {
+  name: "cool",
+  label: "冷色专业",
+  description: "冷色调为主，适合科技和专业应用",
+  radius: "0.375rem",
+  font: modernFont,
+  variables: {
+    light: {
+      background: "#F0F9FF",
+      foreground: "#082F49",
+      card: "#FFFFFF",
+      cardForeground: "#082F49",
+      primary: "#0EA5E9",
+      primaryForeground: "#FFFFFF",
+      secondary: "#E0F2FE",
+      secondaryForeground: "#075985",
+      muted: "#BAE6FD",
+      mutedForeground: "#0369A1",
+      accent: "#7DD3FC",
+      accentForeground: "#0C4A6E",
+      border: "#BAE6FD",
+      input: "#BAE6FD",
+      ring: "#0EA5E9",
+    },
+    dark: {
+      background: "#082F49",
+      foreground: "#E0F2FE",
+      card: "#0C4A6E",
+      cardForeground: "#E0F2FE",
+      primary: "#38BDF8",
+      primaryForeground: "#082F49",
+      secondary: "#075985",
+      secondaryForeground: "#E0F2FE",
+      muted: "#0C4A6E",
+      mutedForeground: "#7DD3FC",
+      accent: "#0369A1",
+      accentForeground: "#BAE6FD",
+      border: "#075985",
+      input: "#075985",
+      ring: "#38BDF8",
+    },
+  },
+  preview: {
+    accent: "#0EA5E9",
+    bg: "#F0F9FF",
+    text: "#082F49",
+  },
+};

@@ -1,3 +1,5 @@
+import { Search, Pencil, Trash2, Plus } from "lucide-react";
+
 interface Provider {
   id: string;
   name: string;
@@ -24,8 +26,6 @@ interface ProviderSettingsProps {
   t: (key: string) => string;
 }
 
-import styles from "@pages/settings/SettingsPanel.module.css";
-
 export default function ProviderSettings({
   providers,
   searchQuery,
@@ -48,27 +48,14 @@ export default function ProviderSettings({
   const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   return (
-    <div className={styles.settingsSectionCard}>
-      <div className={styles.settingsSection}>
-        <div className={styles.providerToolbar}>
-          <div className={styles.providerSearchWrap}>
-            <svg
-              className={styles.providerSearchIcon}
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+    <div className="animate-in fade-in slide-in-from-bottom-1.5 duration-200">
+      <div className="bg-card rounded-xl p-5 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex-1 relative flex items-center">
+            <Search className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
-              className={styles.providerSearchInput}
+              className="w-full pl-8 pr-8 py-1.5 border border-input rounded-lg bg-background text-sm text-foreground outline-none focus:border-primary transition-colors"
               placeholder={t("provider.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => {
@@ -78,7 +65,7 @@ export default function ProviderSettings({
             />
             {searchQuery && (
               <button
-                className={styles.providerSearchClear}
+                className="absolute right-2 bg-none border-0 text-xs text-muted-foreground cursor-pointer p-0.5 rounded hover:text-foreground hover:bg-muted transition-colors"
                 onClick={() => {
                   onSearchChange("");
                   onPageChange(1);
@@ -88,38 +75,46 @@ export default function ProviderSettings({
               </button>
             )}
           </div>
-          <button className={styles.providerAddBtn} onClick={onAdd}>
-            + {t("provider.add")}
+          <button
+            className="px-3.5 py-1.5 border border-primary rounded-md bg-transparent text-primary text-xs cursor-pointer transition-all hover:bg-primary/5 whitespace-nowrap flex items-center gap-1"
+            onClick={onAdd}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t("provider.add")}
           </button>
         </div>
         {providers.length === 0 && (
-          <div className={styles.providerEmpty}>
-            <span className={styles.providerEmptyIcon}>🔌</span>
-            <p>{t("provider.empty")}</p>
+          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+            <span className="text-4xl mb-2 opacity-60">🔌</span>
+            <p className="text-sm m-0">{t("provider.empty")}</p>
           </div>
         )}
         {providers.length > 0 && (
           <>
             {filtered.length === 0 && (
-              <div className={styles.providerEmpty}>
-                <span className={styles.providerEmptyIcon}>🔍</span>
-                <p>{t("provider.noSearchResult")}</p>
+              <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+                <span className="text-4xl mb-2 opacity-60">🔍</span>
+                <p className="text-sm m-0">{t("provider.noSearchResult")}</p>
               </div>
             )}
-            <div className={styles.providerGrid}>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">
               {paged.map((p, index) => (
                 <div
                   key={p.id}
-                  className={styles.providerGridCard}
+                  className="flex flex-col bg-card rounded-xl border border-border transition-all hover:border-primary hover:shadow-lg hover:-translate-y-0.5 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200"
                   style={{ animationDelay: `${index * 0.05}s` }}
                 >
-                  <div className={styles.providerGridCardHeader}>
+                  <div className="flex flex-col items-center px-2.5 pt-2.5 pb-1.5 bg-gradient-to-br from-primary/5 to-primary/[0.02] border-b border-border relative">
                     <span
-                      className={`${styles.providerGridCornerTag} ${p.isBuiltin ? styles.providerGridTagBuiltin : styles.providerGridTagCustom}`}
+                      className={`absolute top-1.5 right-1.5 text-[9px] px-1 py-px rounded font-medium whitespace-nowrap leading-tight ${
+                        p.isBuiltin
+                          ? "bg-primary/10 text-primary"
+                          : "bg-purple-500/10 text-purple-500"
+                      }`}
                     >
                       {p.isBuiltin ? t("provider.builtin") : t("provider.custom")}
                     </span>
-                    <div className={styles.providerGridCardIcon}>
+                    <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center text-lg mb-1 shadow-sm">
                       {p.name === "OpenAI"
                         ? "🤖"
                         : p.name === "Anthropic"
@@ -134,25 +129,23 @@ export default function ProviderSettings({
                                   ? "🔮"
                                   : "🔌"}
                     </div>
-                    <div className={styles.providerGridCardTitle}>
+                    <div className="text-[13px] font-bold text-foreground text-center mb-0.5 flex items-center justify-center gap-1">
                       {p.name}
-                      <span
-                        className={`${styles.providerGridKeyIcon} ${p.apiKey ? styles.providerGridKeyOk : styles.providerGridKeyMissing}`}
-                      >
+                      <span className={`text-xs leading-none ${p.apiKey ? "opacity-80" : "opacity-90"}`}>
                         {p.apiKey ? "🔑" : "⚠️"}
                       </span>
                     </div>
                   </div>
-                  <div className={styles.providerGridCardBody}>
-                    <div className={styles.providerGridMetaRow}>
-                      <span className={styles.providerGridMetaLabel}>ID</span>
-                      <span className={styles.providerGridMetaValue}>{p.value}</span>
+                  <div className="px-2.5 py-1.5 flex-1">
+                    <div className="flex items-baseline gap-1.5 mb-0.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">ID</span>
+                      <span className="text-[11px] text-muted-foreground font-mono truncate">{p.value}</span>
                     </div>
                     {p.baseUrl && (
-                      <div className={styles.providerGridMetaRow}>
-                        <span className={styles.providerGridMetaLabel}>URL</span>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">URL</span>
                         <span
-                          className={`${styles.providerGridMetaValue} ${styles.providerGridMetaUrl}`}
+                          className="text-[11px] text-muted-foreground font-mono truncate max-w-full"
                           title={p.baseUrl}
                         >
                           {p.baseUrl}
@@ -160,46 +153,22 @@ export default function ProviderSettings({
                       </div>
                     )}
                   </div>
-                  <div className={styles.providerGridCardFooter}>
+                  <div className="flex gap-1.5 px-2.5 py-1.5 border-t border-border">
                     <button
-                      className={`${styles.providerGridBtn} provider-grid-btn-edit`}
+                      className="inline-flex items-center justify-center gap-1 flex-1 px-1.5 py-1 border border-input bg-background rounded-md text-[11px] cursor-pointer text-muted-foreground transition-all hover:border-primary hover:text-primary hover:bg-primary/5"
                       onClick={() => onEdit(p)}
                       title={t("provider.edit")}
                     >
-                      <svg
-                        width="13"
-                        height="13"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                      </svg>
+                      <Pencil className="h-3 w-3" />
                       {t("provider.edit")}
                     </button>
                     {!p.isBuiltin && (
                       <button
-                        className={`${styles.providerGridBtn} ${styles.providerGridBtnDelete}`}
+                        className="inline-flex items-center justify-center gap-1 flex-1 px-1.5 py-1 border border-input bg-background rounded-md text-[11px] cursor-pointer text-muted-foreground transition-all hover:border-red-500 hover:text-red-500 hover:bg-red-500/5"
                         onClick={() => onDelete(p.id)}
                         title={t("provider.delete")}
                       >
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
+                        <Trash2 className="h-3 w-3" />
                         {t("provider.delete")}
                       </button>
                     )}
@@ -208,9 +177,9 @@ export default function ProviderSettings({
               ))}
             </div>
             {totalPages > 1 && (
-              <div className={styles.providerPagination}>
+              <div className="flex items-center justify-center gap-1 mt-4 pt-3 border-t border-border">
                 <button
-                  className={styles.providerPageBtn}
+                  className="min-w-[28px] h-7 inline-flex items-center justify-center border border-input bg-background rounded-md text-xs cursor-pointer text-muted-foreground transition-all px-1.5 hover:border-primary hover:text-primary hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={safePage <= 1}
                   onClick={() => onPageChange(safePage - 1)}
                 >
@@ -219,20 +188,24 @@ export default function ProviderSettings({
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                   <button
                     key={p}
-                    className={`${styles.providerPageBtn} ${p === safePage ? styles.providerPageBtnActive : ""}`}
+                    className={`min-w-[28px] h-7 inline-flex items-center justify-center border rounded-md text-xs cursor-pointer transition-all px-1.5 ${
+                      p === safePage
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5"
+                    }`}
                     onClick={() => onPageChange(p)}
                   >
                     {p}
                   </button>
                 ))}
                 <button
-                  className={styles.providerPageBtn}
+                  className="min-w-[28px] h-7 inline-flex items-center justify-center border border-input bg-background rounded-md text-xs cursor-pointer text-muted-foreground transition-all px-1.5 hover:border-primary hover:text-primary hover:bg-primary/5 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={safePage >= totalPages}
                   onClick={() => onPageChange(safePage + 1)}
                 >
                   ›
                 </button>
-                <span className={styles.providerPageInfo}>
+                <span className="text-xs text-muted-foreground ml-2">
                   {filtered.length} {t("provider.total")}
                 </span>
               </div>

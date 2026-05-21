@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { elegantFont } from "./_font-template";
+
+export const softTheme: ThemeDefinition = {
+  name: "soft",
+  label: "梦幻柔美",
+  description: "柔和色调，适合设计工具和创意平台",
+  radius: "1rem",
+  font: elegantFont,
+  variables: {
+    light: {
+      background: "#FAF5FF",
+      foreground: "#3B0764",
+      card: "#FFFFFF",
+      cardForeground: "#3B0764",
+      primary: "#A855F7",
+      primaryForeground: "#FFFFFF",
+      secondary: "#F3E8FF",
+      secondaryForeground: "#6B21A8",
+      muted: "#E9D5FF",
+      mutedForeground: "#9333EA",
+      accent: "#D8B4FE",
+      accentForeground: "#581C87",
+      border: "#E9D5FF",
+      input: "#E9D5FF",
+      ring: "#A855F7",
+    },
+    dark: {
+      background: "#3B0764",
+      foreground: "#F3E8FF",
+      card: "#581C87",
+      cardForeground: "#F3E8FF",
+      primary: "#C084FC",
+      primaryForeground: "#3B0764",
+      secondary: "#6B21A8",
+      secondaryForeground: "#F3E8FF",
+      muted: "#581C87",
+      mutedForeground: "#D8B4FE",
+      accent: "#7E22CE",
+      accentForeground: "#E9D5FF",
+      border: "#6B21A8",
+      input: "#6B21A8",
+      ring: "#C084FC",
+    },
+  },
+  preview: {
+    accent: "#A855F7",
+    bg: "#FAF5FF",
+    text: "#3B0764",
+  },
+};

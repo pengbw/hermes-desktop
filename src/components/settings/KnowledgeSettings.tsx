@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import settingsStyles from "@pages/settings/SettingsPanel.module.css";
-import kbStyles from "@pages/knowledge/KnowledgePanel.module.css";
 
 function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
   const [kbConfig, setKbConfig] = useState({
@@ -235,67 +233,93 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
 
   const updateConfig = (patch: Partial<typeof kbConfig>) => setKbConfig({ ...kbConfig, ...patch });
 
+  const getModelStatusClass = (status: string) => {
+    switch (status) {
+      case "onnx_ready":
+      case "ready":
+        return "text-green-500";
+      case "missing":
+        return "text-amber-500";
+      case "downloading":
+        return "text-primary";
+      default:
+        return "text-muted-foreground";
+    }
+  };
+
   return (
-    <div className={settingsStyles.settingsSectionCard}>
-      <div className={settingsStyles.settingsHeader}>
-        <h2>{t("kb.settings.title")}</h2>
+    <div className="bg-card rounded-xl p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-[15px] font-semibold text-foreground m-0">{t("kb.settings.title")}</h2>
       </div>
       {saveMsg && (
         <div
-          className={`${settingsStyles.saveToast} ${saveMsg === "success" ? settingsStyles.saveToastSuccess : settingsStyles.saveToastError}`}
+          className={`mb-4 px-3 py-2 rounded-lg text-sm font-medium ${
+            saveMsg === "success"
+              ? "bg-green-500/10 text-green-500 border border-green-500/20"
+              : "bg-red-500/10 text-red-500 border border-red-500/20"
+          }`}
         >
           {saveMsg === "success" ? "✅" : "❌"}{" "}
           {saveMsg === "success" ? t("common.saved") : t("common.saveFailed")}
         </div>
       )}
-      <div className={settingsStyles.settingsSection}>
-        <h3 className={kbStyles.kbSectionTitleWithHelp}>
+
+      {/* 嵌入模型 */}
+      <div className="mb-6">
+        <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground mb-1 relative">
           {t("kb.settings.embeddingModelSection")}
           <span
-            className={kbStyles.kbHelpIcon}
+            className="inline-flex items-center justify-center w-4 h-4 text-[11px] font-bold rounded-full bg-muted-foreground text-white cursor-pointer hover:bg-primary transition-colors leading-none"
             onClick={() => setShowEmbeddingHelp(!showEmbeddingHelp)}
           >
             ?
           </span>
           {showEmbeddingHelp && (
-            <div className={kbStyles.kbHelpPopup}>
-              <div className={kbStyles.kbHelpPopupTitle}>嵌入模型支持说明</div>
-              <div className={kbStyles.kbHelpPopupSection}>
-                <div className={kbStyles.kbHelpPopupSubtitle}>☁️ 云端模型（推荐）</div>
-                <div className={kbStyles.kbHelpPopupItem}>
+            <div className="absolute top-[calc(100%+8px)] left-0 z-[100] w-80 p-3 bg-popover border border-border rounded-lg shadow-lg text-[11px] leading-relaxed text-foreground">
+              <div className="absolute -top-[6px] left-[60px] w-[10px] h-[10px] bg-popover border-l border-t border-border rotate-45" />
+              <div className="font-semibold text-xs mb-1.5">嵌入模型支持说明</div>
+              <div className="mb-1.5">
+                <div className="font-semibold mb-0.5">☁️ 云端模型（推荐）</div>
+                <div className="pl-2 text-muted-foreground">
                   <b>硅基流动 SiliconFlow</b> — BAAI/bge-large-zh-v1.5, BAAI/bge-m3,
                   netease-youdao/bce-embedding-base_v1
                 </div>
-                <div className={kbStyles.kbHelpPopupItem}>
+                <div className="pl-2 text-muted-foreground">
                   <b>OpenAI</b> — text-embedding-3-small, text-embedding-3-large,
                   text-embedding-ada-002
                 </div>
-                <div className={kbStyles.kbHelpPopupItem}>
+                <div className="pl-2 text-muted-foreground">
                   <b>智谱 AI</b> — embedding-3
                 </div>
-                <div className={kbStyles.kbHelpPopupItem}>
+                <div className="pl-2 text-muted-foreground">
                   <b>阿里云 DashScope</b> — text-embedding-v3, text-embedding-v2
                 </div>
               </div>
-              <div className={kbStyles.kbHelpPopupSection}>
-                <div className={kbStyles.kbHelpPopupSubtitle}>🦙 Ollama（本地部署）</div>
-                <div className={kbStyles.kbHelpPopupItem}>
+              <div className="mb-1.5">
+                <div className="font-semibold mb-0.5">🦙 Ollama（本地部署）</div>
+                <div className="pl-2 text-muted-foreground">
                   nomic-embed-text, mxbai-embed-large, bge-m3, all_minilm
                 </div>
-                <div className={kbStyles.kbHelpPopupCmd}>ollama pull nomic-embed-text</div>
+                <div className="mt-0.5 px-1.5 py-0.5 bg-muted rounded font-mono text-xs text-primary">
+                  ollama pull nomic-embed-text
+                </div>
               </div>
-              <div className={kbStyles.kbHelpPopupSection}>
-                <div className={kbStyles.kbHelpPopupSubtitle}>💻 本地模型</div>
-                <div className={kbStyles.kbHelpPopupItem}>all-MiniLM-L6-v2（内置，自动下载）</div>
+              <div className="mb-1.5">
+                <div className="font-semibold mb-0.5">💻 本地模型</div>
+                <div className="pl-2 text-muted-foreground">all-MiniLM-L6-v2（内置，自动下载）</div>
               </div>
-              <div className={kbStyles.kbHelpPopupNote}>
+              <div className="mt-1 pt-1 border-t border-border text-amber-500 text-xs">
                 ⚠️ DeepSeek、Anthropic (Claude) 等供应商不支持嵌入模型 API
               </div>
             </div>
           )}
         </h3>
-        <p className={kbStyles.kbSettingsSectionDesc}>{t("kb.settings.embeddingModelDesc")}</p>
-        <div className={kbStyles.kbModelTabs}>
+        <p className="text-[13px] text-muted-foreground mb-3.5 leading-relaxed">
+          {t("kb.settings.embeddingModelDesc")}
+        </p>
+
+        <div className="flex gap-1 bg-muted rounded-lg p-[3px]">
           {[
             { value: "local", icon: "💻", label: t("kb.embeddingModel.local") },
             { value: "cloud", icon: "☁️", label: t("kb.embeddingModel.cloud") },
@@ -303,28 +327,29 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
           ].map((m) => (
             <button
               key={m.value}
-              className={
-                kbStyles.kbModelTab +
-                " " +
-                (kbConfig.defaultEmbeddingModel === m.value ? kbStyles.active : "")
-              }
+              className={`flex items-center justify-center gap-1 px-3 py-[5px] rounded-md text-xs transition-all flex-1 ${
+                kbConfig.defaultEmbeddingModel === m.value
+                  ? "bg-background text-foreground font-semibold shadow-sm"
+                  : "bg-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground"
+              }`}
               onClick={() => {
                 updateConfig({ defaultEmbeddingModel: m.value });
                 if (m.value === "local") checkLocalModel();
               }}
             >
-              <span className={kbStyles.kbModelTabIcon}>{m.icon}</span>
-              <span className={kbStyles.kbModelTabLabel}>{m.label}</span>
+              <span className="text-[13px]">{m.icon}</span>
+              <span>{m.label}</span>
             </button>
           ))}
         </div>
+
         {kbConfig.defaultEmbeddingModel === "local" && (
-          <div className={kbStyles.kbModelDetail}>
-            <div className={kbStyles.kbModelDetailRow}>
-              <span className={kbStyles.kbModelDetailLabel}>all-MiniLM-L6-v2</span>
-              <span
-                className={`${kbStyles.kbModelStatus} ${kbStyles["kbModelStatus" + (localModelStatus === "downloading" ? "Missing" : localModelStatus === "onnx_ready" ? "Ready" : localModelStatus.charAt(0).toUpperCase() + localModelStatus.slice(1))] || ""}`}
-              >
+          <div className="mt-2.5 p-3 bg-muted/50 rounded-lg border border-border">
+            <div className="flex items-center justify-between gap-2 mt-2">
+              <span className="text-xs font-semibold text-foreground font-mono">
+                all-MiniLM-L6-v2
+              </span>
+              <span className={`text-xs font-medium ${getModelStatusClass(localModelStatus)}`}>
                 {localModelStatus === "onnx_ready" &&
                   "✓ " + t("kb.settings.modelReady") + " (ONNX)"}
                 {localModelStatus === "ready" && "✓ " + t("kb.settings.modelReady")}
@@ -333,41 +358,50 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
                 {localModelStatus === "downloading" && t("kb.settings.modelDownloading")}
               </span>
             </div>
-            <p className={kbStyles.kbModelDetailHint}>{t("kb.settings.localModelHint")}</p>
+            <p className="text-xs text-muted-foreground m-0 leading-relaxed">
+              {t("kb.settings.localModelHint")}
+            </p>
             {localModelStatus === "missing" && (
-              <button className={kbStyles.kbModelInstallBtn} onClick={handleInstallLocalModel}>
+              <button
+                className="mt-2 px-3.5 py-1 text-[13px] border border-primary rounded-md bg-transparent text-primary cursor-pointer transition-all hover:bg-primary hover:text-white"
+                onClick={handleInstallLocalModel}
+              >
                 {t("kb.settings.installModel")}
               </button>
             )}
             {localModelStatus === "ready" && (
               <button
-                className={kbStyles.kbModelInstallBtn}
+                className="mt-2 px-3.5 py-1 text-[13px] border border-primary rounded-md text-primary cursor-pointer transition-all hover:bg-primary hover:text-white"
+                style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "#fff", border: "none" }}
                 onClick={handleInstallOnnxModel}
-                style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}
               >
                 ⚡ 安装 ONNX 加速
               </button>
             )}
             {localModelStatus === "downloading" && (
-              <div className={kbStyles.kbDownloadProgressWrap}>
-                <div className={kbStyles.kbDownloadProgressBar}>
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
                   <div
-                    className={kbStyles.kbDownloadProgressFill}
+                    className="h-full bg-primary rounded-full transition-all duration-300"
                     style={{ width: `${Math.min(downloadProgress, 100)}%` }}
                   />
                 </div>
-                <span className={kbStyles.kbDownloadProgressText}>
+                <span className="text-xs font-semibold text-primary min-w-[32px] text-right">
                   {Math.round(downloadProgress)}%
                 </span>
               </div>
             )}
           </div>
         )}
+
         {kbConfig.defaultEmbeddingModel === "cloud" && (
-          <div className={kbStyles.kbModelDetail}>
-            <div className={settingsStyles.formGroup}>
-              <label>{t("kb.settings.cloudProvider")}</label>
+          <div className="mt-2.5 p-3 bg-muted/50 rounded-lg border border-border">
+            <div className="flex flex-col gap-1.5 mb-2">
+              <label className="text-[13px] text-muted-foreground font-medium">
+                {t("kb.settings.cloudProvider")}
+              </label>
               <select
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors h-10"
                 value={kbConfig.cloudProvider}
                 onChange={(e) =>
                   updateConfig({ cloudProvider: e.target.value, cloudEmbeddingModel: "" })
@@ -381,9 +415,12 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
                 ))}
               </select>
             </div>
-            <div className={settingsStyles.formGroup}>
-              <label>{t("kb.settings.embeddingModelName")}</label>
+            <div className="flex flex-col gap-1.5 mb-2">
+              <label className="text-[13px] text-muted-foreground font-medium">
+                {t("kb.settings.embeddingModelName")}
+              </label>
               <select
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors h-10"
                 value={kbConfig.cloudEmbeddingModel}
                 onChange={(e) => updateConfig({ cloudEmbeddingModel: e.target.value })}
                 disabled={!kbConfig.cloudProvider || cloudModelsLoading}
@@ -404,17 +441,15 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
                 ))}
               </select>
               {!cloudModelsLoading && kbConfig.cloudProvider && !cloudHasEmbeddingModels && (
-                <span className={kbStyles.kbNoEmbeddingWarning}>
+                <span className="text-xs text-amber-500 mt-1">
                   ⚠ 该供应商未检测到嵌入模型，测试连接可能会失败
                 </span>
               )}
             </div>
-            <div className={kbStyles.kbModelDetailRow}>
-              <span className={kbStyles.kbModelDetailHint}>
-                {t("kb.settings.cloudProviderHint")}
-              </span>
+            <div className="flex items-center justify-between gap-2 mt-2">
+              <span className="text-xs text-muted-foreground">{t("kb.settings.cloudProviderHint")}</span>
               <button
-                className={kbStyles.kbModelTestBtn}
+                className="px-2.5 py-[3px] text-[13px] border border-primary rounded-md bg-transparent text-primary cursor-pointer transition-all hover:bg-primary hover:text-white whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                 onClick={handleTestCloud}
                 disabled={
                   !kbConfig.cloudProvider ||
@@ -426,40 +461,49 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
               </button>
             </div>
             {cloudTestResult === "ok" && (
-              <span className={kbStyles.kbTestOk}>✓ {t("kb.settings.testOk")}</span>
+              <span className="block mt-1.5 text-xs text-green-500">
+                ✓ {t("kb.settings.testOk")}
+              </span>
             )}
             {cloudTestResult === "fail" && (
-              <span className={kbStyles.kbTestFail}>
+              <span className="block mt-1.5 text-xs text-red-500">
                 ✗ {t("kb.settings.testFail")}
                 {cloudTestError ? `: ${cloudTestError}` : ""}
               </span>
             )}
           </div>
         )}
+
         {kbConfig.defaultEmbeddingModel === "ollama" && (
-          <div className={kbStyles.kbModelDetail}>
-            <div className={settingsStyles.formGroup}>
-              <label>{t("kb.settings.ollamaEndpoint")}</label>
+          <div className="mt-2.5 p-3 bg-muted/50 rounded-lg border border-border">
+            <div className="flex flex-col gap-1.5 mb-2">
+              <label className="text-[13px] text-muted-foreground font-medium">
+                {t("kb.settings.ollamaEndpoint")}
+              </label>
               <input
                 type="text"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors h-10"
                 value={kbConfig.ollamaEndpoint}
                 onChange={(e) => updateConfig({ ollamaEndpoint: e.target.value })}
                 placeholder="http://localhost:11434"
               />
             </div>
-            <div className={settingsStyles.formGroup}>
-              <label>{t("kb.settings.ollamaModelName")}</label>
+            <div className="flex flex-col gap-1.5 mb-2">
+              <label className="text-[13px] text-muted-foreground font-medium">
+                {t("kb.settings.ollamaModelName")}
+              </label>
               <input
                 type="text"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors h-10"
                 value={kbConfig.ollamaModel}
                 onChange={(e) => updateConfig({ ollamaModel: e.target.value })}
                 placeholder="nomic-embed-text"
               />
             </div>
-            <div className={kbStyles.kbModelDetailRow}>
-              <span className={kbStyles.kbModelDetailHint}>{t("kb.settings.ollamaHint")}</span>
+            <div className="flex items-center justify-between gap-2 mt-2">
+              <span className="text-xs text-muted-foreground">{t("kb.settings.ollamaHint")}</span>
               <button
-                className={kbStyles.kbModelTestBtn}
+                className="px-2.5 py-[3px] text-[13px] border border-primary rounded-md bg-transparent text-primary cursor-pointer transition-all hover:bg-primary hover:text-white whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                 onClick={handleTestOllama}
                 disabled={
                   !kbConfig.ollamaEndpoint ||
@@ -471,10 +515,12 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
               </button>
             </div>
             {ollamaTestResult === "ok" && (
-              <span className={kbStyles.kbTestOk}>✓ {t("kb.settings.testOk")}</span>
+              <span className="block mt-1.5 text-xs text-green-500">
+                ✓ {t("kb.settings.testOk")}
+              </span>
             )}
             {ollamaTestResult === "fail" && (
-              <span className={kbStyles.kbTestFail}>
+              <span className="block mt-1.5 text-xs text-red-500">
                 ✗ {t("kb.settings.testFail")}
                 {ollamaTestError ? `: ${ollamaTestError}` : ""}
               </span>
@@ -482,92 +528,104 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
           </div>
         )}
       </div>
-      <div className={settingsStyles.settingsSection}>
-        <h3 className={kbStyles.kbSectionTitleWithHelp}>
+
+      {/* 检索模式 */}
+      <div className="mb-6">
+        <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground mb-1 relative">
           {t("kb.settings.retrievalModeSection")}
           <span
-            className={kbStyles.kbHelpIcon}
+            className="inline-flex items-center justify-center w-4 h-4 text-[11px] font-bold rounded-full bg-muted-foreground text-white cursor-pointer hover:bg-primary transition-colors leading-none"
             onClick={() => setShowRetrievalHelp(!showRetrievalHelp)}
           >
             ?
           </span>
           {showRetrievalHelp && (
-            <div className={kbStyles.kbHelpPopup}>
-              <div className={kbStyles.kbHelpPopupTitle}>检索注入策略说明</div>
-              <div className={kbStyles.kbHelpPopupSection}>
-                <div className={kbStyles.kbHelpPopupSubtitle}>🚫 关闭</div>
-                <div className={kbStyles.kbHelpPopupItem}>
+            <div className="absolute top-[calc(100%+8px)] left-0 z-[100] w-80 p-3 bg-popover border border-border rounded-lg shadow-lg text-[11px] leading-relaxed text-foreground">
+              <div className="absolute -top-[6px] left-[60px] w-[10px] h-[10px] bg-popover border-l border-t border-border rotate-45" />
+              <div className="font-semibold text-xs mb-1.5">检索注入策略说明</div>
+              <div className="mb-1.5">
+                <div className="font-semibold mb-0.5">🚫 关闭</div>
+                <div className="pl-2 text-muted-foreground">
                   不自动检索知识库，可在对话中手动选择知识库
                 </div>
               </div>
-              <div className={kbStyles.kbHelpPopupSection}>
-                <div className={kbStyles.kbHelpPopupSubtitle}>⚡ 自动注入</div>
-                <div className={kbStyles.kbHelpPopupItem}>
+              <div className="mb-1.5">
+                <div className="font-semibold mb-0.5">⚡ 自动注入</div>
+                <div className="pl-2 text-muted-foreground">
                   每次对话自动检索所有就绪知识库的相关片段，注入到上下文中发送给模型
                 </div>
               </div>
-              <div className={kbStyles.kbHelpPopupNote}>
+              <div className="mt-1 pt-1 border-t border-border text-amber-500 text-xs">
                 💡 关闭自动注入后，可在对话输入框手动选择需要的知识库
               </div>
             </div>
           )}
         </h3>
-        <p className={kbStyles.kbSettingsSectionDesc}>{t("kb.settings.retrievalModeDesc")}</p>
-        <div className={kbStyles.kbModeCards}>
+        <p className="text-[13px] text-muted-foreground mb-3.5 leading-relaxed">
+          {t("kb.settings.retrievalModeDesc")}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
           {retrievalModes.map((m) => (
             <div
               key={m.value}
-              className={
-                kbStyles.kbModeCard +
-                " " +
-                (kbConfig.defaultRetrievalMode === m.value ? kbStyles.active : "")
-              }
+              className={`p-2 border-[1.5px] rounded-md cursor-pointer transition-all text-center ${
+                kbConfig.defaultRetrievalMode === m.value
+                  ? "border-primary bg-primary/[0.06] shadow-[0_0_0_1px_hsl(var(--primary))]"
+                  : "border-border bg-card hover:border-primary hover:bg-primary/[0.03]"
+              }`}
               onClick={() => updateConfig({ defaultRetrievalMode: m.value })}
             >
-              <div className={kbStyles.kbModeCardTitle}>
-                <span className={kbStyles.kbModeCardIcon}>{m.icon}</span>
-                <span className={kbStyles.kbModeCardName}>{t(`kb.retrievalMode.${m.value}`)}</span>
+              <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                <span className="text-[13px]">{m.icon}</span>
+                <span className="text-[13px] font-semibold text-foreground">
+                  {t(`kb.retrievalMode.${m.value}`)}
+                </span>
               </div>
-              <div className={kbStyles.kbModeCardDesc}>{m.desc}</div>
+              <div className="text-xs text-muted-foreground leading-tight">{m.desc}</div>
             </div>
           ))}
         </div>
       </div>
-      <div className={settingsStyles.settingsSection}>
-        <h3 className={kbStyles.kbSectionTitleWithHelp}>
+
+      {/* 高级设置 */}
+      <div className="mb-6">
+        <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground mb-3 relative">
           {t("kb.settings.advancedSection")}
           <span
-            className={kbStyles.kbHelpIcon}
+            className="inline-flex items-center justify-center w-4 h-4 text-[11px] font-bold rounded-full bg-muted-foreground text-white cursor-pointer hover:bg-primary transition-colors leading-none"
             onClick={() => setShowAdvancedHelp(!showAdvancedHelp)}
           >
             ?
           </span>
           {showAdvancedHelp && (
-            <div className={kbStyles.kbHelpPopup}>
-              <div className={kbStyles.kbHelpPopupTitle}>高级设置说明</div>
-              <div className={kbStyles.kbHelpPopupSection}>
-                <div className={kbStyles.kbHelpPopupSubtitle}>📊 最大上下文块数</div>
-                <div className={kbStyles.kbHelpPopupItem}>
+            <div className="absolute top-[calc(100%+8px)] left-0 z-[100] w-80 p-3 bg-popover border border-border rounded-lg shadow-lg text-[11px] leading-relaxed text-foreground">
+              <div className="absolute -top-[6px] left-[60px] w-[10px] h-[10px] bg-popover border-l border-t border-border rotate-45" />
+              <div className="font-semibold text-xs mb-1.5">高级设置说明</div>
+              <div className="mb-1.5">
+                <div className="font-semibold mb-0.5">📊 最大上下文块数</div>
+                <div className="pl-2 text-muted-foreground">
                   每次检索返回的最大知识片段数量。数值越大，注入的上下文越丰富，但消耗的 Token
                   也越多
                 </div>
-                <div className={kbStyles.kbHelpPopupItem}>
+                <div className="pl-2 text-muted-foreground">
                   推荐值：4~12，知识库内容较短时可适当增大
                 </div>
               </div>
-              <div className={kbStyles.kbHelpPopupSection}>
-                <div className={kbStyles.kbHelpPopupSubtitle}>🔄 全局自动检索</div>
-                <div className={kbStyles.kbHelpPopupItem}>
+              <div className="mb-1.5">
+                <div className="font-semibold mb-0.5">🔄 全局自动检索</div>
+                <div className="pl-2 text-muted-foreground">
                   开启后，所有知识库在对话时都会自动检索注入。关闭则需在每个知识库中单独配置
                 </div>
               </div>
             </div>
           )}
         </h3>
-        <div className={settingsStyles.settingsForm}>
-          <div className={settingsStyles.formGroup}>
-            <label>{t("kb.settings.defaultMaxContextChunks")}</label>
-            <div className={kbStyles.kbChunksControl}>
+        <div className="flex flex-col gap-3.5">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[13px] text-muted-foreground font-medium">
+              {t("kb.settings.defaultMaxContextChunks")}
+            </label>
+            <div className="flex items-center gap-3.5">
               <input
                 type="range"
                 min={1}
@@ -576,41 +634,53 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
                 onChange={(e) =>
                   updateConfig({ defaultMaxContextChunks: parseInt(e.target.value) || 8 })
                 }
-                className={kbStyles.kbChunksSlider}
-                style={
-                  {
-                    "--slider-pct": `${((kbConfig.defaultMaxContextChunks - 1) / 31) * 100}%`,
-                  } as React.CSSProperties
-                }
+                className="flex-1 h-1.5 bg-border rounded-full appearance-none cursor-pointer accent-primary"
               />
-              <span className={kbStyles.kbChunksValue}>{kbConfig.defaultMaxContextChunks}</span>
+              <span className="min-w-[32px] h-8 flex items-center justify-center bg-primary text-white rounded-lg text-sm font-bold shrink-0">
+                {kbConfig.defaultMaxContextChunks}
+              </span>
             </div>
-            <span className={kbStyles.kbChunksHint}>{t("kb.settings.chunksHint")}</span>
+            <span className="text-xs text-muted-foreground mt-1">{t("kb.settings.chunksHint")}</span>
           </div>
-          <div className={settingsStyles.formGroup}>
-            <label className={kbStyles.kbToggleLabel}>
-              <span className={kbStyles.kbToggleText}>
-                <span className={kbStyles.kbToggleTitle}>
+          <div className="flex flex-col gap-1.5">
+            <label className="flex items-center justify-between gap-3 cursor-pointer">
+              <span className="flex flex-col gap-0.5">
+                <span className="text-[13px] font-semibold text-foreground">
                   {t("kb.settings.globalAutoRetrieve")}
                 </span>
-                <span className={kbStyles.kbToggleDesc}>{t("kb.settings.autoRetrieveDesc")}</span>
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  {t("kb.settings.autoRetrieveDesc")}
+                </span>
               </span>
               <button
                 type="button"
-                className={
-                  kbStyles.kbToggleSwitch + " " + (kbConfig.globalAutoRetrieve ? kbStyles.on : "")
-                }
+                className={`w-11 h-6 rounded-full border-none cursor-pointer relative transition-colors shrink-0 p-0 ${
+                  kbConfig.globalAutoRetrieve ? "bg-primary" : "bg-border"
+                }`}
                 onClick={() => updateConfig({ globalAutoRetrieve: !kbConfig.globalAutoRetrieve })}
               >
-                <span className={kbStyles.kbToggleKnob} />
+                <span
+                  className={`absolute top-[2px] left-[2px] w-5 h-5 rounded-full bg-card shadow-sm transition-transform ${
+                    kbConfig.globalAutoRetrieve ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
               </button>
             </label>
           </div>
         </div>
       </div>
-      <div className={kbStyles.kbSettingsFooter}>
-        <button className={kbStyles.kbSettingsSaveBtn} onClick={handleSave} disabled={saving}>
-          {saving ? <span className={kbStyles.kbSpinner} /> : t("kb.settings.saveBtn")}
+
+      {/* 保存按钮 */}
+      <div className="flex justify-end pt-4 border-t border-border">
+        <button
+          className="px-7 py-2.5 bg-primary text-primary-foreground border-none rounded-xl text-sm font-semibold cursor-pointer transition-all hover:opacity-90 hover:-translate-y-px hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none flex items-center gap-2"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? (
+            <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : null}
+          {t("kb.settings.saveBtn")}
         </button>
       </div>
     </div>

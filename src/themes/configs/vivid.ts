@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { defaultFont } from "./_font-template";
+
+export const vividTheme: ThemeDefinition = {
+  name: "vivid",
+  label: "鲜艳活力",
+  description: "高饱和度，适合年轻化产品和创意应用",
+  radius: "0.75rem",
+  font: defaultFont,
+  variables: {
+    light: {
+      background: "#FFFBEB",
+      foreground: "#431407",
+      card: "#FFFFFF",
+      cardForeground: "#431407",
+      primary: "#F97316",
+      primaryForeground: "#FFFFFF",
+      secondary: "#FFF7ED",
+      secondaryForeground: "#9A3412",
+      muted: "#FFEDD5",
+      mutedForeground: "#C2410C",
+      accent: "#FDBA74",
+      accentForeground: "#7C2D12",
+      border: "#FED7AA",
+      input: "#FED7AA",
+      ring: "#F97316",
+    },
+    dark: {
+      background: "#431407",
+      foreground: "#FFEDD5",
+      card: "#7C2D12",
+      cardForeground: "#FFEDD5",
+      primary: "#FB923C",
+      primaryForeground: "#431407",
+      secondary: "#9A3412",
+      secondaryForeground: "#FFEDD5",
+      muted: "#7C2D12",
+      mutedForeground: "#FDBA74",
+      accent: "#C2410C",
+      accentForeground: "#FED7AA",
+      border: "#9A3412",
+      input: "#9A3412",
+      ring: "#FB923C",
+    },
+  },
+  preview: {
+    accent: "#F97316",
+    bg: "#FFFBEB",
+    text: "#431407",
+  },
+};

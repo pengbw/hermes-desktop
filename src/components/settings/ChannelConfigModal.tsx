@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { ChannelMeta, ChannelConfigField } from "@constants/channels";
 import { TauriCommands } from "@services/tauri/TauriCommands";
-import channelStyles from "./ChannelSettings.module.css";
 
 interface ChannelConfigModalProps {
   channel: ChannelMeta;
@@ -95,63 +94,78 @@ export default function ChannelConfigModal({
   };
 
   return (
-    <div className={channelStyles.modalOverlay} onClick={onClose}>
-      <div className={channelStyles.modalContent} onClick={(e) => e.stopPropagation()}>
-        <div className={channelStyles.modalHeader}>
-          <h3>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl w-[90%] max-w-[520px] max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h3 className="text-base font-semibold text-foreground m-0">
             {t("channel.configureConnect")} - {channel.name}
           </h3>
-          <button className={channelStyles.modalClose} onClick={onClose}>
+          <button className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors" onClick={onClose}>
             ✕
           </button>
         </div>
 
-        <div className={channelStyles.modalBody}>
+        <div className="p-5">
           {channel.setupGuide && (
-            <div className={channelStyles.setupGuide}>
+            <div className="bg-muted rounded-lg px-4 py-3 mb-4 text-xs text-muted-foreground leading-relaxed">
               {channel.setupGuide.split("\n").map((line, i) => (
-                <p key={i}>{line}</p>
+                <p key={i} className="m-0">{line}</p>
               ))}
             </div>
           )}
 
-          <div className={channelStyles.configForm}>
+          <div className="flex flex-col gap-3">
             {channel.configFields.map((field: ChannelConfigField) => (
-              <div key={field.key} className={channelStyles.formField}>
-                <label className={channelStyles.formLabel}>
+              <div key={field.key} className="flex flex-col gap-1">
+                <label className="text-[13px] text-muted-foreground font-medium">
                   {field.label}
-                  {field.required && <span className={channelStyles.requiredMark}>*</span>}
+                  {field.required && <span className="text-red-500 ml-0.5">*</span>}
                 </label>
                 <input
                   type={field.type === "password" ? "password" : "text"}
-                  className={channelStyles.formInput}
+                  className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors h-10"
                   placeholder={field.placeholder}
                   value={formData[field.key] || ""}
                   onChange={(e) => handleChange(field.key, e.target.value)}
                 />
-                {field.helpText && <div className={channelStyles.formHelp}>{field.helpText}</div>}
+                {field.helpText && <div className="text-xs text-muted-foreground">{field.helpText}</div>}
               </div>
             ))}
           </div>
 
-          {error && <div className={channelStyles.formError}>{error}</div>}
+          {error && <div className="mt-3 px-3 py-2 bg-red-500/10 text-red-500 rounded-md text-sm">{error}</div>}
           {testResult && (
             <div
-              className={`${channelStyles.formMessage} ${testResult.includes(t("channel.testSuccess")) ? channelStyles.formSuccess : channelStyles.formError}`}
+              className={`mt-3 px-3 py-2 rounded-md text-sm ${
+                testResult.includes(t("channel.testSuccess"))
+                  ? "bg-green-500/10 text-green-500"
+                  : "bg-red-500/10 text-red-500"
+              }`}
             >
               {testResult}
             </div>
           )}
         </div>
 
-        <div className={channelStyles.modalFooter}>
-          <button className={channelStyles.btnSecondary} onClick={handleTest} disabled={testing}>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-border">
+          <button
+            className="px-3.5 py-1.5 border border-border rounded-md text-xs font-medium cursor-pointer bg-transparent text-foreground transition-colors hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={handleTest}
+            disabled={testing}
+          >
             {testing ? t("channel.testing") : t("channel.testConnection")}
           </button>
-          <button className={channelStyles.btnPrimary} onClick={handleSave} disabled={saving}>
+          <button
+            className="px-3.5 py-1.5 border-none rounded-md text-xs font-medium cursor-pointer bg-primary text-white transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={handleSave}
+            disabled={saving}
+          >
             {saving ? t("channel.saving") : t("channel.save")}
           </button>
-          <button className={channelStyles.btnSecondary} onClick={onClose}>
+          <button
+            className="px-3.5 py-1.5 border border-border rounded-md text-xs font-medium cursor-pointer bg-transparent text-foreground transition-colors hover:bg-muted"
+            onClick={onClose}
+          >
             {t("channel.cancel")}
           </button>
         </div>

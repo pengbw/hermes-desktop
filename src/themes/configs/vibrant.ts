@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { playfulFont } from "./_font-template";
+
+export const vibrantTheme: ThemeDefinition = {
+  name: "vibrant",
+  label: "活力四射",
+  description: "高能量配色，适合运动、游戏类应用",
+  radius: "1rem",
+  font: playfulFont,
+  variables: {
+    light: {
+      background: "#FEF2F2",
+      foreground: "#450A0A",
+      card: "#FFFFFF",
+      cardForeground: "#450A0A",
+      primary: "#EF4444",
+      primaryForeground: "#FFFFFF",
+      secondary: "#FEE2E2",
+      secondaryForeground: "#991B1B",
+      muted: "#FECACA",
+      mutedForeground: "#B91C1C",
+      accent: "#F87171",
+      accentForeground: "#7F1D1D",
+      border: "#FECACA",
+      input: "#FECACA",
+      ring: "#EF4444",
+    },
+    dark: {
+      background: "#450A0A",
+      foreground: "#FEE2E2",
+      card: "#7F1D1D",
+      cardForeground: "#FEE2E2",
+      primary: "#F87171",
+      primaryForeground: "#450A0A",
+      secondary: "#991B1B",
+      secondaryForeground: "#FEE2E2",
+      muted: "#7F1D1D",
+      mutedForeground: "#F87171",
+      accent: "#B91C1C",
+      accentForeground: "#FECACA",
+      border: "#991B1B",
+      input: "#991B1B",
+      ring: "#F87171",
+    },
+  },
+  preview: {
+    accent: "#EF4444",
+    bg: "#FEF2F2",
+    text: "#450A0A",
+  },
+};

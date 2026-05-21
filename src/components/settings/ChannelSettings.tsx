@@ -6,8 +6,6 @@ import { TauriCommands } from "@services/tauri/TauriCommands";
 import ChannelCard from "./ChannelCard";
 import ChannelQrModal from "./ChannelQrModal";
 import ChannelConfigModal from "./ChannelConfigModal";
-import styles from "@pages/settings/SettingsPanel.module.css";
-import channelStyles from "./ChannelSettings.module.css";
 
 interface ChannelSettingsProps {
   t: (key: string) => string;
@@ -87,76 +85,76 @@ export default function ChannelSettings({ t }: ChannelSettingsProps) {
   const groupOrder: Array<keyof typeof CHANNEL_GROUPS> = ["domestic", "international", "other"];
 
   return (
-    <div className={styles.settingsSectionCard}>
-      <div className={styles.settingsSection}>
-        <div className={channelStyles.channelHeader}>
-          <h2>{t("channel.title")}</h2>
-          <div className={channelStyles.channelStats}>
-            {connectedCount} {t("channel.connected")}
-          </div>
+    <div className="bg-card rounded-xl p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-[15px] font-semibold text-foreground m-0">{t("channel.title")}</h2>
+        <div className="text-[13px] text-muted-foreground bg-muted px-3 py-1 rounded-xl">
+          {connectedCount} {t("channel.connected")}
         </div>
+      </div>
 
-        {loading ? (
-          <div className={channelStyles.loadingState}>
-            <span className={channelStyles.spinner} />
-            <p>{t("channel.loading")}</p>
-          </div>
-        ) : (
-          <>
-            {connectedCount > 0 && (
-              <div className={channelStyles.connectedSection}>
-                <h3 className={channelStyles.groupTitle}>
-                  {t("channel.connectedChannels")} ({connectedCount})
-                </h3>
-                <div className={channelStyles.channelGrid}>
-                  {Object.values(statuses)
-                    .filter((s) => s.status === "connected")
-                    .map((s) => {
-                      const meta = getChannelMeta(s.channelType);
-                      if (!meta) return null;
-                      return (
-                        <ChannelCard
-                          key={meta.id}
-                          meta={meta}
-                          status={s}
-                          onSetupQr={handleSetupQr}
-                          onSetupToken={handleSetupToken}
-                          onDisconnect={handleDisconnect}
-                          onSetHome={handleSetHome}
-                          t={t}
-                        />
-                      );
-                    })}
-                </div>
-              </div>
-            )}
-
-            {groupOrder.map((group) => {
-              const channels = getChannelsByGroup(group);
-              if (channels.length === 0) return null;
-              return (
-                <div key={group} className={channelStyles.channelGroup}>
-                  <h3 className={channelStyles.groupTitle}>{CHANNEL_GROUPS[group]}</h3>
-                  <div className={channelStyles.channelGrid}>
-                    {channels.map((meta) => (
+      {loading ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-muted-foreground">
+          <span className="inline-block w-5 h-5 border-2 border-border border-t-primary rounded-full animate-spin" />
+          <p className="text-sm">{t("channel.loading")}</p>
+        </div>
+      ) : (
+        <>
+          {connectedCount > 0 && (
+            <div className="mb-6 p-4 bg-green-500/[0.06] border border-green-500/15 rounded-xl">
+              <h3 className="text-sm font-semibold text-muted-foreground m-0 mb-3 pb-2 border-b border-border">
+                {t("channel.connectedChannels")} ({connectedCount})
+              </h3>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+                {Object.values(statuses)
+                  .filter((s) => s.status === "connected")
+                  .map((s) => {
+                    const meta = getChannelMeta(s.channelType);
+                    if (!meta) return null;
+                    return (
                       <ChannelCard
                         key={meta.id}
                         meta={meta}
-                        status={statuses[meta.id]}
+                        status={s}
                         onSetupQr={handleSetupQr}
                         onSetupToken={handleSetupToken}
                         onDisconnect={handleDisconnect}
                         onSetHome={handleSetHome}
                         t={t}
                       />
-                    ))}
-                  </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {groupOrder.map((group) => {
+            const channels = getChannelsByGroup(group);
+            if (channels.length === 0) return null;
+            return (
+              <div key={group} className="mb-6">
+                <h3 className="text-sm font-semibold text-muted-foreground m-0 mb-3 pb-2 border-b border-border">
+                  {CHANNEL_GROUPS[group]}
+                </h3>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+                  {channels.map((meta) => (
+                    <ChannelCard
+                      key={meta.id}
+                      meta={meta}
+                      status={statuses[meta.id]}
+                      onSetupQr={handleSetupQr}
+                      onSetupToken={handleSetupToken}
+                      onDisconnect={handleDisconnect}
+                      onSetHome={handleSetHome}
+                      t={t}
+                    />
+                  ))}
                 </div>
-              );
-            })}
-          </>
-        )}
-      </div>
+              </div>
+            );
+          })}
+        </>
+      )}
 
       {activeQrChannel && (
         <ChannelQrModal

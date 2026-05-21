@@ -7,7 +7,6 @@ import MessageBubble from "@components/chat/MessageBubble";
 import StreamingIndicator from "@components/chat/StreamingIndicator";
 import MessageInput from "@components/chat/MessageInput";
 import type { Conversation, Message, HermesConfigData } from "@core/types";
-import styles from "./ChatPanel.module.css";
 
 interface ChatPanelProps {
   conversations: Conversation[];
@@ -194,7 +193,7 @@ function ChatPanel({
   const shouldUseVirtual = messages.length > 50;
 
   return (
-    <div className={styles.chatLayout}>
+    <div className="flex h-full overflow-hidden">
       <ConversationList
         conversations={conversations}
         currentConversationId={currentConversationId}
@@ -206,10 +205,13 @@ function ChatPanel({
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
 
-      <div className={styles.chatMain}>
-        <div className={styles.messagesList} ref={messagesListRef}>
+      <div className="flex flex-1 flex-col overflow-hidden bg-background">
+        <div
+          className="flex-1 overflow-y-auto flex flex-col gap-4 px-6 py-4"
+          ref={messagesListRef}
+        >
           {messages.length === 0 && !isStreaming && (
-            <div className={styles.emptyChat}>
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-12">
               <span>{t("chat.emptyChat")}</span>
             </div>
           )}

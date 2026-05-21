@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { defaultFont } from "./_font-template";
+
+export const lightTheme: ThemeDefinition = {
+  name: "light",
+  label: "清新淡雅",
+  description: "浅色调，适合简洁清爽的界面",
+  radius: "0.75rem",
+  font: defaultFont,
+  variables: {
+    light: {
+      background: "#FFFFFF",
+      foreground: "#334155",
+      card: "#F8FAFC",
+      cardForeground: "#334155",
+      primary: "#64748B",
+      primaryForeground: "#FFFFFF",
+      secondary: "#F1F5F9",
+      secondaryForeground: "#475569",
+      muted: "#E2E8F0",
+      mutedForeground: "#94A3B8",
+      accent: "#CBD5E1",
+      accentForeground: "#334155",
+      border: "#E2E8F0",
+      input: "#E2E8F0",
+      ring: "#64748B",
+    },
+    dark: {
+      background: "#0F172A",
+      foreground: "#F1F5F9",
+      card: "#1E293B",
+      cardForeground: "#F1F5F9",
+      primary: "#94A3B8",
+      primaryForeground: "#0F172A",
+      secondary: "#334155",
+      secondaryForeground: "#F1F5F9",
+      muted: "#334155",
+      mutedForeground: "#CBD5E1",
+      accent: "#475569",
+      accentForeground: "#E2E8F0",
+      border: "#334155",
+      input: "#334155",
+      ring: "#94A3B8",
+    },
+  },
+  preview: {
+    accent: "#64748B",
+    bg: "#FFFFFF",
+    text: "#334155",
+  },
+};

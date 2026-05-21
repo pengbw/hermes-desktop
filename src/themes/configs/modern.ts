@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { modernFont } from "./_font-template";
+
+export const modernTheme: ThemeDefinition = {
+  name: "modern",
+  label: "现代简约",
+  description: "现代感强，适合科技产品和 SaaS 应用",
+  radius: "0.25rem",
+  font: modernFont,
+  variables: {
+    light: {
+      background: "#F8FAFC",
+      foreground: "#0F172A",
+      card: "#FFFFFF",
+      cardForeground: "#0F172A",
+      primary: "#0F172A",
+      primaryForeground: "#F8FAFC",
+      secondary: "#F1F5F9",
+      secondaryForeground: "#334155",
+      muted: "#E2E8F0",
+      mutedForeground: "#64748B",
+      accent: "#CBD5E1",
+      accentForeground: "#0F172A",
+      border: "#E2E8F0",
+      input: "#E2E8F0",
+      ring: "#0F172A",
+    },
+    dark: {
+      background: "#020617",
+      foreground: "#F8FAFC",
+      card: "#0F172A",
+      cardForeground: "#F8FAFC",
+      primary: "#F8FAFC",
+      primaryForeground: "#020617",
+      secondary: "#1E293B",
+      secondaryForeground: "#CBD5E1",
+      muted: "#1E293B",
+      mutedForeground: "#94A3B8",
+      accent: "#334155",
+      accentForeground: "#F8FAFC",
+      border: "#1E293B",
+      input: "#1E293B",
+      ring: "#F8FAFC",
+    },
+  },
+  preview: {
+    accent: "#0F172A",
+    bg: "#F8FAFC",
+    text: "#0F172A",
+  },
+};

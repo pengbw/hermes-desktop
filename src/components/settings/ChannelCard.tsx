@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { ChannelMeta, ChannelStatus } from "@constants/channels";
 import PlatformIcon from "./PlatformIcon";
-import channelStyles from "./ChannelSettings.module.css";
 
 interface ChannelCardProps {
   meta: ChannelMeta;
@@ -30,12 +29,12 @@ export default function ChannelCard({
   const isError = connectionStatus === "error";
 
   const statusDotClass = isConnected
-    ? channelStyles.statusDotConnected
+    ? "bg-green-500 shadow-[0_0_6px_rgba(76,175,80,0.4)]"
     : isConnecting
-      ? channelStyles.statusDotConnecting
+      ? "bg-amber-500 animate-pulse"
       : isError
-        ? channelStyles.statusDotError
-        : channelStyles.statusDotDisconnected;
+        ? "bg-red-500"
+        : "bg-muted-foreground/40";
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
@@ -56,35 +55,39 @@ export default function ChannelCard({
 
   return (
     <div
-      className={`${channelStyles.channelCard} ${isConnected ? channelStyles.channelCardConnected : ""}`}
+      className={`bg-card border border-border rounded-xl p-4 flex flex-col gap-2.5 transition-all hover:border-primary hover:shadow-md ${
+        isConnected ? "border-green-500/30 bg-green-500/[0.04]" : ""
+      }`}
     >
-      <div className={channelStyles.cardHeader}>
+      <div className="flex items-center gap-2.5">
         <PlatformIcon channelId={meta.id} size={40} />
-        <div className={channelStyles.cardTitleWrap}>
-          <div className={channelStyles.cardTitle}>{meta.name}</div>
-          <div className={channelStyles.cardSubtitle}>{meta.nameEn}</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-foreground truncate">{meta.name}</div>
+          <div className="text-[11px] text-muted-foreground mt-px">{meta.nameEn}</div>
         </div>
-        <span className={`${channelStyles.statusDot} ${statusDotClass}`} />
+        <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass}`} />
       </div>
 
-      <div className={channelStyles.cardCapabilities}>
+      <div className="flex flex-wrap gap-1">
         {capabilityLabels.map((cap) => (
-          <span key={cap.key} className={channelStyles.capTag}>
+          <span key={cap.key} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
             {cap.label}
           </span>
         ))}
       </div>
 
       {isError && status?.errorMessage && (
-        <div className={channelStyles.cardError}>{status.errorMessage}</div>
+        <div className="text-[11px] text-red-500 px-2 py-1 bg-red-500/8 rounded-md">
+          {status.errorMessage}
+        </div>
       )}
 
-      <div className={channelStyles.cardActions}>
+      <div className="flex gap-1.5 flex-wrap mt-auto">
         {!isConnected &&
           !isConnecting &&
           (meta.setupMode === "qr" || meta.setupMode === "both") && (
             <button
-              className={channelStyles.btnPrimary}
+              className="px-3.5 py-1.5 border-none rounded-md text-xs font-medium cursor-pointer bg-primary text-white transition-opacity hover:opacity-90 disabled:bg-border disabled:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-70"
               onClick={() => onSetupQr(meta.id)}
               disabled={meta.id !== "weixin" && meta.id !== "qqbot"}
               title={meta.id !== "weixin" && meta.id !== "qqbot" ? "暂不可用" : ""}
@@ -98,7 +101,7 @@ export default function ChannelCard({
             meta.setupMode === "server" ||
             meta.setupMode === "both") && (
             <button
-              className={channelStyles.btnPrimary}
+              className="px-3.5 py-1.5 border-none rounded-md text-xs font-medium cursor-pointer bg-primary text-white transition-opacity hover:opacity-90 disabled:bg-border disabled:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-70"
               onClick={() => onSetupToken(meta.id)}
               disabled={meta.id !== "weixin" && meta.id !== "qqbot"}
               title={meta.id !== "weixin" && meta.id !== "qqbot" ? "暂不可用" : ""}
@@ -107,26 +110,36 @@ export default function ChannelCard({
             </button>
           )}
         {isConnecting && (
-          <button className={channelStyles.btnConnecting} disabled>
-            <span className={channelStyles.spinner} />
+          <button
+            className="px-3.5 py-1.5 border-none rounded-md text-xs font-medium cursor-not-allowed bg-muted text-muted-foreground flex items-center gap-1.5"
+            disabled
+          >
+            <span className="inline-block w-3.5 h-3.5 border-2 border-border border-t-primary rounded-full animate-spin" />
             {t("channel.connecting")}
           </button>
         )}
         {isConnected && (
           <>
             <button
-              className={channelStyles.btnDanger}
+              className="px-3.5 py-1.5 border border-red-500/30 rounded-md text-xs font-medium cursor-pointer bg-red-500/[0.08] text-red-500 transition-colors hover:bg-red-500/15 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleDisconnect}
               disabled={disconnecting}
             >
               {disconnecting ? t("channel.disconnecting") : t("channel.disconnect")}
             </button>
             {!status?.isHome && (
-              <button className={channelStyles.btnSecondary} onClick={() => onSetHome(meta.id)}>
+              <button
+                className="px-3.5 py-1.5 border border-border rounded-md text-xs font-medium cursor-pointer bg-transparent text-foreground transition-colors hover:bg-muted"
+                onClick={() => onSetHome(meta.id)}
+              >
                 {t("channel.setHome")}
               </button>
             )}
-            {status?.isHome && <span className={channelStyles.homeBadge}>🏠 Home</span>}
+            {status?.isHome && (
+              <span className="text-[11px] px-2 py-1 rounded-md bg-amber-500/10 text-amber-500 font-medium">
+                🏠 Home
+              </span>
+            )}
           </>
         )}
       </div>

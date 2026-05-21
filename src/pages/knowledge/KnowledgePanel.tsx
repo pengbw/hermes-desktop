@@ -1,5 +1,5 @@
 import styles from "./KnowledgePanel.module.css";
-import cardStyles from "@pages/cards/CardManagerPanel.module.css";
+
 import { useState, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -392,14 +392,14 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
             </div>
             <div className={styles.kbDetailActions}>
               <button
-                className={cardStyles.cardAddBtn}
+                className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium cursor-pointer transition-all hover:bg-primary/90 hover:shadow-md active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => handleIndex(selectedKb.id)}
                 disabled={!!indexingKbId}
               >
                 {indexingKbId === selectedKb.id ? t("kb.indexing") : t("kb.reindex")}
               </button>
               <button
-                className={cardStyles.cardAddBtn}
+                className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium cursor-pointer transition-all hover:bg-primary/90 hover:shadow-md active:scale-[0.98]"
                 onClick={async () => {
                   try {
                     const { open } = await import("@tauri-apps/plugin-dialog");

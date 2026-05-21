@@ -1,7 +1,21 @@
 import { useState, useRef } from "react";
 import { useI18n } from "@contexts/I18nContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Search,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  MessageSquare,
+  Trash2,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
 import type { Conversation } from "@core/types";
-import styles from "./ConversationList.module.css";
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -81,10 +95,15 @@ export default function ConversationList({
 
   const renderConvItem = (conv: Conversation, extraClass: string = "") => {
     const isRenaming = renamingId === conv.id;
+    const isActive = conv.id === currentConversationId;
     return (
       <div
         key={conv.id}
-        className={`${styles.conversationItem} ${extraClass} ${conv.id === currentConversationId ? styles.conversationItemActive : ""}`}
+        className={`group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-sm transition-all duration-150 border-l-[3px] ${
+          isActive
+            ? "bg-primary/10 text-primary border-l-primary font-medium"
+            : "border-l-transparent hover:bg-accent/50"
+        } ${extraClass}`}
         onClick={() => !isRenaming && onSelectConversation(conv.id)}
         onDoubleClick={(e) => {
           e.stopPropagation();
@@ -94,7 +113,7 @@ export default function ConversationList({
         {isRenaming ? (
           <input
             ref={renameInputRef}
-            className={styles.convRenameInput}
+            className="flex-1 min-w-0 bg-background border border-primary rounded-md text-sm px-2 py-1 outline-none focus:ring-2 focus:ring-primary/20"
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
             onBlur={commitRename}
@@ -110,9 +129,7 @@ export default function ConversationList({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 const timeSinceComposition = performance.now() - lastCompositionEndRef.current;
-                if (timeSinceComposition < 100) {
-                  return;
-                }
+                if (timeSinceComposition < 100) return;
                 if (e.nativeEvent.isComposing || isComposingRef.current) {
                   isComposingRef.current = false;
                   return;
@@ -124,123 +141,122 @@ export default function ConversationList({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className={styles.convIcon}>💬</span>
+          <>
+            <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
+            <span className="truncate flex-1 min-w-0">{conv.title}</span>
+            <button
+              className="opacity-0 group-hover:opacity-60 hover:!opacity-100 hover:text-destructive hover:bg-destructive/10 rounded p-0.5 transition-all"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteConversation(conv.id);
+              }}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </>
         )}
-        {isRenaming ? null : <span className={styles.convTitle}>{conv.title}</span>}
-        <button
-          className={styles.convDelete}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteConversation(conv.id);
-          }}
-        >
-          ×
-        </button>
       </div>
     );
   };
 
   return (
-    <div className={`${styles.chatSidebar} ${collapsed ? styles.chatSidebarCollapsed : ""}`}>
-      <div className={styles.chatSidebarHeader}>
-        {!collapsed && (
-          <>
-            <button className={styles.newChatBtn} onClick={onNewConversation}>
-              {t("chat.newChat")}
-            </button>
-            <div className={styles.chatSearchBox}>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                className={styles.chatSearchInput}
-                type="text"
-                placeholder={t("chat.search")}
-                value={convSearch}
-                onChange={(e) => {
-                  setConvSearch(e.target.value);
-                  setConvPage(1);
-                }}
-              />
-            </div>
-          </>
-        )}
-      </div>
+    <div
+      className={`flex flex-col shrink-0 overflow-hidden bg-card border-r transition-all duration-200 ${
+        collapsed ? "w-11 min-w-11" : "w-[280px]"
+      }`}
+    >
       {!collapsed && (
-        <div className={styles.conversationList}>
+        <div className="flex flex-col gap-2 p-2.5 pb-2 border-b">
+          <Button variant="outline" size="sm" className="w-full justify-start gap-1.5 text-xs" onClick={onNewConversation}>
+            <Plus className="h-3.5 w-3.5" />
+            {t("chat.newChat")}
+          </Button>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder={t("chat.search")}
+              value={convSearch}
+              onChange={(e) => {
+                setConvSearch(e.target.value);
+                setConvPage(1);
+              }}
+              className="pl-8 h-8 text-xs"
+            />
+          </div>
+        </div>
+      )}
+
+      {!collapsed && (
+        <div className="flex-1 overflow-y-auto p-1.5 pb-2">
           {paginatedGroups.map((group) => (
-            <div key={group.label} className={styles.convGroup}>
-              <div className={styles.convGroupLabel}>{t(group.label)}</div>
+            <div key={group.label} className="mb-1">
+              <div className="text-[11px] font-semibold text-muted-foreground px-2.5 py-1.5 pb-0.5 tracking-wide uppercase">
+                {t(group.label)}
+              </div>
               {group.items.map((conv) => renderConvItem(conv))}
             </div>
           ))}
         </div>
       )}
-      <div className={styles.chatSidebarFooter}>
-        {!collapsed && (
-          <div className={styles.convPagination}>
-            <button
-              className={styles.pageNavBtn}
+
+      <div className="mt-auto p-2 border-t flex items-center gap-1">
+        {!collapsed && totalPages > 1 && (
+          <div className="flex items-center gap-0.5 flex-wrap flex-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
               disabled={convPage <= 1}
               onClick={() => setConvPage(1)}
             >
-              {t("chat.firstPage")}
-            </button>
-            <button
-              className={styles.pageNavBtn}
+              <ChevronsLeft className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
               disabled={convPage <= 1}
               onClick={() => setConvPage((p) => Math.max(1, p - 1))}
             >
-              {t("chat.prevPage")}
-            </button>
-            <button
-              className={styles.pageNavBtn}
+              <ChevronLeft className="h-3 w-3" />
+            </Button>
+            <Badge variant="secondary" className="h-5 text-[10px] px-1.5">
+              {convPage}/{totalPages}
+            </Badge>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
               disabled={convPage >= totalPages}
               onClick={() => setConvPage((p) => Math.min(totalPages, p + 1))}
             >
-              {t("chat.nextPage")}
-            </button>
-            <button
-              className={styles.pageNavBtn}
+              <ChevronRight className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
               disabled={convPage >= totalPages}
               onClick={() => setConvPage(totalPages)}
             >
-              {t("chat.lastPage")}
-            </button>
+              <ChevronsRight className="h-3 w-3" />
+            </Button>
           </div>
         )}
-        <button
-          className={styles.sidebarToggleBtn}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0"
           onClick={onToggleCollapse}
           title={collapsed ? t("chat.expand") : t("chat.collapse")}
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            {collapsed ? (
-              <polyline points="9 18 15 12 9 6" />
-            ) : (
-              <polyline points="15 18 9 12 15 6" />
-            )}
-          </svg>
-        </button>
+          {collapsed ? (
+            <PanelLeftOpen className="h-4 w-4" />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" />
+          )}
+        </Button>
       </div>
     </div>
   );

@@ -6,7 +6,6 @@ import { CARDS_STORAGE_KEY } from "@constants/config";
 import HermesStatus from "@components/home/HermesStatus";
 import QuickActions from "@components/home/QuickActions";
 import HomeChatInput from "@components/home/HomeChatInput";
-import styles from "./HomePanel.module.css";
 
 function loadCustomCards(): QuickCard[] {
   try {
@@ -55,7 +54,7 @@ function HomePanel({ t, sendMessage, isStreaming }: HomePanelProps) {
   };
 
   return (
-    <div className={styles.homePanel}>
+    <div className="flex flex-col items-center gap-7 px-6 py-8 overflow-y-auto h-full box-border">
       <HermesStatus t={t} />
       <QuickActions
         cards={allCards}

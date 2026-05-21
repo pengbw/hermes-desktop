@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { modernFont } from "./_font-template";
+
+export const boldTheme: ThemeDefinition = {
+  name: "bold",
+  label: "大胆醒目",
+  description: "高对比度，适合需要强烈视觉冲击的场景",
+  radius: "0.25rem",
+  font: modernFont,
+  variables: {
+    light: {
+      background: "#FFFFFF",
+      foreground: "#000000",
+      card: "#FFFFFF",
+      cardForeground: "#000000",
+      primary: "#000000",
+      primaryForeground: "#FFFFFF",
+      secondary: "#F5F5F5",
+      secondaryForeground: "#171717",
+      muted: "#E5E5E5",
+      mutedForeground: "#525252",
+      accent: "#FF00FF",
+      accentForeground: "#FFFFFF",
+      border: "#000000",
+      input: "#E5E5E5",
+      ring: "#FF00FF",
+    },
+    dark: {
+      background: "#000000",
+      foreground: "#FFFFFF",
+      card: "#171717",
+      cardForeground: "#FFFFFF",
+      primary: "#FFFFFF",
+      primaryForeground: "#000000",
+      secondary: "#262626",
+      secondaryForeground: "#FFFFFF",
+      muted: "#262626",
+      mutedForeground: "#A3A3A3",
+      accent: "#FF00FF",
+      accentForeground: "#FFFFFF",
+      border: "#404040",
+      input: "#262626",
+      ring: "#FF00FF",
+    },
+  },
+  preview: {
+    accent: "#FF00FF",
+    bg: "#FFFFFF",
+    text: "#000000",
+  },
+};

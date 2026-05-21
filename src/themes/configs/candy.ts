@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { playfulFont } from "./_font-template";
+
+export const candyTheme: ThemeDefinition = {
+  name: "candy",
+  label: "糖果色彩",
+  description: "明快可爱，适合儿童产品和趣味应用",
+  radius: "1.5rem",
+  font: playfulFont,
+  variables: {
+    light: {
+      background: "#FDF2F8",
+      foreground: "#831843",
+      card: "#FFFFFF",
+      cardForeground: "#831843",
+      primary: "#EC4899",
+      primaryForeground: "#FFFFFF",
+      secondary: "#FCE7F3",
+      secondaryForeground: "#BE185D",
+      muted: "#FBCFE8",
+      mutedForeground: "#DB2777",
+      accent: "#F9A8D4",
+      accentForeground: "#9D174D",
+      border: "#FBCFE8",
+      input: "#FBCFE8",
+      ring: "#EC4899",
+    },
+    dark: {
+      background: "#831843",
+      foreground: "#FCE7F3",
+      card: "#9D174D",
+      cardForeground: "#FCE7F3",
+      primary: "#F472B6",
+      primaryForeground: "#831843",
+      secondary: "#BE185D",
+      secondaryForeground: "#FCE7F3",
+      muted: "#9D174D",
+      mutedForeground: "#F9A8D4",
+      accent: "#DB2777",
+      accentForeground: "#FBCFE8",
+      border: "#BE185D",
+      input: "#BE185D",
+      ring: "#F472B6",
+    },
+  },
+  preview: {
+    accent: "#EC4899",
+    bg: "#FDF2F8",
+    text: "#831843",
+  },
+};

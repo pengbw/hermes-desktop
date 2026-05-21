@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { defaultFont } from "./_font-template";
+
+export const natureTheme: ThemeDefinition = {
+  name: "nature",
+  label: "自然清新",
+  description: "自然色系，适合环保、健康类产品",
+  radius: "1rem",
+  font: defaultFont,
+  variables: {
+    light: {
+      background: "#F0FDF4",
+      foreground: "#14532D",
+      card: "#FFFFFF",
+      cardForeground: "#14532D",
+      primary: "#22C55E",
+      primaryForeground: "#FFFFFF",
+      secondary: "#DCFCE7",
+      secondaryForeground: "#166534",
+      muted: "#BBF7D0",
+      mutedForeground: "#15803D",
+      accent: "#86EFAC",
+      accentForeground: "#14532D",
+      border: "#BBF7D0",
+      input: "#BBF7D0",
+      ring: "#22C55E",
+    },
+    dark: {
+      background: "#14532D",
+      foreground: "#DCFCE7",
+      card: "#166534",
+      cardForeground: "#DCFCE7",
+      primary: "#4ADE80",
+      primaryForeground: "#14532D",
+      secondary: "#166534",
+      secondaryForeground: "#DCFCE7",
+      muted: "#166534",
+      mutedForeground: "#86EFAC",
+      accent: "#15803D",
+      accentForeground: "#BBF7D0",
+      border: "#166534",
+      input: "#166534",
+      ring: "#4ADE80",
+    },
+  },
+  preview: {
+    accent: "#22C55E",
+    bg: "#F0FDF4",
+    text: "#14532D",
+  },
+};

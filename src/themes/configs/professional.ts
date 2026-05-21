@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { modernFont } from "./_font-template";
+
+export const professionalTheme: ThemeDefinition = {
+  name: "professional",
+  label: "商务专业",
+  description: "稳重大气，适合企业级应用和 B2B 产品",
+  radius: "0.375rem",
+  font: modernFont,
+  variables: {
+    light: {
+      background: "#FAFAFA",
+      foreground: "#171717",
+      card: "#FFFFFF",
+      cardForeground: "#171717",
+      primary: "#2563EB",
+      primaryForeground: "#FFFFFF",
+      secondary: "#F5F5F5",
+      secondaryForeground: "#404040",
+      muted: "#E5E5E5",
+      mutedForeground: "#737373",
+      accent: "#DBEAFE",
+      accentForeground: "#1E40AF",
+      border: "#E5E5E5",
+      input: "#E5E5E5",
+      ring: "#2563EB",
+    },
+    dark: {
+      background: "#0A0A0A",
+      foreground: "#FAFAFA",
+      card: "#171717",
+      cardForeground: "#FAFAFA",
+      primary: "#3B82F6",
+      primaryForeground: "#FFFFFF",
+      secondary: "#262626",
+      secondaryForeground: "#D4D4D4",
+      muted: "#262626",
+      mutedForeground: "#A3A3A3",
+      accent: "#1E3A5F",
+      accentForeground: "#93C5FD",
+      border: "#262626",
+      input: "#262626",
+      ring: "#3B82F6",
+    },
+  },
+  preview: {
+    accent: "#2563EB",
+    bg: "#FAFAFA",
+    text: "#171717",
+  },
+};

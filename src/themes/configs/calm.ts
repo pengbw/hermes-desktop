@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { defaultFont } from "./_font-template";
+
+export const calmTheme: ThemeDefinition = {
+  name: "calm",
+  label: "平静舒缓",
+  description: "低饱和度，适合长时间使用的应用",
+  radius: "0.75rem",
+  font: defaultFont,
+  variables: {
+    light: {
+      background: "#F5F5F0",
+      foreground: "#44403C",
+      card: "#FFFFFF",
+      cardForeground: "#44403C",
+      primary: "#78716C",
+      primaryForeground: "#FFFFFF",
+      secondary: "#E7E5E4",
+      secondaryForeground: "#57534E",
+      muted: "#D6D3D1",
+      mutedForeground: "#78716C",
+      accent: "#A8A29E",
+      accentForeground: "#292524",
+      border: "#D6D3D1",
+      input: "#D6D3D1",
+      ring: "#78716C",
+    },
+    dark: {
+      background: "#1C1917",
+      foreground: "#E7E5E4",
+      card: "#292524",
+      cardForeground: "#E7E5E4",
+      primary: "#A8A29E",
+      primaryForeground: "#1C1917",
+      secondary: "#44403C",
+      secondaryForeground: "#E7E5E4",
+      muted: "#44403C",
+      mutedForeground: "#A8A29E",
+      accent: "#57534E",
+      accentForeground: "#D6D3D1",
+      border: "#44403C",
+      input: "#44403C",
+      ring: "#A8A29E",
+    },
+  },
+  preview: {
+    accent: "#78716C",
+    bg: "#F5F5F0",
+    text: "#44403C",
+  },
+};

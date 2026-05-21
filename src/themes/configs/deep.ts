@@ -1,0 +1,51 @@
+import type { ThemeDefinition } from "../types";
+import { defaultFont } from "./_font-template";
+
+export const deepTheme: ThemeDefinition = {
+  name: "deep",
+  label: "深邃神秘",
+  description: "深色调，适合暗黑主题和神秘风格",
+  radius: "0.5rem",
+  font: defaultFont,
+  variables: {
+    light: {
+      background: "#F8FAFC",
+      foreground: "#0F172A",
+      card: "#FFFFFF",
+      cardForeground: "#0F172A",
+      primary: "#6366F1",
+      primaryForeground: "#FFFFFF",
+      secondary: "#E0E7FF",
+      secondaryForeground: "#3730A3",
+      muted: "#C7D2FE",
+      mutedForeground: "#4F46E5",
+      accent: "#818CF8",
+      accentForeground: "#312E81",
+      border: "#C7D2FE",
+      input: "#C7D2FE",
+      ring: "#6366F1",
+    },
+    dark: {
+      background: "#020617",
+      foreground: "#E0E7FF",
+      card: "#0F172A",
+      cardForeground: "#E0E7FF",
+      primary: "#818CF8",
+      primaryForeground: "#020617",
+      secondary: "#1E1B4B",
+      secondaryForeground: "#C7D2FE",
+      muted: "#1E1B4B",
+      mutedForeground: "#818CF8",
+      accent: "#312E81",
+      accentForeground: "#A5B4FC",
+      border: "#1E1B4B",
+      input: "#1E1B4B",
+      ring: "#818CF8",
+    },
+  },
+  preview: {
+    accent: "#6366F1",
+    bg: "#F8FAFC",
+    text: "#0F172A",
+  },
+};

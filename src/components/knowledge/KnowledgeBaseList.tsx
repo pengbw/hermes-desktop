@@ -1,5 +1,4 @@
 import styles from "@pages/knowledge/KnowledgePanel.module.css";
-import cardStyles from "@pages/cards/CardManagerPanel.module.css";
 import type { KnowledgeBase } from "@core/types";
 
 interface KnowledgeBaseListProps {
@@ -72,7 +71,7 @@ export default function KnowledgeBaseList({
               }}
             />
           </div>
-          <button className={cardStyles.cardAddBtn} onClick={onCreate}>
+          <button className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium cursor-pointer transition-all hover:bg-primary/90 hover:shadow-md active:scale-[0.98]" onClick={onCreate}>
             + {t("kb.create")}
           </button>
         </div>
@@ -81,7 +80,7 @@ export default function KnowledgeBaseList({
         <div className={styles.kbEmpty}>
           <div className={styles.kbEmptyIcon}>📚</div>
           <p>{t("kb.empty")}</p>
-          <button className={cardStyles.cardAddBtn} onClick={onCreate}>
+          <button className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium cursor-pointer transition-all hover:bg-primary/90 hover:shadow-md active:scale-[0.98]" onClick={onCreate}>
             + {t("kb.create")}
           </button>
         </div>

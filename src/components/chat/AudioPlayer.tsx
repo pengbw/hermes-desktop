@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import styles from "./AudioPlayer.module.css";
+
 
 interface AudioPlayerProps {
   audioPath?: string;
@@ -133,9 +133,9 @@ export default function AudioPlayer({ audioPath, audioDuration, isUser = false }
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className={`${styles.audioPlayer} ${isUser ? styles.audioPlayerUser : styles.audioPlayerAssistant}`}>
+    <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg min-w-[180px] max-w-[260px] ${isUser ? "bg-primary/10 border border-primary/20" : "bg-muted/50 border border-border"}`}>
       <button
-        className={styles.playBtn}
+        className="flex items-center justify-center w-7 h-7 rounded-full border-none bg-primary/20 text-primary cursor-pointer shrink-0 transition-colors hover:bg-primary/30 disabled:opacity-50 disabled:cursor-default"
         onClick={handlePlay}
         disabled={!canPlay}
         title={loadError ? "音频加载失败" : undefined}
@@ -151,12 +151,12 @@ export default function AudioPlayer({ audioPath, audioDuration, isUser = false }
           </svg>
         )}
       </button>
-      <div className={styles.waveform}>
-        <div className={styles.progressTrack}>
-          <div className={styles.progressFill} style={{ width: `${progress}%` }} />
+      <div className="flex-1 flex items-center h-6">
+        <div className={`w-full h-[3px] rounded-sm overflow-hidden ${isUser ? "bg-primary/20" : "bg-black/10"}`}>
+          <div className="h-full bg-primary rounded-sm transition-all" style={{ width: `${progress}%` }} />
         </div>
       </div>
-      <span className={styles.duration}>
+      <span className={`text-[11px] whitespace-nowrap min-w-[32px] text-right font-[tabular-nums] ${isUser ? "text-primary" : "text-muted-foreground"}`}>
         {playing ? formatDuration(currentTime) : formatDuration(duration)}
       </span>
     </div>

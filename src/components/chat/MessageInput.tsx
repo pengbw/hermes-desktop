@@ -3,7 +3,21 @@ import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "@contexts/I18nContext";
 import { useVoiceInput } from "@hooks/common";
 import type { AttachedFile } from "@core/types";
-import styles from "./MessageInput.module.css";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import {
+  Send,
+  Paperclip,
+  BookOpen,
+  Mic,
+  MicOff,
+  Loader2,
+  X,
+  FileText,
+  Upload,
+  Cpu,
+  ChevronDown,
+} from "lucide-react";
 
 interface MessageInputProps {
   input: string;
@@ -46,7 +60,6 @@ export default function MessageInput({
     useVoiceInput({
       onResult: () => {},
       onRecordingComplete: (audioPath) => {
-        // console.log("[MessageInput] onRecordingComplete, audioPath:", audioPath);
         const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
         onSend({
           voiceInfo: { audioPath, audioDuration: 0 },
@@ -75,6 +88,7 @@ export default function MessageInput({
         }
       },
     });
+
   const [isDragging, setIsDragging] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [modelList, setModelList] = useState<{ id: string; ownedBy?: string }[]>([]);
@@ -90,6 +104,7 @@ export default function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isComposingRef = useRef(false);
   const lastCompositionEndRef = useRef(0);
+
   useEffect(() => {
     const loadProviders = async () => {
       try {
@@ -99,7 +114,7 @@ export default function MessageInput({
           >("list_providers");
         setProviders(list);
       } catch {
-        // console.error("Failed to load providers:", e);
+        /* ignore */
       }
     };
     const loadCurrentModel = async () => {
@@ -108,7 +123,7 @@ export default function MessageInput({
         setCurrentModel(config.model);
         setCurrentProvider(config.provider);
       } catch {
-        // console.error("Failed to load model config:", e);
+        /* ignore */
       }
     };
     loadProviders();
@@ -129,9 +144,7 @@ export default function MessageInput({
   }, []);
 
   useEffect(() => {
-    if (!currentProvider) {
-      return;
-    }
+    if (!currentProvider) return;
     (async () => {
       try {
         const list = await invoke<{ id: string; ownedBy?: string }[]>("list_models", {
@@ -139,7 +152,6 @@ export default function MessageInput({
         });
         setModelList(list);
       } catch {
-        // console.error("Failed to load model list:", e);
         setModelList([]);
       }
     })();
@@ -158,7 +170,7 @@ export default function MessageInput({
         });
         result.push({ name: f.name, path: tempPath });
       } catch {
-        // console.error("Failed to save temp file:", f.name, e);
+        /* ignore */
       }
     }
     return result;
@@ -168,9 +180,7 @@ export default function MessageInput({
     const files = e.target.files;
     if (!files) return;
     const newFiles = await processFiles(files);
-    if (newFiles.length > 0) {
-      setAttachedFiles((prev) => [...prev, ...newFiles]);
-    }
+    if (newFiles.length > 0) setAttachedFiles((prev) => [...prev, ...newFiles]);
     e.target.value = "";
   };
 
@@ -183,34 +193,28 @@ export default function MessageInput({
     e.stopPropagation();
     setIsDragging(true);
   };
-
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
   };
-
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
     const files = e.dataTransfer.files;
     const newFiles = await processFiles(files);
-    if (newFiles.length > 0) {
-      setAttachedFiles((prev) => [...prev, ...newFiles]);
-    }
+    if (newFiles.length > 0) setAttachedFiles((prev) => [...prev, ...newFiles]);
   };
 
   const handleSend = () => {
     if (!input.trim() && attachedFiles.length === 0) return;
-
     const imageExtensions = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
     const firstImage = attachedFiles.find((f) => {
       const ext = f.name.split(".").pop()?.toLowerCase();
       return ext && imageExtensions.includes(ext);
     });
     const imagePath = firstImage?.path;
-
     const filesJson = attachedFiles.length > 0 ? JSON.stringify(attachedFiles) : undefined;
     const shouldKbRetrieve = !kbGlobalAutoRetrieve && pendingKbIds.length > 0;
     onSend({
@@ -228,9 +232,7 @@ export default function MessageInput({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       const timeSinceComposition = performance.now() - lastCompositionEndRef.current;
-      if (timeSinceComposition < 100) {
-        return;
-      }
+      if (timeSinceComposition < 100) return;
       if (e.nativeEvent.isComposing || isComposingRef.current) {
         isComposingRef.current = false;
         return;
@@ -250,315 +252,252 @@ export default function MessageInput({
     setCurrentModel("");
   };
 
+  const getVoiceTooltip = () => {
+    switch (voiceState) {
+      case "checking": return "...";
+      case "transcribing": return t("chat.voiceTranscribing") || "Sending...";
+      case "installing": return progressText || t("chat.voiceInstalling") || "Installing...";
+      case "install-error": return installError || t("chat.voiceInstallHint") || "Click to retry";
+      case "not-installed": return t("chat.voiceInstallHint") || "Click to install voice recognition";
+      case "mic-error": return micError || "Microphone error - click to retry";
+      case "recording": return t("chat.voiceStop");
+      default: return t("chat.voiceStart");
+    }
+  };
+
+  const getVoiceIcon = () => {
+    if (voiceState === "recording") return <MicOff className="h-4 w-4 text-red-500" />;
+    if (voiceState === "checking" || voiceState === "transcribing" || voiceState === "installing")
+      return <Loader2 className="h-4 w-4 animate-spin" />;
+    if (voiceState === "install-error" || voiceState === "mic-error")
+      return <Mic className="h-4 w-4 text-red-500" />;
+    return <Mic className="h-4 w-4" />;
+  };
+
+  const isVoiceDisabled =
+    isStreaming || voiceState === "checking" || voiceState === "transcribing" || voiceState === "installing";
+
   return (
     <div
-      className={`${styles.chatInputArea} ${isDragging ? styles.chatInputAreaDragging : ""}`}
+      className={`relative px-4 py-3 bg-card border-t shrink-0 transition-colors ${
+        isDragging ? "border-primary bg-primary/5" : ""
+      }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className={styles.dragOverlay}>
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
-          <span>{t("chat.dropFiles")}</span>
-        </div>
-      )}
-      {attachedFiles.length > 0 && (
-        <div className={styles.fileDisplayArea}>
-          <div className={styles.fileDisplayList}>
-            {attachedFiles.map((f, i) => (
-              <div key={i} className={styles.fileDisplayItem}>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-                  <polyline points="13 2 13 9 20 9" />
-                </svg>
-                <span className={styles.fileDisplayName}>{f.name}</span>
-                <button className={styles.fileDisplayRemove} onClick={() => removeFile(i)}>
-                  ×
-                </button>
-              </div>
-            ))}
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/5 border-2 border-dashed border-primary rounded-lg m-1">
+          <div className="flex flex-col items-center gap-2 text-primary">
+            <Upload className="h-8 w-8" />
+            <span className="text-sm font-medium">{t("chat.dropFiles")}</span>
           </div>
         </div>
       )}
-      <div className={styles.chatInputBox}>
-        <textarea
+
+      {attachedFiles.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2 px-1">
+          {attachedFiles.map((f, i) => (
+            <div
+              key={i}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted text-xs text-muted-foreground border"
+            >
+              <FileText className="h-3 w-3" />
+              <span className="max-w-[160px] truncate">{f.name}</span>
+              <button
+                onClick={() => removeFile(i)}
+                className="ml-1 hover:text-destructive transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="relative rounded-xl border bg-background shadow-sm">
+        <Textarea
           ref={textareaRef}
-          className={styles.chatInput}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          onCompositionStart={() => {
-            isComposingRef.current = true;
-          }}
+          onCompositionStart={() => { isComposingRef.current = true; }}
           onCompositionEnd={() => {
             lastCompositionEndRef.current = performance.now();
-            queueMicrotask(() => {
-              isComposingRef.current = false;
-            });
+            queueMicrotask(() => { isComposingRef.current = false; });
           }}
           placeholder={t("chat.inputPlaceholder")}
           rows={1}
           disabled={isStreaming}
+          className="min-h-[44px] resize-none border-0 bg-transparent px-3 py-2.5 pr-24 focus-visible:ring-0 focus-visible:ring-offset-0"
         />
-        <div className={styles.chatInputToolbar}>
-          <div className={styles.toolbarLeft}>
+
+        <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between">
+          <div className="flex items-center gap-0.5">
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              style={{ display: "none" }}
+              className="hidden"
               onChange={handleFileSelect}
             />
-            <button
-              className={styles.toolbarBtn}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
               onClick={() => fileInputRef.current?.click()}
               title="上传附件"
               disabled={isStreaming}
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+              <Paperclip className="h-3.5 w-3.5" />
+            </Button>
+
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-7 w-7 text-muted-foreground hover:text-foreground ${pendingKbIds.length > 0 ? "text-primary" : ""}`}
+                onClick={() => setShowKbSelector(!showKbSelector)}
+                title={t("chat.kbRetrieve")}
+                disabled={isStreaming || kbGlobalAutoRetrieve}
               >
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-              </svg>
-            </button>
-            <button
-              className={`${styles.toolbarBtn} ${styles.kbRetrieveBtn}`}
-              onClick={() => setShowKbSelector(!showKbSelector)}
-              title={t("chat.kbRetrieve")}
-              disabled={isStreaming || kbGlobalAutoRetrieve}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                <line x1="9" y1="7" x2="16" y2="7" />
-                <line x1="9" y1="11" x2="14" y2="11" />
-              </svg>
-              {pendingKbIds.length > 0 ? (
-                <span className={styles.kbSelectorCount}>{pendingKbIds.length}</span>
-              ) : null}
-            </button>
-            {showKbSelector && !kbGlobalAutoRetrieve && (
-              <div
-                className={styles.kbSelectorDropdown}
-                ref={kbSelectorRef}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <div className={styles.kbSelectorHeader}>{t("chat.kbSelect")}</div>
-                {kbList.filter((kb) => kb.status === "ready").length === 0 ? (
-                  <div className={styles.kbSelectorEmpty}>{t("kb.empty")}</div>
-                ) : (
-                  kbList
-                    .filter((kb) => kb.status === "ready")
-                    .map((kb) => {
-                      const isSelected = pendingKbIds.includes(kb.id);
-                      return (
-                        <div
-                          key={kb.id}
-                          className={`${styles.kbSelectorItem} ${isSelected ? styles.kbSelectorItemSelected : ""}`}
-                          onClick={() => {
-                            setPendingKbIds((prev) =>
-                              isSelected ? prev.filter((id) => id !== kb.id) : [...prev, kb.id]
-                            );
-                          }}
-                        >
-                          <span className={styles.kbSelectorCheck}>{isSelected ? "✓" : ""}</span>
-                          <span className={styles.kbSelectorIcon}>{kb.icon || "📚"}</span>
-                          <span className={styles.kbSelectorName}>{kb.name}</span>
-                        </div>
-                      );
-                    })
+                <BookOpen className="h-3.5 w-3.5" />
+                {pendingKbIds.length > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-[9px] text-primary-foreground font-semibold">
+                    {pendingKbIds.length}
+                  </span>
                 )}
-              </div>
-            )}
-            {voiceEnabled && (
-              <button
-                className={`${styles.toolbarBtn} ${styles.micBtn} ${voiceState === "recording" ? styles.micBtnActive : ""} ${voiceState === "mic-error" ? styles.micBtnError : ""}`}
-                title={
-                  voiceState === "checking"
-                    ? "..."
-                    : voiceState === "transcribing"
-                      ? t("chat.voiceTranscribing") || "Sending..."
-                      : voiceState === "installing"
-                        ? progressText || t("chat.voiceInstalling") || "Installing..."
-                        : voiceState === "install-error"
-                          ? installError || t("chat.voiceInstallHint") || "Click to retry"
-                          : voiceState === "not-installed"
-                            ? t("chat.voiceInstallHint") || "Click to install voice recognition"
-                            : voiceState === "mic-error"
-                              ? micError || "Microphone error - click to retry"
-                              : voiceState === "recording"
-                                ? t("chat.voiceStop")
-                                : t("chat.voiceStart")
-                }
-                disabled={
-                  isStreaming ||
-                  voiceState === "checking" ||
-                  voiceState === "transcribing" ||
-                  voiceState === "installing"
-                }
-                onClick={
-                  voiceState === "not-installed" || voiceState === "install-error"
-                    ? installStt
-                    : toggleRecording
-                }
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+              </Button>
+
+              {showKbSelector && !kbGlobalAutoRetrieve && (
+                <div
+                  ref={kbSelectorRef}
+                  className="absolute bottom-full left-0 mb-2 w-56 rounded-md border bg-popover shadow-md p-2 z-50"
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="23" />
-                  <line x1="8" y1="23" x2="16" y2="23" />
-                </svg>
-              </button>
-            )}
-            {voiceEnabled &&
-              progressText &&
-              (voiceState === "installing" || voiceState === "transcribing") && (
-                <span style={{ fontSize: 11, color: "#888", whiteSpace: "nowrap" }}>
-                  {progressText}
-                </span>
+                  <div className="text-xs font-medium text-muted-foreground px-2 py-1.5 border-b mb-1">
+                    {t("chat.kbSelect")}
+                  </div>
+                  {kbList.filter((kb) => kb.status === "ready").length === 0 ? (
+                    <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                      {t("kb.empty")}
+                    </div>
+                  ) : (
+                    kbList
+                      .filter((kb) => kb.status === "ready")
+                      .map((kb) => {
+                        const isSelected = pendingKbIds.includes(kb.id);
+                        return (
+                          <div
+                            key={kb.id}
+                            className={`flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer text-sm transition-colors ${
+                              isSelected ? "bg-accent text-accent-foreground" : "hover:bg-muted"
+                            }`}
+                            onClick={() => {
+                              setPendingKbIds((prev) =>
+                                isSelected ? prev.filter((id) => id !== kb.id) : [...prev, kb.id]
+                              );
+                            }}
+                          >
+                            <span className="text-xs w-4">{isSelected ? "✓" : ""}</span>
+                            <span>{kb.icon || "📚"}</span>
+                            <span className="truncate">{kb.name}</span>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
               )}
+            </div>
+
+            {voiceEnabled && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`h-7 w-7 text-muted-foreground hover:text-foreground ${voiceState === "recording" ? "text-red-500" : ""} ${voiceState === "mic-error" || voiceState === "install-error" ? "text-red-500" : ""}`}
+                  title={getVoiceTooltip()}
+                  disabled={isVoiceDisabled}
+                  onClick={voiceState === "not-installed" || voiceState === "install-error" ? installStt : toggleRecording}
+                >
+                  {getVoiceIcon()}
+                </Button>
+                {voiceEnabled && progressText && (voiceState === "installing" || voiceState === "transcribing") && (
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{progressText}</span>
+                )}
+              </>
+            )}
           </div>
-          <div className={styles.toolbarRight}>
-            <div className={styles.modelSelector} ref={modelDropdownRef}>
-              <button
-                className={`${styles.toolbarBtn} ${styles.modelBtn}`}
+
+          <div className="flex items-center gap-1">
+            <div className="relative" ref={modelDropdownRef}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
                 onClick={() => setShowModelDropdown(!showModelDropdown)}
                 title="切换模型"
                 disabled={isStreaming}
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                  <line x1="3" y1="9" x2="21" y2="9" />
-                  <line x1="9" y1="21" x2="9" y2="9" />
-                </svg>
-                <span className={styles.modelBtnText}>{currentModel || "模型"}</span>
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
+                <Cpu className="h-3 w-3" />
+                <span className="max-w-[80px] truncate">{currentModel || "模型"}</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+
               {showModelDropdown && (
-                <div className={styles.modelDropdown}>
-                  <div className={styles.modelDropdownProvider}>
+                <div className="absolute bottom-full right-0 mb-2 w-72 rounded-lg border bg-popover shadow-lg p-2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                  <div className="p-2 border-b mb-1">
                     <select
                       value={currentProvider}
                       onChange={(e) => handleProviderChange(e.target.value)}
+                      className="w-full h-8 px-2 text-xs rounded-md border bg-background"
                     >
                       <option value="">选择供应商</option>
                       {providers.map((p) => (
-                        <option key={p.id} value={p.value}>
-                          {p.name}
-                        </option>
+                        <option key={p.id} value={p.value}>{p.name}</option>
                       ))}
                     </select>
                   </div>
-                  <div className={styles.modelDropdownList}>
+                  <div className="max-h-60 overflow-y-auto">
                     {modelList.length > 0 ? (
                       modelList.map((m) => (
                         <button
                           key={m.id}
-                          className={`${styles.modelDropdownItem} ${m.id === currentModel ? styles.modelDropdownItemActive : ""}`}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-md transition-colors ${
+                            m.id === currentModel
+                              ? "bg-accent text-accent-foreground font-medium"
+                              : "hover:bg-muted text-foreground"
+                          }`}
                           onClick={() => handleModelSelect(m.id)}
                         >
-                          {m.id}
-                          {m.ownedBy && <span className={styles.modelOwnedBy}>{m.ownedBy}</span>}
+                          <span className="truncate">{m.id}</span>
+                          {m.ownedBy && (
+                            <span className="text-[10px] text-muted-foreground ml-2 shrink-0">{m.ownedBy}</span>
+                          )}
                         </button>
                       ))
                     ) : (
-                      <div className={styles.modelDropdownEmpty}>请先选择供应商</div>
+                      <div className="px-3 py-4 text-xs text-muted-foreground text-center">
+                        请先选择供应商
+                      </div>
                     )}
                   </div>
                 </div>
               )}
             </div>
-            <button
-              className={styles.sendBtn}
+
+            <Button
+              size="sm"
+              className="h-7 w-7 p-0"
               onClick={handleSend}
               disabled={isStreaming || (!input.trim() && attachedFiles.length === 0)}
             >
               {isStreaming ? (
-                "..."
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="22" y1="2" x2="11" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
+                <Send className="h-3.5 w-3.5" />
               )}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

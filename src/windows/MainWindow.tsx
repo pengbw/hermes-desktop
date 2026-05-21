@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../contexts/I18nContext";
 import InstallGuidePanel from "./InstallGuide";
 import { ErrorBoundary } from "../components/common/ErrorBoundary";
+import TitleBar from "../components/common/TitleBar";
 import { HomePanel } from "@pages/home";
 import { ChatPanel } from "@pages/chat";
 import { useChat } from "../hooks/useChat";
@@ -123,33 +124,13 @@ export default function MainWindow() {
           <InstallGuidePanel onInstalled={handleInstalled} />
         ) : (
           <>
-            <div className={styles.toolbar}>
-              <nav className={styles.toolbarNav}>
-                {(["home", "chat", "studio", "knowledge", "skills", "settings"] as Tab[]).map(
-                  (tab) => (
-                    <button
-                      key={tab}
-                      className={`${styles.tabBtn} ${activeTab === tab ? styles.tabBtnActive : ""}`}
-                      onClick={() => setActiveTab(tab)}
-                    >
-                      {tab === "home" && t("tabs.home")}
-                      {tab === "chat" && t("tabs.chat")}
-                      {tab === "studio" && t("tabs.studio")}
-                      {tab === "knowledge" && t("tabs.knowledge")}
-                      {tab === "skills" && t("tabs.skills")}
-                      {tab === "settings" && t("tabs.settings")}
-                    </button>
-                  )
-                )}
-              </nav>
-              <button
-                className={`${styles.avatarToggleBtn} ${showAvatar ? styles.avatarToggleActive : ""}`}
-                onClick={toggleAvatarWindow}
-                title={t("main.openAvatar")}
-              >
-                <img src="/bot.svg" alt={t("main.avatar")} className={styles.toolbarAvatarIcon} />
-              </button>
-            </div>
+            <TitleBar
+              t={t}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              showAvatar={showAvatar}
+              onToggleAvatar={toggleAvatarWindow}
+            />
 
             <div className={styles.contentArea}>
               {activeTab === "home" && (

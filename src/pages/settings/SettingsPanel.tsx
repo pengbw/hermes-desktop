@@ -13,8 +13,6 @@ import AiRolesSettingsSection from "@components/settings/AiRolesSettings";
 import KnowledgeSettingsSection from "@components/settings/KnowledgeSettings";
 import ChannelSettings from "@components/settings/ChannelSettings";
 import ProviderModal from "@components/settings/ProviderModal";
-import styles from "./SettingsPanel.module.css";
-
 declare const __APP_VERSION__: string;
 
 function SettingsPanel() {
@@ -348,9 +346,9 @@ function SettingsPanel() {
 
   if (loading) {
     return (
-      <div className={`panel ${styles.settingsPanel}`}>
-        <div className={styles.skillsLoading}>
-          <span className={styles.loadingSpinner}>⏳</span>
+      <div className="panel flex flex-col gap-4">
+        <div className="flex flex-col items-center justify-center gap-3 p-12 text-muted-foreground">
+          <span className="text-2xl">⏳</span>
           <p>正在加载配置...</p>
         </div>
       </div>
@@ -358,10 +356,10 @@ function SettingsPanel() {
   }
 
   return (
-    <div className={`panel ${styles.settingsPanelNew}`}>
-      <div className={styles.settingsSidebar}>
-        <div className={styles.settingsSidebarTitle}>{t("settings.title")}</div>
-        <nav className={styles.settingsNav}>
+    <div className="panel flex flex-row h-full overflow-hidden">
+      <div className="w-[180px] min-w-[180px] bg-card border-r flex flex-col py-5 overflow-y-auto shrink-0">
+        <div className="px-4 pb-4 text-sm font-bold text-foreground tracking-wide">{t("settings.title")}</div>
+        <nav className="flex flex-col gap-0.5 px-2">
           {(
             [
               { key: "provider", icon: "🔌", labelKey: "nav.provider" as const, dirty: 0 },
@@ -387,21 +385,25 @@ function SettingsPanel() {
           ).map((item) => (
             <button
               key={item.key}
-              className={`${styles.settingsNavItem} ${activeSection === item.key ? styles.settingsNavItemActive : ""}`}
+              className={`flex items-center gap-2.5 px-3 py-2.5 border-0 bg-transparent rounded-lg text-[13px] cursor-pointer transition-all text-left w-full ${
+                activeSection === item.key
+                  ? "bg-primary/15 text-primary font-semibold"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
               onClick={() => setActiveSection(item.key)}
             >
-              <span className={styles.settingsNavIcon}>{item.icon}</span>
-              <span className={styles.settingsNavLabel}>{t(item.labelKey)}</span>
+              <span className="text-base shrink-0 w-[22px] text-center">{item.icon}</span>
+              <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{t(item.labelKey)}</span>
               {item.dirty > 0 && (
-                <span className={`${styles.dirtyBadge} ${styles.navDirtyBadge}`}>{item.dirty}</span>
+                <span className="text-[10px] px-1.5 py-px rounded-md bg-primary/20 text-primary font-semibold shrink-0">{item.dirty}</span>
               )}
             </button>
           ))}
         </nav>
       </div>
 
-      <div className={styles.settingsContent}>
-        <div className={styles.settingsSectionContent}>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-6 py-4 pb-6">
           {activeSection === "agent" && (
             <AgentSettings
               config={config}
@@ -518,25 +520,25 @@ function SettingsPanel() {
           {activeSection === "aiRoles" && <AiRolesSettingsSection t={t} />}
 
           {activeSection === "about" && (
-            <div className={styles.settingsSectionCard}>
-              <div className={styles.settingsSection}>
-                <h3>{t("about.title")}</h3>
-                <div className={styles.aboutInfo}>
-                  <div className={styles.aboutLogo}>
-                    <img src="/logo.svg" alt="Hermes" />
+            <div className="animate-in fade-in slide-in-from-bottom-1.5 duration-200">
+              <div className="bg-card rounded-xl p-5 shadow-sm">
+                <h3 className="text-[15px] font-semibold text-foreground mb-4">{t("about.title")}</h3>
+                <div className="flex flex-col items-center py-5 gap-2">
+                  <div className="mb-1">
+                    <img src="/logo.svg" alt="Hermes" className="w-20 h-20 rounded-2xl" />
                   </div>
-                  <div className={styles.aboutName}>{t("app.name")}</div>
-                  <div className={styles.aboutVersion}>
+                  <div className="text-lg font-bold text-foreground">{t("app.name")}</div>
+                  <div className="text-[13px] text-muted-foreground">
                     {t("about.version")} {__APP_VERSION__}
                   </div>
-                  <div className={styles.aboutDesc}>{t("app.desc")}</div>
-                  <div className={styles.aboutMeta}>
-                    <div className={styles.aboutAuthor}>{t("about.author")}</div>
-                    <div className={styles.aboutEmail}>{t("about.email")}</div>
+                  <div className="text-[13px] text-muted-foreground mt-1">{t("app.desc")}</div>
+                  <div className="mt-3 flex flex-col items-center gap-1">
+                    <div className="text-xs text-muted-foreground">{t("about.author")}</div>
+                    <div className="text-xs text-muted-foreground">{t("about.email")}</div>
                   </div>
-                  <div className={styles.aboutUpdateSection}>
+                  <div className="mt-5 flex flex-col items-center gap-3">
                     <button
-                      className={styles.aboutUpdateBtn}
+                      className="px-6 py-2 border border-primary rounded-lg bg-transparent text-primary text-[13px] font-medium cursor-pointer transition-all hover:bg-primary/5"
                       onClick={async () => {
                         try {
                           const result = await invoke<{
@@ -565,18 +567,18 @@ function SettingsPanel() {
                       {t("about.checkUpdate")}
                     </button>
                     {updateInfo && (
-                      <div className={styles.aboutUpdateResult}>
+                      <div className="flex flex-col items-center gap-2 px-4 py-3 bg-muted rounded-lg border max-w-[320px] text-center">
                         {updateInfo.has_update ? (
                           <>
-                            <div className={styles.aboutUpdateAvailable}>
+                            <div className="text-sm font-semibold text-green-600">
                               {t("about.newVersionAvailable")} v{updateInfo.latest_version}
                             </div>
-                            <div className={styles.aboutUpdateNotes}>
+                            <div className="text-xs text-muted-foreground leading-relaxed max-h-[120px] overflow-y-auto">
                               {updateInfo.release_notes}
                             </div>
                             {updateInfo.download_url && (
                               <a
-                                className={styles.aboutUpdateLink}
+                                className="inline-block px-4 py-1.5 bg-primary text-white rounded-md text-xs no-underline transition-opacity hover:opacity-85"
                                 href={updateInfo.download_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
@@ -586,7 +588,7 @@ function SettingsPanel() {
                             )}
                           </>
                         ) : (
-                          <div className={styles.aboutUpdateCurrent}>
+                          <div className="text-[13px] text-muted-foreground">
                             {updateInfo.release_notes
                               ? t("about.updateCheckFailed")
                               : t("about.alreadyLatest")}
