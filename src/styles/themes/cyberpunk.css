@@ -1,0 +1,191 @@
+[data-theme="dark-cyberpunk"] {
+  --color-bg: #0a0a0f;
+  --color-surface: #12121a;
+  --color-text: #e0e0ff;
+  --color-text-secondary: #8888aa;
+  --color-border: #1a1a2e;
+  --color-sidebar-bg: #0e0e16;
+  --color-sidebar-border: #1a1a2e;
+  --color-input-bg: #12121a;
+  --color-hover: #1a1a2e;
+  --hover-bg: #1a1a2e;
+  --color-section-bg: #12121a;
+  --color-shadow: rgba(0, 255, 255, 0.05);
+  --color-toolbar-bg: #0e0e16;
+  --color-toolbar-border: #1a1a2e;
+  --color-msg-user-bg: #00f0ff;
+  --color-msg-user-text: #0a0a0f;
+  --color-msg-assistant-bg: #12121a;
+  --color-msg-assistant-text: #e0e0ff;
+  --color-nav-bg: #0e0e16;
+  --color-nav-hover: rgba(0, 240, 255, 0.06);
+  --color-nav-active: rgba(0, 240, 255, 0.12);
+  --color-nav-text: #8888aa;
+  --color-nav-text-active: #00f0ff;
+  --color-toast-success-bg: rgba(0, 255, 136, 0.1);
+  --color-toast-success-text: #00ff88;
+  --color-toast-error-bg: rgba(255, 0, 80, 0.1);
+  --color-toast-error-text: #ff0050;
+  --color-dirty-badge-bg: rgba(255, 200, 0, 0.1);
+  --color-dirty-badge-text: #ffc800;
+  --color-primary: #00f0ff;
+  --color-primary-hover: #33f3ff;
+  --color-file-tag-bg: rgba(0, 240, 255, 0.1);
+  --color-file-tag-text: #00f0ff;
+  --color-file-tag-hover: rgba(0, 240, 255, 0.18);
+  --color-provider-item-bg: #12121a;
+  --color-provider-item-border: #1a1a2e;
+  --color-provider-builtin-bg: rgba(0, 240, 255, 0.08);
+  --color-provider-builtin-text: #00f0ff;
+  --color-skill-hub-bg: rgba(255, 0, 128, 0.1);
+  --color-skill-hub-text: #ff0080;
+  --color-about-text-secondary: #666688;
+  --color-voice-user-bg: rgba(0, 240, 255, 0.1);
+  --color-voice-user-border: rgba(0, 240, 255, 0.2);
+  --color-voice-user-text: #00f0ff;
+  --color-voice-assistant-bg: rgba(0, 240, 255, 0.04);
+  --color-voice-assistant-border: rgba(0, 240, 255, 0.08);
+  --card-bg: #12121a;
+  --text-primary: #e0e0ff;
+  --text-secondary: #8888aa;
+  --text-tertiary: #555577;
+  --border-color: #1a1a2e;
+  --input-bg: #0e0e16;
+  --bg-secondary: #0a0a0f;
+  --bg-primary: #12121a;
+  --bg-tertiary: #0a0a0f;
+  --bg-hover: rgba(0, 240, 255, 0.04);
+  --primary: #00f0ff;
+  --color-bg-secondary: #0a0a0f;
+  --color-text-primary: #e0e0ff;
+}
+
+[data-theme="dark-cyberpunk"] .toolbar {
+  background: #0e0e16;
+  border-bottom: 1px solid #1a1a2e;
+  box-shadow: 0 1px 8px rgba(0, 240, 255, 0.05);
+}
+
+[data-theme="dark-cyberpunk"] .tabBtnActive {
+  background: #00f0ff;
+  color: #0a0a0f;
+  font-weight: 600;
+  text-shadow: none;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+[data-theme="dark-cyberpunk"] .settingsSidebar {
+  background: #0e0e16;
+  border-right: 1px solid #1a1a2e;
+}
+
+[data-theme="dark-cyberpunk"] .settingsNavItemActive {
+  background: rgba(0, 240, 255, 0.08);
+  color: #00f0ff;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+}
+
+[data-theme="dark-cyberpunk"] .settingsSection {
+  background: #12121a;
+  border: 1px solid #1a1a2e;
+  border-radius: 8px;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.03);
+}
+
+[data-theme="dark-cyberpunk"] .homeCard {
+  background: #12121a;
+  border: 1px solid #1a1a2e;
+  border-radius: 8px;
+}
+
+[data-theme="dark-cyberpunk"] .homeCard:hover {
+  border-color: #00f0ff;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.15);
+}
+
+[data-theme="dark-cyberpunk"] .messageBubbleUser {
+  background: #00f0ff;
+  color: #0a0a0f;
+  border-radius: 8px;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.2);
+}
+
+[data-theme="dark-cyberpunk"] .messageBubbleAssistant {
+  background: #12121a;
+  border: 1px solid #1a1a2e;
+  border-radius: 8px;
+}
+
+[data-theme="dark-cyberpunk"] .toggleLabel input[type="checkbox"]:checked {
+  background: #00f0ff;
+}
+
+[data-theme="dark-cyberpunk"] .sectionSaveBtn {
+  background: #00f0ff;
+  color: #0a0a0f;
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+[data-theme="dark-cyberpunk"] .formGroup input,
+[data-theme="dark-cyberpunk"] .formGroup select {
+  background: #0e0e16;
+  border: 1px solid #1a1a2e;
+  color: #e0e0ff;
+}
+
+[data-theme="dark-cyberpunk"] .formGroup input:focus,
+[data-theme="dark-cyberpunk"] .formGroup select:focus {
+  border-color: #00f0ff;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.15);
+}
+
+[data-theme="dark-cyberpunk"] .providerGridCard {
+  background: #12121a;
+  border: 1px solid #1a1a2e;
+  border-radius: 8px;
+}
+
+[data-theme="dark-cyberpunk"] .providerGridCard:hover {
+  border-color: #00f0ff;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.1);
+}
+
+[data-theme="dark-cyberpunk"] .thinkingBlock {
+  background: linear-gradient(135deg, #0e1a2a 0%, #1a0e2a 100%);
+  border: 1px solid rgba(0, 240, 255, 0.15);
+  border-radius: 8px;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.05);
+}
+
+[data-theme="dark-cyberpunk"] .thinkingBlock::before {
+  background: linear-gradient(180deg, #00f0ff, #ff0080);
+}
+
+[data-theme="dark-cyberpunk"] .thinkingDot {
+  background: #00f0ff;
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.5);
+}
+
+[data-theme="dark-cyberpunk"] .streamingCursor {
+  color: #00f0ff;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+}
+
+[data-theme="dark-cyberpunk"] .homeAvatarCircle {
+  background: linear-gradient(135deg, #0e1a2a, #1a0e2a);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);
+}
+
+[data-theme="dark-cyberpunk"] .spinner {
+  border-color: #1a1a2e;
+  border-top-color: #00f0ff;
+}
+
+[data-theme="dark-cyberpunk"] ::-webkit-scrollbar-thumb {
+  background: #1a1a2e;
+}
+
+[data-theme="dark-cyberpunk"] ::-webkit-scrollbar-thumb:hover {
+  background: #2a2a4e;
+}

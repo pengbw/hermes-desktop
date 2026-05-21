@@ -3,6 +3,7 @@
   "app.desc": "AI Intelligent Assistant Desktop Client",
   "tabs.home": "Home",
   "tabs.chat": "Chat",
+  "tabs.studio": "Studio",
   "tabs.settings": "Settings",
   "tabs.skills": "Skills",
   "settings.title": "Settings",

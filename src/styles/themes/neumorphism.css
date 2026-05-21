@@ -1,0 +1,205 @@
+[data-theme="light-neumorphism"] {
+  --color-bg: #e8ecf1;
+  --color-surface: #e8ecf1;
+  --color-text: #2d3748;
+  --color-text-secondary: #718096;
+  --color-border: #d8dce2;
+  --color-sidebar-bg: #e8ecf1;
+  --color-sidebar-border: #d8dce2;
+  --color-input-bg: #e8ecf1;
+  --color-hover: #dde1e7;
+  --hover-bg: #dde1e7;
+  --color-section-bg: #e8ecf1;
+  --color-shadow: rgba(0, 0, 0, 0.06);
+  --color-toolbar-bg: #e8ecf1;
+  --color-toolbar-border: #d8dce2;
+  --color-msg-user-bg: #6c5ce7;
+  --color-msg-user-text: #ffffff;
+  --color-msg-assistant-bg: #e8ecf1;
+  --color-msg-assistant-text: #2d3748;
+  --color-nav-bg: #e8ecf1;
+  --color-nav-hover: rgba(108, 92, 231, 0.06);
+  --color-nav-active: rgba(108, 92, 231, 0.1);
+  --color-nav-text: #718096;
+  --color-nav-text-active: #6c5ce7;
+  --color-toast-success-bg: #e8ecf1;
+  --color-toast-success-text: #38a169;
+  --color-toast-error-bg: #e8ecf1;
+  --color-toast-error-text: #e53e3e;
+  --color-dirty-badge-bg: #e8ecf1;
+  --color-dirty-badge-text: #dd6b20;
+  --color-primary: #6c5ce7;
+  --color-primary-hover: #5a4bd1;
+  --color-file-tag-bg: rgba(108, 92, 231, 0.08);
+  --color-file-tag-text: #6c5ce7;
+  --color-file-tag-hover: rgba(108, 92, 231, 0.14);
+  --color-provider-item-bg: #e8ecf1;
+  --color-provider-item-border: #d8dce2;
+  --color-provider-builtin-bg: rgba(108, 92, 231, 0.08);
+  --color-provider-builtin-text: #6c5ce7;
+  --color-skill-hub-bg: rgba(123, 31, 162, 0.08);
+  --color-skill-hub-text: #805ad5;
+  --color-about-text-secondary: #a0aec0;
+  --color-voice-user-bg: rgba(108, 92, 231, 0.08);
+  --color-voice-user-border: rgba(108, 92, 231, 0.15);
+  --color-voice-user-text: #6c5ce7;
+  --color-voice-assistant-bg: rgba(108, 92, 231, 0.04);
+  --color-voice-assistant-border: rgba(108, 92, 231, 0.08);
+  --card-bg: #e8ecf1;
+  --text-primary: #2d3748;
+  --text-secondary: #718096;
+  --text-tertiary: #a0aec0;
+  --border-color: #d8dce2;
+  --input-bg: #e8ecf1;
+  --bg-secondary: #e8ecf1;
+  --bg-primary: #e8ecf1;
+  --bg-tertiary: #e8ecf1;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --primary: #6c5ce7;
+  --color-bg-secondary: #e8ecf1;
+  --color-text-primary: #2d3748;
+}
+
+[data-theme="light-neumorphism"] .toolbar {
+  background: #e8ecf1;
+  box-shadow:
+    6px 6px 12px #c8ccd2,
+    -6px -6px 12px #ffffff;
+  border-bottom: none;
+}
+
+[data-theme="light-neumorphism"] .tabBtnActive {
+  background: #6c5ce7;
+  box-shadow:
+    3px 3px 6px #c8ccd2,
+    -3px -3px 6px #ffffff;
+  border-radius: 8px;
+}
+
+[data-theme="light-neumorphism"] .settingsSidebar {
+  background: #e8ecf1;
+  box-shadow:
+    4px 0 8px #c8ccd2,
+    -4px 0 8px #ffffff;
+  border-right: none;
+}
+
+[data-theme="light-neumorphism"] .settingsNavItemActive {
+  background: #e8ecf1;
+  box-shadow:
+    inset 3px 3px 6px #c8ccd2,
+    inset -3px -3px 6px #ffffff;
+  color: #6c5ce7;
+}
+
+[data-theme="light-neumorphism"] .settingsSection {
+  background: #e8ecf1;
+  box-shadow:
+    6px 6px 12px #c8ccd2,
+    -6px -6px 12px #ffffff;
+  border: none;
+  border-radius: 16px;
+}
+
+[data-theme="light-neumorphism"] .homeCard {
+  background: #e8ecf1;
+  box-shadow:
+    5px 5px 10px #c8ccd2,
+    -5px -5px 10px #ffffff;
+  border: none;
+  border-radius: 14px;
+}
+
+[data-theme="light-neumorphism"] .homeCard:hover {
+  box-shadow:
+    8px 8px 16px #c8ccd2,
+    -8px -8px 16px #ffffff;
+}
+
+[data-theme="light-neumorphism"] .messageBubbleUser {
+  background: #6c5ce7;
+  border-radius: 14px;
+  box-shadow:
+    4px 4px 8px #c8ccd2,
+    -2px -2px 6px #ffffff;
+}
+
+[data-theme="light-neumorphism"] .messageBubbleAssistant {
+  background: #e8ecf1;
+  border-radius: 14px;
+  box-shadow:
+    inset 3px 3px 6px #c8ccd2,
+    inset -3px -3px 6px #ffffff;
+}
+
+[data-theme="light-neumorphism"] .toggleLabel input[type="checkbox"]:checked {
+  background: #6c5ce7;
+}
+
+[data-theme="light-neumorphism"] .sectionSaveBtn {
+  background: #6c5ce7;
+  box-shadow:
+    4px 4px 8px #c8ccd2,
+    -2px -2px 6px #ffffff;
+  border-radius: 10px;
+}
+
+[data-theme="light-neumorphism"] .formGroup input,
+[data-theme="light-neumorphism"] .formGroup select {
+  background: #e8ecf1;
+  border: none;
+  box-shadow:
+    inset 3px 3px 6px #c8ccd2,
+    inset -3px -3px 6px #ffffff;
+  border-radius: 10px;
+}
+
+[data-theme="light-neumorphism"] .formGroup input:focus,
+[data-theme="light-neumorphism"] .formGroup select:focus {
+  box-shadow:
+    inset 3px 3px 6px #c8ccd2,
+    inset -3px -3px 6px #ffffff,
+    0 0 0 2px rgba(108, 92, 231, 0.3);
+}
+
+[data-theme="light-neumorphism"] .providerGridCard {
+  background: #e8ecf1;
+  box-shadow:
+    5px 5px 10px #c8ccd2,
+    -5px -5px 10px #ffffff;
+  border: none;
+  border-radius: 14px;
+}
+
+[data-theme="light-neumorphism"] .homeAvatarCircle {
+  background: #e8ecf1;
+  box-shadow:
+    6px 6px 12px #c8ccd2,
+    -6px -6px 12px #ffffff;
+}
+
+[data-theme="light-neumorphism"] .thinkingBlock {
+  background: #e8ecf1;
+  box-shadow:
+    inset 3px 3px 6px #c8ccd2,
+    inset -3px -3px 6px #ffffff;
+  border: none;
+  border-radius: 14px;
+}
+
+[data-theme="light-neumorphism"] .thinkingBlock::before {
+  background: linear-gradient(180deg, #6c5ce7, #805ad5);
+}
+
+[data-theme="light-neumorphism"] .thinkingDot {
+  background: #6c5ce7;
+}
+
+[data-theme="light-neumorphism"] .streamingCursor {
+  color: #6c5ce7;
+}
+
+[data-theme="light-neumorphism"] .spinner {
+  border-color: #d8dce2;
+  border-top-color: #6c5ce7;
+}

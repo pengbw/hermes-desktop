@@ -1,0 +1,186 @@
+[data-theme="dark-glassmorphism"] {
+  --color-bg: #1a1035;
+  --color-surface: rgba(255, 255, 255, 0.08);
+  --color-text: #f0f0f5;
+  --color-text-secondary: #a0a0b8;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-sidebar-bg: rgba(255, 255, 255, 0.05);
+  --color-sidebar-border: rgba(255, 255, 255, 0.08);
+  --color-input-bg: rgba(255, 255, 255, 0.06);
+  --color-hover: rgba(255, 255, 255, 0.1);
+  --hover-bg: rgba(255, 255, 255, 0.08);
+  --color-section-bg: rgba(255, 255, 255, 0.04);
+  --color-shadow: rgba(0, 0, 0, 0.3);
+  --color-toolbar-bg: rgba(255, 255, 255, 0.06);
+  --color-toolbar-border: rgba(255, 255, 255, 0.08);
+  --color-msg-user-bg: rgba(102, 126, 234, 0.7);
+  --color-msg-user-text: #ffffff;
+  --color-msg-assistant-bg: rgba(255, 255, 255, 0.06);
+  --color-msg-assistant-text: #f0f0f5;
+  --color-nav-bg: rgba(255, 255, 255, 0.05);
+  --color-nav-hover: rgba(102, 126, 234, 0.1);
+  --color-nav-active: rgba(102, 126, 234, 0.18);
+  --color-nav-text: #a0a0b8;
+  --color-nav-text-active: #8b9cf7;
+  --color-toast-success-bg: rgba(46, 125, 50, 0.2);
+  --color-toast-success-text: #81c784;
+  --color-toast-error-bg: rgba(198, 40, 40, 0.2);
+  --color-toast-error-text: #ef9a9a;
+  --color-dirty-badge-bg: rgba(255, 152, 0, 0.2);
+  --color-dirty-badge-text: #ffb74d;
+  --color-primary: #667eea;
+  --color-primary-hover: #7c93f7;
+  --color-file-tag-bg: rgba(102, 126, 234, 0.15);
+  --color-file-tag-text: #8b9cf7;
+  --color-file-tag-hover: rgba(102, 126, 234, 0.25);
+  --color-provider-item-bg: rgba(255, 255, 255, 0.04);
+  --color-provider-item-border: rgba(255, 255, 255, 0.08);
+  --color-provider-builtin-bg: rgba(102, 126, 234, 0.12);
+  --color-provider-builtin-text: #8b9cf7;
+  --color-skill-hub-bg: rgba(123, 31, 162, 0.15);
+  --color-skill-hub-text: #ce93d8;
+  --color-about-text-secondary: #888;
+  --color-voice-user-bg: rgba(102, 126, 234, 0.12);
+  --color-voice-user-border: rgba(102, 126, 234, 0.2);
+  --color-voice-user-text: #8b9cf7;
+  --color-voice-assistant-bg: rgba(102, 126, 234, 0.05);
+  --color-voice-assistant-border: rgba(102, 126, 234, 0.08);
+  --card-bg: rgba(255, 255, 255, 0.06);
+  --text-primary: #f0f0f5;
+  --text-secondary: #a0a0b8;
+  --text-tertiary: #6a6a80;
+  --border-color: rgba(255, 255, 255, 0.1);
+  --input-bg: rgba(255, 255, 255, 0.06);
+  --bg-secondary: #1a1035;
+  --bg-primary: rgba(255, 255, 255, 0.06);
+  --bg-tertiary: #1a1035;
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --primary: #667eea;
+  --color-bg-secondary: #1a1035;
+  --color-text-primary: #f0f0f5;
+}
+
+[data-theme="dark-glassmorphism"] .toolbar {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark-glassmorphism"] .tabBtnActive {
+  background: rgba(102, 126, 234, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+[data-theme="dark-glassmorphism"] .settingsSidebar {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark-glassmorphism"] .settingsNavItemActive {
+  background: rgba(102, 126, 234, 0.15);
+  color: #8b9cf7;
+}
+
+[data-theme="dark-glassmorphism"] .settingsSection {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+}
+
+[data-theme="dark-glassmorphism"] .homeCard {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
+
+[data-theme="dark-glassmorphism"] .homeCard:hover {
+  border-color: rgba(102, 126, 234, 0.3);
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.15);
+}
+
+[data-theme="dark-glassmorphism"] .messageBubbleUser {
+  background: rgba(102, 126, 234, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+}
+
+[data-theme="dark-glassmorphism"] .messageBubbleAssistant {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
+
+[data-theme="dark-glassmorphism"] .toggleLabel input[type="checkbox"]:checked {
+  background: #667eea;
+}
+
+[data-theme="dark-glassmorphism"] .sectionSaveBtn {
+  background: #667eea;
+}
+
+[data-theme="dark-glassmorphism"] .formGroup input,
+[data-theme="dark-glassmorphism"] .formGroup select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f0f0f5;
+}
+
+[data-theme="dark-glassmorphism"] .formGroup input:focus,
+[data-theme="dark-glassmorphism"] .formGroup select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+[data-theme="dark-glassmorphism"] .providerGridCard {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
+
+[data-theme="dark-glassmorphism"] .thinkingBlock {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(123, 31, 162, 0.12) 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(102, 126, 234, 0.15);
+  border-radius: 14px;
+}
+
+[data-theme="dark-glassmorphism"] .thinkingBlock::before {
+  background: linear-gradient(180deg, #667eea, #af52de);
+}
+
+[data-theme="dark-glassmorphism"] .thinkingDot {
+  background: #667eea;
+}
+
+[data-theme="dark-glassmorphism"] .streamingCursor {
+  color: #667eea;
+}
+
+[data-theme="dark-glassmorphism"] .homeAvatarCircle {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.3), rgba(123, 31, 162, 0.3));
+  box-shadow: 0 4px 24px rgba(102, 126, 234, 0.3);
+}
+
+[data-theme="dark-glassmorphism"] .spinner {
+  border-color: rgba(255, 255, 255, 0.08);
+  border-top-color: #667eea;
+}
+
+[data-theme="dark-glassmorphism"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}

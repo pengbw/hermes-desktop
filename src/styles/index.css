@@ -1,4 +1,11 @@
 @import "tailwindcss";
+@import "./themes/macos-light.css";
+@import "./themes/macos-dark.css";
+@import "./themes/glassmorphism.css";
+@import "./themes/neumorphism.css";
+@import "./themes/cyberpunk.css";
+@import "./themes/aurora.css";
+@import "./themes/ai-native.css";
 
 @theme {
   /* 白色主题配色 */

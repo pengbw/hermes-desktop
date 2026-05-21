@@ -28,18 +28,19 @@
 }
 
 .studioNewBtn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  background: var(--color-primary);
-  color: #fff;
-  font-size: 14px;
+  padding: 6px 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12px;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: all 0.15s;
+  font-weight: 500;
 }
 
 .studioNewBtn:hover {
-  opacity: 0.85;
+  background: var(--color-nav-hover);
 }
 
 /* ── 创建项目弹窗 ── */
@@ -324,30 +325,23 @@
 }
 
 .studioBtnPrimary {
-  padding: 8px 20px;
-  border: none;
-  border-radius: 8px;
-  background: linear-gradient(
-    135deg,
-    var(--color-primary),
-    color-mix(in srgb, var(--color-primary) 85%, #000)
-  );
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
+  padding: 6px 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 8px rgba(79, 195, 247, 0.2);
+  transition: all 0.15s;
 }
 
 .studioBtnPrimary:hover {
-  box-shadow: 0 4px 16px rgba(79, 195, 247, 0.3);
-  transform: translateY(-1px);
+  background: var(--color-nav-hover);
 }
 
 .studioBtnPrimary:active {
   transform: translateY(0);
-  box-shadow: 0 1px 4px rgba(79, 195, 247, 0.15);
 }
 
 .studioBtnSecondary {
@@ -518,22 +512,23 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   padding: 6px 14px;
   border-radius: 6px;
-  color: var(--text-secondary, #666);
-  transition: all 0.2s;
+  color: var(--color-text-secondary);
+  transition: all 0.15s;
   font-weight: 500;
 }
 
 .studioTab:hover {
-  background: var(--hover-bg, rgba(0, 0, 0, 0.04));
-  color: var(--text-primary, #333);
+  background: var(--color-nav-hover);
+  color: var(--color-text);
 }
 
 .studioTab.active {
-  background: var(--color-primary);
-  color: #fff;
+  border: 1px solid var(--color-primary);
+  background: transparent;
+  color: var(--color-primary);
 }
 
 .studioSearchBox {
@@ -1660,15 +1655,15 @@
   padding: 4px 12px;
   border: none;
   border-radius: 6px;
-  background: #00b894;
+  background: var(--color-primary);
   color: #fff;
   font-size: 12px;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: all 0.15s;
 }
 
 .studioApproveBtn:hover {
-  opacity: 0.85;
+  background: var(--color-primary-hover);
 }
 
 .studioRejectBtn {
@@ -1679,7 +1674,7 @@
   color: #fff;
   font-size: 12px;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: all 0.15s;
 }
 
 .studioRejectBtn:hover {
@@ -4872,9 +4867,9 @@
   height: 28px;
   padding: 0 14px;
   border-radius: 6px;
-  border: 1px solid var(--color-primary, #6c5ce7);
+  border: 1px solid var(--color-primary);
   background: transparent;
-  color: var(--color-primary, #6c5ce7);
+  color: var(--color-primary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
@@ -4883,16 +4878,16 @@
 }
 
 .taskMgmtCreateBtn:hover {
-  background: var(--color-nav-hover, rgba(108, 92, 231, 0.08));
+  background: var(--color-nav-hover);
 }
 
 .taskMgmtAutoDispatchBtn {
   height: 28px;
   padding: 0 14px;
   border-radius: 6px;
-  border: 1px solid var(--color-primary, #6c5ce7);
+  border: 1px solid var(--color-primary);
   background: transparent;
-  color: var(--color-primary, #6c5ce7);
+  color: var(--color-primary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
@@ -4901,7 +4896,7 @@
 }
 
 .taskMgmtAutoDispatchBtn:hover {
-  background: var(--color-primary, #6c5ce7);
+  background: var(--color-primary);
   color: #fff;
 }
 
@@ -5798,9 +5793,9 @@
 }
 
 .taskDetailEditActions button:first-child {
-  background: #6c5ce7;
+  background: var(--color-primary);
   color: #fff;
-  border-color: #6c5ce7;
+  border-color: var(--color-primary);
 }
 
 .taskDetailCommentList {
@@ -5851,13 +5846,19 @@
 
 .taskDetailSendBtn {
   align-self: flex-end;
-  padding: 6px 16px;
-  background: #6c5ce7;
+  padding: 6px 14px;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.taskDetailSendBtn:hover:not(:disabled) {
+  background: var(--color-primary-hover);
 }
 
 .taskDetailSendBtn:disabled {
@@ -5940,12 +5941,17 @@
 
 .taskDetailLinkForm button {
   padding: 6px 12px;
-  background: #6c5ce7;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.taskDetailLinkForm button:hover:not(:disabled) {
+  background: var(--color-primary-hover);
 }
 
 .taskDetailLinkForm button:disabled {
@@ -6025,16 +6031,16 @@
 .taskDetailDispatchBtn {
   padding: 5px 12px;
   border-radius: 6px;
-  border: 1px solid #00b894;
+  border: 1px solid var(--color-primary);
   background: transparent;
-  color: #00b894;
+  color: var(--color-primary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .taskDetailDispatchBtn:hover {
-  background: #00b894;
+  background: var(--color-primary);
   color: #fff;
 }
 
@@ -6060,17 +6066,18 @@
 
 .wfRunStartBtn {
   padding: 6px 14px;
-  background: #6c5ce7;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
-  transition: background 0.2s;
+  font-size: 12px;
+  transition: all 0.15s;
+  font-weight: 500;
 }
 
 .wfRunStartBtn:hover {
-  background: #5b4cdb;
+  background: var(--color-primary-hover);
 }
 
 .wfRunStartForm {
@@ -6092,13 +6099,19 @@
 
 .wfRunStartSubmit {
   align-self: flex-end;
-  padding: 6px 16px;
-  background: #6c5ce7;
+  padding: 6px 14px;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.wfRunStartSubmit:hover:not(:disabled) {
+  background: var(--color-primary-hover);
 }
 
 .wfRunStartSubmit:disabled {
@@ -6366,17 +6379,18 @@
 
 .wfRunConfirmApprove {
   padding: 6px 14px;
-  background: #00b894;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
-  transition: background 0.15s;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s;
 }
 
 .wfRunConfirmApprove:hover {
-  background: #00a884;
+  background: var(--color-primary-hover);
 }
 
 .wfRunConfirmReject {
@@ -6445,17 +6459,18 @@
 
 .artifactVersionCreateBtn {
   padding: 6px 14px;
-  background: #6c5ce7;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
-  transition: background 0.2s;
+  font-size: 12px;
+  transition: all 0.15s;
+  font-weight: 500;
 }
 
 .artifactVersionCreateBtn:hover {
-  background: #5b4cdb;
+  background: var(--color-primary-hover);
 }
 
 .artifactVersionList {
@@ -6539,12 +6554,17 @@
 
 .artifactVersionDiffBtn {
   padding: 6px 12px;
-  background: #6c5ce7;
+  background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.artifactVersionDiffBtn:hover:not(:disabled) {
+  background: var(--color-primary-hover);
 }
 
 .artifactVersionDiffBtn:disabled {
@@ -6792,19 +6812,19 @@
   align-items: center;
   gap: 2px;
   padding: 3px 10px;
-  border: 1px dashed var(--border-color, #e0e0e0);
+  border: 1px dashed var(--color-border);
   border-radius: 14px;
   background: transparent;
-  color: var(--text-secondary, #636e72);
+  color: var(--color-text-secondary);
   cursor: pointer;
   font-size: 12px;
   transition: all 0.15s;
 }
 
 .roleSkillAddBtn:hover {
-  border-color: #6c5ce7;
-  color: #6c5ce7;
-  background: rgba(108, 92, 231, 0.04);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-nav-hover);
 }
 
 .skillPickerOverlay {

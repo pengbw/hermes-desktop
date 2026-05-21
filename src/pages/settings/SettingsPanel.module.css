@@ -393,18 +393,20 @@
 
 .modelRefreshBtn {
   background: none;
-  border: 1px solid var(--color-border, #e0e0e0);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 4px 8px;
   cursor: pointer;
   font-size: 14px;
   transition: all 0.15s;
   flex-shrink: 0;
+  color: var(--color-text-secondary);
 }
 
 .modelRefreshBtn:hover {
   border-color: var(--color-primary);
-  background: rgba(79, 195, 247, 0.06);
+  color: var(--color-primary);
+  background: var(--color-nav-hover);
 }
 
 .toggleLabel {
@@ -420,7 +422,7 @@
   width: 40px;
   height: 22px;
   appearance: none;
-  background: #d0d0d0;
+  background: var(--color-border);
   border-radius: 11px;
   position: relative;
   cursor: pointer;
@@ -431,7 +433,7 @@
 }
 
 .toggleLabel input[type="checkbox"]:checked {
-  background: #4fc3f7;
+  background: var(--color-primary);
 }
 
 .toggleLabel input[type="checkbox"]::after {
@@ -529,26 +531,24 @@
 }
 
 .sectionSaveBtn {
-  padding: 8px 16px;
-  background: #4fc3f7;
+  padding: 6px 14px;
+  background: var(--color-primary);
   color: #ffffff;
   border: none;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
   font-weight: 500;
 }
 
 .sectionSaveBtn:hover:not(:disabled) {
-  background: #29b6f6;
-  transform: translateY(-1px);
+  background: var(--color-primary-hover);
 }
 
 .sectionSaveBtn:disabled {
-  background: #d0d0d0;
+  opacity: 0.5;
   cursor: not-allowed;
-  transform: none;
 }
 
 .aboutInfo {

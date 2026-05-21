@@ -66,7 +66,7 @@
 }
 
 .tabBtnActive {
-  background: #4fc3f7;
+  background: var(--color-primary);
   color: #ffffff;
   font-weight: 500;
 }
@@ -86,7 +86,7 @@
 }
 
 .avatarToggleBtn:hover {
-  background: rgba(79, 195, 247, 0.1);
+  background: var(--color-nav-hover);
 }
 
 .avatarToggleActive {

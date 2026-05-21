@@ -1,6 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useTheme } from "../../contexts/ThemeContext";
 import { useI18n } from "../../contexts/I18nContext";
 import type { HermesConfigData, AvatarGesture } from "@core/types";
 import { CardManagerPanel } from "@pages/cards";
@@ -19,7 +18,6 @@ import styles from "./SettingsPanel.module.css";
 declare const __APP_VERSION__: string;
 
 function SettingsPanel() {
-  const { theme, setTheme } = useTheme();
   const { locale, setLocale, t } = useI18n();
   const [config, setConfig] = useState<HermesConfigData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -467,7 +465,6 @@ function SettingsPanel() {
 
           {activeSection === "system" && (
             <SystemSettings
-              theme={theme}
               locale={locale}
               showReasoning={showReasoning}
               ttsEnabled={ttsEnabled}
@@ -476,7 +473,6 @@ function SettingsPanel() {
               memoryEnabled={memoryEnabled}
               dirtyFields={dirtyFields}
               saving={saving}
-              onThemeChange={setTheme}
               onLocaleChange={setLocale}
               onShowReasoningChange={(v) => {
                 setShowReasoning(v);

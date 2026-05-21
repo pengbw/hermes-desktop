@@ -1,0 +1,211 @@
+[data-theme="light-macos"] {
+  --color-bg: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-text: #1d1d1f;
+  --color-text-secondary: #86868b;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-sidebar-bg: rgba(246, 246, 246, 0.85);
+  --color-sidebar-border: rgba(0, 0, 0, 0.06);
+  --color-input-bg: #ffffff;
+  --color-hover: #f0f0f2;
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  --color-section-bg: #f9f9fb;
+  --color-shadow: rgba(0, 0, 0, 0.04);
+  --color-toolbar-bg: rgba(255, 255, 255, 0.72);
+  --color-toolbar-border: rgba(0, 0, 0, 0.06);
+  --color-msg-user-bg: #007aff;
+  --color-msg-user-text: #ffffff;
+  --color-msg-assistant-bg: #f0f0f2;
+  --color-msg-assistant-text: #1d1d1f;
+  --color-nav-bg: rgba(246, 246, 246, 0.85);
+  --color-nav-hover: rgba(0, 122, 255, 0.06);
+  --color-nav-active: rgba(0, 122, 255, 0.1);
+  --color-nav-text: #86868b;
+  --color-nav-text-active: #007aff;
+  --color-toast-success-bg: rgba(52, 199, 89, 0.12);
+  --color-toast-success-text: #248a3d;
+  --color-toast-error-bg: rgba(255, 59, 48, 0.12);
+  --color-toast-error-text: #d70015;
+  --color-dirty-badge-bg: rgba(255, 149, 0, 0.12);
+  --color-dirty-badge-text: #c93400;
+  --color-primary: #007aff;
+  --color-primary-hover: #0066d6;
+  --color-file-tag-bg: rgba(0, 122, 255, 0.08);
+  --color-file-tag-text: #007aff;
+  --color-file-tag-hover: rgba(0, 122, 255, 0.14);
+  --color-provider-item-bg: #f9f9fb;
+  --color-provider-item-border: rgba(0, 0, 0, 0.06);
+  --color-provider-builtin-bg: rgba(0, 122, 255, 0.08);
+  --color-provider-builtin-text: #007aff;
+  --color-skill-hub-bg: rgba(175, 82, 222, 0.08);
+  --color-skill-hub-text: #af52de;
+  --color-about-text-secondary: #86868b;
+  --color-voice-user-bg: rgba(0, 122, 255, 0.08);
+  --color-voice-user-border: rgba(0, 122, 255, 0.15);
+  --color-voice-user-text: #007aff;
+  --color-voice-assistant-bg: rgba(0, 122, 255, 0.04);
+  --color-voice-assistant-border: rgba(0, 122, 255, 0.08);
+  --card-bg: #ffffff;
+  --text-primary: #1d1d1f;
+  --text-secondary: #86868b;
+  --text-tertiary: #aeaeb2;
+  --border-color: rgba(0, 0, 0, 0.08);
+  --input-bg: #ffffff;
+  --bg-secondary: #f5f5f7;
+  --bg-primary: #ffffff;
+  --bg-tertiary: #f9f9fb;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --primary: #007aff;
+  --color-bg-secondary: #f5f5f7;
+  --color-text-primary: #1d1d1f;
+
+  --effect-vibrancy: blur(20px) saturate(180%);
+  --effect-sidebar-opacity: 0.85;
+  --effect-toolbar-opacity: 0.72;
+  --radius-card: 10px;
+  --radius-button: 6px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-elevated: 0 4px 14px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light-macos"] .toolbar {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light-macos"] .tabBtnActive {
+  background: #007aff;
+  border-radius: 4px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+[data-theme="light-macos"] .settingsSidebar {
+  background: rgba(246, 246, 246, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-right: 0.5px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light-macos"] .settingsNavItemActive {
+  background: rgba(0, 122, 255, 0.1);
+  color: #007aff;
+  font-weight: 500;
+}
+
+[data-theme="light-macos"] .toggleLabel input[type="checkbox"]:checked {
+  background: #007aff;
+}
+
+[data-theme="light-macos"] .sectionSaveBtn {
+  background: #007aff;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+[data-theme="light-macos"] .sectionSaveBtn:hover:not(:disabled) {
+  background: #0066d6;
+}
+
+[data-theme="light-macos"] .messageBubbleUser {
+  background: #007aff;
+  border-radius: 12px;
+}
+
+[data-theme="light-macos"] .messageBubbleAssistant {
+  background: #f0f0f2;
+  border-radius: 12px;
+}
+
+[data-theme="light-macos"] .homeAvatarCircle {
+  background: linear-gradient(135deg, #e8f4fd, #cce5ff);
+  box-shadow: 0 4px 20px rgba(0, 122, 255, 0.2);
+}
+
+[data-theme="light-macos"] .homeCard {
+  border-radius: 10px;
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+[data-theme="light-macos"] .homeCard:hover {
+  border-color: rgba(0, 122, 255, 0.3);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px) scale(1.01);
+}
+
+[data-theme="light-macos"] .settingsSection {
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 0.5px solid rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light-macos"] .formGroup input,
+[data-theme="light-macos"] .formGroup select {
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+[data-theme="light-macos"] .formGroup input:focus,
+[data-theme="light-macos"] .formGroup select:focus {
+  border-color: #007aff;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+[data-theme="light-macos"] .providerGridCard {
+  border-radius: 10px;
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+[data-theme="light-macos"] .providerGridCard:hover {
+  border-color: rgba(0, 122, 255, 0.3);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light-macos"] .providerGridCardHeader {
+  background: linear-gradient(135deg, rgba(0, 122, 255, 0.04) 0%, rgba(0, 122, 255, 0.01) 100%);
+}
+
+[data-theme="light-macos"] .thinkingBlock {
+  background: linear-gradient(135deg, #f0f5ff 0%, #f5f0ff 100%);
+  border: 0.5px solid rgba(0, 122, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="light-macos"] .thinkingBlock::before {
+  background: linear-gradient(180deg, #007aff, #af52de);
+}
+
+[data-theme="light-macos"] .thinkingDot {
+  background: #007aff;
+}
+
+[data-theme="light-macos"] .streamingCursor {
+  color: #007aff;
+}
+
+[data-theme="light-macos"] .actionBtn:hover:not(:disabled) {
+  background: rgba(0, 122, 255, 0.08);
+  color: #007aff;
+}
+
+[data-theme="light-macos"] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+[data-theme="light-macos"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="light-macos"] .spinner {
+  border-color: rgba(0, 0, 0, 0.08);
+  border-top-color: #007aff;
+}

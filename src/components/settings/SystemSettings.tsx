@@ -1,5 +1,7 @@
+import ThemePicker from "./ThemePicker";
+import styles from "@pages/settings/SettingsPanel.module.css";
+
 interface SystemSettingsProps {
-  theme: "light" | "dark" | "system";
   locale: "zh-CN" | "zh-XG" | "en";
   showReasoning: boolean;
   ttsEnabled: boolean;
@@ -8,7 +10,6 @@ interface SystemSettingsProps {
   memoryEnabled: boolean;
   dirtyFields: Set<string>;
   saving: boolean;
-  onThemeChange: (theme: "light" | "dark" | "system") => void;
   onLocaleChange: (locale: "zh-CN" | "zh-XG" | "en") => void;
   onShowReasoningChange: (v: boolean) => void;
   onTtsEnabledChange: (v: boolean) => void;
@@ -19,10 +20,7 @@ interface SystemSettingsProps {
   t: (key: string) => string;
 }
 
-import styles from "@pages/settings/SettingsPanel.module.css";
-
 export default function SystemSettings({
-  theme,
   locale,
   showReasoning,
   ttsEnabled,
@@ -31,7 +29,6 @@ export default function SystemSettings({
   memoryEnabled,
   dirtyFields,
   saving,
-  onThemeChange,
   onLocaleChange,
   onShowReasoningChange,
   onTtsEnabledChange,
@@ -48,29 +45,7 @@ export default function SystemSettings({
       </div>
       <div className={styles.settingsSection}>
         <h3>{t("system.theme")}</h3>
-        <div className={styles.themeOptions}>
-          <button
-            className={`${styles.themeOption} ${theme === "light" ? styles.themeOptionActive : ""}`}
-            onClick={() => onThemeChange("light")}
-          >
-            <span className={styles.themeOptionIcon}>☀️</span>
-            <span className={styles.themeOptionLabel}>{t("system.theme.light")}</span>
-          </button>
-          <button
-            className={`${styles.themeOption} ${theme === "dark" ? styles.themeOptionActive : ""}`}
-            onClick={() => onThemeChange("dark")}
-          >
-            <span className={styles.themeOptionIcon}>🌙</span>
-            <span className={styles.themeOptionLabel}>{t("system.theme.dark")}</span>
-          </button>
-          <button
-            className={`${styles.themeOption} ${theme === "system" ? styles.themeOptionActive : ""}`}
-            onClick={() => onThemeChange("system")}
-          >
-            <span className={styles.themeOptionIcon}>🖥️</span>
-            <span className={styles.themeOptionLabel}>{t("system.theme.system")}</span>
-          </button>
-        </div>
+        <ThemePicker />
       </div>
       <div className={styles.settingsSection}>
         <h3>{t("system.language")}</h3>
