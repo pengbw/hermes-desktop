@@ -258,7 +258,7 @@ pub async fn get_conversation_count(app: AppHandle) -> Result<i64, String> {
 
 #[tauri::command]
 pub async fn get_hermes_config(app: AppHandle) -> Result<serde_json::Value, String> {
-    use crate::commands::helpers::serde_yaml_to_json;
+    use crate::commands::helpers::{hermes_home_dir, serde_yaml_to_json};
 
     let workspace_root: String = {
         let state = app.state::<crate::commands::helpers::AppState>();
@@ -272,6 +272,7 @@ pub async fn get_hermes_config(app: AppHandle) -> Result<serde_json::Value, Stri
 
     let config_path_output = hermes_command()
         .args(&["config", "path"])
+        .env("HERMES_HOME", hermes_home_dir())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -280,6 +281,7 @@ pub async fn get_hermes_config(app: AppHandle) -> Result<serde_json::Value, Stri
 
     let env_path_output = hermes_command()
         .args(&["config", "env-path"])
+        .env("HERMES_HOME", hermes_home_dir())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
