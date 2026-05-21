@@ -19,6 +19,7 @@ function SettingsPanel() {
   const { locale, setLocale, t } = useI18n();
   const [config, setConfig] = useState<HermesConfigData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{
     text: string;
@@ -291,6 +292,7 @@ function SettingsPanel() {
 
   const loadConfig = async (providerList: Provider[]) => {
     setLoading(true);
+    setLoadError(null);
     try {
       const result = await invoke<HermesConfigData>("get_hermes_config");
       setConfig(result);
@@ -329,8 +331,8 @@ function SettingsPanel() {
       if (result.provider) {
         fetchModelList(result.provider);
       }
-    } catch {
-      // console.error("Failed to load hermes config:", err);
+    } catch (err) {
+      setLoadError(String(err));
     } finally {
       setLoading(false);
     }
@@ -404,6 +406,23 @@ function SettingsPanel() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto px-6 py-4 pb-6">
+          {loadError && (
+            <div className="mb-4 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-3">
+              <span className="text-lg shrink-0 mt-0.5">⚠️</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-red-600 font-medium text-sm m-0">配置加载失败，当前显示默认值</p>
+                <p className="text-muted-foreground text-xs mt-1 break-all">{loadError}</p>
+              </div>
+              <button
+                className="px-3 py-1 bg-primary text-primary-foreground border-0 rounded text-xs cursor-pointer shrink-0 hover:bg-primary/90"
+                onClick={() => {
+                  loadProviders().then((list) => loadConfig(list));
+                }}
+              >
+                重试
+              </button>
+            </div>
+          )}
           {activeSection === "agent" && (
             <AgentSettings
               config={config}

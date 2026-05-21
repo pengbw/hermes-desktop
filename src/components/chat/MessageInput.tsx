@@ -106,28 +106,26 @@ export default function MessageInput({
   const lastCompositionEndRef = useRef(0);
 
   useEffect(() => {
-    const loadProviders = async () => {
+    const loadProvidersAndConfig = async () => {
       try {
         const list =
           await invoke<
             { id: string; name: string; value: string; baseUrl: string; apiKey: string }[]
           >("list_providers");
         setProviders(list);
-      } catch {
-        /* ignore */
-      }
-    };
-    const loadCurrentModel = async () => {
-      try {
+
         const config = await invoke<{ model: string; provider: string }>("get_hermes_config");
         setCurrentModel(config.model);
-        setCurrentProvider(config.provider);
+        // Match provider by value from the loaded list
+        const matched = list.find((p) => p.value === config.provider);
+        if (matched) {
+          setCurrentProvider(matched.value);
+        }
       } catch {
         /* ignore */
       }
     };
-    loadProviders();
-    loadCurrentModel();
+    loadProvidersAndConfig();
   }, []);
 
   useEffect(() => {
@@ -329,7 +327,7 @@ export default function MessageInput({
           placeholder={t("chat.inputPlaceholder")}
           rows={1}
           disabled={isStreaming}
-          className="min-h-[44px] resize-none border-0 bg-transparent px-3 py-2.5 pr-24 focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="min-h-[96px] resize-none border-0 bg-transparent px-4 py-3 pr-24 pb-14 focus-visible:ring-0 focus-visible:ring-offset-0"
         />
 
         <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between">
@@ -445,20 +443,23 @@ export default function MessageInput({
               </Button>
 
               {showModelDropdown && (
-                <div className="absolute bottom-full right-0 mb-2 w-72 rounded-lg border bg-popover shadow-lg p-2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                  <div className="p-2 border-b mb-1">
-                    <select
-                      value={currentProvider}
-                      onChange={(e) => handleProviderChange(e.target.value)}
-                      className="w-full h-8 px-2 text-xs rounded-md border bg-background"
-                    >
-                      <option value="">选择供应商</option>
-                      {providers.map((p) => (
-                        <option key={p.id} value={p.value}>{p.name}</option>
-                      ))}
-                    </select>
+                <div className="absolute bottom-full right-0 mb-2 w-72 rounded-lg border bg-background shadow-lg p-2 z-50">
+                  <div className="p-2 border-b mb-1 bg-background">
+                    <div className="relative">
+                      <select
+                        value={currentProvider}
+                        onChange={(e) => handleProviderChange(e.target.value)}
+                        className="w-full h-8 px-2 text-xs rounded-md border bg-background appearance-none cursor-pointer"
+                      >
+                        <option value="">选择供应商</option>
+                        {providers.map((p) => (
+                          <option key={p.id} value={p.value}>{p.name}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+                    </div>
                   </div>
-                  <div className="max-h-60 overflow-y-auto">
+                  <div className="max-h-60 overflow-y-auto bg-background">
                     {modelList.length > 0 ? (
                       modelList.map((m) => (
                         <button
