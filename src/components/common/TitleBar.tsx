@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { Minus, Square, X } from "lucide-react";
 import type { Tab } from "../../stores/types";
 
@@ -12,7 +11,13 @@ interface TitleBarProps {
   onToggleAvatar: () => void;
 }
 
-export default function TitleBar({ t, activeTab, setActiveTab, showAvatar, onToggleAvatar }: TitleBarProps) {
+export default function TitleBar({
+  t,
+  activeTab,
+  setActiveTab,
+  showAvatar,
+  onToggleAvatar,
+}: TitleBarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
@@ -69,11 +74,11 @@ export default function TitleBar({ t, activeTab, setActiveTab, showAvatar, onTog
       {/* Logo + 拖拽区域 */}
       <div className="flex items-center gap-2 px-3 h-full" data-tauri-drag-region>
         <img
-          src="https://tauri.localhost/icons/32x32.png"
+          src="/icons/32x32.png"
           alt="Hermes"
           className="w-5 h-5"
           onError={(e) => {
-            e.currentTarget.style.display = 'none';
+            e.currentTarget.style.display = "none";
           }}
         />
         <span className="text-sm font-medium text-foreground">Hermes Desktop</span>
