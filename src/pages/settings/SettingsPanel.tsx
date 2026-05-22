@@ -88,6 +88,7 @@ function SettingsPanel() {
         baseUrl: (item.baseUrl ?? item.base_url ?? "") as string,
         apiKeyEnv: (item.apiKeyEnv ?? item.api_key_env ?? "") as string,
         apiKey: (item.apiKey ?? item.api_key ?? "") as string,
+        icon: (item.icon ?? "") as string,
         isBuiltin: (item.isBuiltin ?? item.is_builtin ?? false) as boolean,
         sortOrder: (item.sortOrder ?? item.sort_order ?? 0) as number,
         createdAt: (item.createdAt ?? item.created_at ?? 0) as number,
@@ -169,6 +170,7 @@ function SettingsPanel() {
       baseUrl: "",
       apiKeyEnv: "",
       apiKey: "",
+      icon: "",
       isBuiltin: false,
       sortOrder: 0,
       createdAt: 0,
@@ -358,9 +360,11 @@ function SettingsPanel() {
   }
 
   return (
-    <div className="panel flex flex-row h-full overflow-hidden">
-      <div className="w-[180px] min-w-[180px] bg-card border-r flex flex-col py-5 overflow-y-auto shrink-0">
-        <div className="px-4 pb-4 text-sm font-bold text-foreground tracking-wide">{t("settings.title")}</div>
+    <div className="panel flex flex-row h-full overflow-hidden p-3 gap-3">
+      <div className="w-[200px] min-w-[200px] bg-card border border-border rounded-xl flex flex-col py-5 overflow-y-auto shrink-0">
+        <div className="px-4 pb-4 text-sm font-bold text-foreground tracking-wide">
+          {t("settings.title")}
+        </div>
         <nav className="flex flex-col gap-0.5 px-2">
           {(
             [
@@ -395,9 +399,13 @@ function SettingsPanel() {
               onClick={() => setActiveSection(item.key)}
             >
               <span className="text-base shrink-0 w-[22px] text-center">{item.icon}</span>
-              <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{t(item.labelKey)}</span>
+              <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">
+                {t(item.labelKey)}
+              </span>
               {item.dirty > 0 && (
-                <span className="text-[10px] px-1.5 py-px rounded-md bg-primary/20 text-primary font-semibold shrink-0">{item.dirty}</span>
+                <span className="text-[10px] px-1.5 py-px rounded-md bg-primary/20 text-primary font-semibold shrink-0">
+                  {item.dirty}
+                </span>
               )}
             </button>
           ))}
@@ -405,7 +413,7 @@ function SettingsPanel() {
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto px-6 py-4 pb-6">
+        <div className="flex-1 overflow-y-auto">
           {loadError && (
             <div className="mb-4 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-3">
               <span className="text-lg shrink-0 mt-0.5">⚠️</span>
@@ -540,8 +548,10 @@ function SettingsPanel() {
 
           {activeSection === "about" && (
             <div className="animate-in fade-in slide-in-from-bottom-1.5 duration-200">
-              <div className="bg-card rounded-xl p-5 shadow-sm">
-                <h3 className="text-[15px] font-semibold text-foreground mb-4">{t("about.title")}</h3>
+              <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+                <h3 className="text-[15px] font-semibold text-foreground mb-4">
+                  {t("about.title")}
+                </h3>
                 <div className="flex flex-col items-center py-5 gap-2">
                   <div className="mb-1">
                     <img src="/logo.svg" alt="Hermes" className="w-20 h-20 rounded-2xl" />

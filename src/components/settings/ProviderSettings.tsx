@@ -1,4 +1,5 @@
-import { Search, Pencil, Trash2, Plus } from "lucide-react";
+import { Search, Edit, Trash, CirclePlus } from "lucide-react";
+import ProviderIcon from "./ProviderIcon";
 
 interface Provider {
   id: string;
@@ -7,6 +8,7 @@ interface Provider {
   baseUrl: string;
   apiKeyEnv: string;
   apiKey: string;
+  icon: string;
   isBuiltin: boolean;
   sortOrder: number;
   createdAt: number;
@@ -49,7 +51,7 @@ export default function ProviderSettings({
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-1.5 duration-200">
-      <div className="bg-card rounded-xl p-5 shadow-sm">
+      <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
           <div className="flex-1 relative flex items-center">
             <Search className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
@@ -79,7 +81,7 @@ export default function ProviderSettings({
             className="px-3.5 py-1.5 border border-primary rounded-md bg-transparent text-primary text-xs cursor-pointer transition-all hover:bg-primary/5 whitespace-nowrap flex items-center gap-1"
             onClick={onAdd}
           >
-            <Plus className="h-3.5 w-3.5" />
+            <CirclePlus className="h-3.5 w-3.5" />
             {t("provider.add")}
           </button>
         </div>
@@ -115,35 +117,31 @@ export default function ProviderSettings({
                       {p.isBuiltin ? t("provider.builtin") : t("provider.custom")}
                     </span>
                     <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center text-lg mb-1 shadow-sm">
-                      {p.name === "OpenAI"
-                        ? "🤖"
-                        : p.name === "Anthropic"
-                          ? "🧠"
-                          : p.name === "Google"
-                            ? "🔍"
-                            : p.name === "xAI"
-                              ? "🚀"
-                              : p.name === "Mistral"
-                                ? "🌀"
-                                : p.name === "DeepSeek"
-                                  ? "🔮"
-                                  : "🔌"}
+                      <ProviderIcon providerName={p.name} icon={p.icon} size={36} />
                     </div>
                     <div className="text-[13px] font-bold text-foreground text-center mb-0.5 flex items-center justify-center gap-1">
                       {p.name}
-                      <span className={`text-xs leading-none ${p.apiKey ? "opacity-80" : "opacity-90"}`}>
+                      <span
+                        className={`text-xs leading-none ${p.apiKey ? "opacity-80" : "opacity-90"}`}
+                      >
                         {p.apiKey ? "🔑" : "⚠️"}
                       </span>
                     </div>
                   </div>
                   <div className="px-2.5 py-1.5 flex-1">
                     <div className="flex items-baseline gap-1.5 mb-0.5">
-                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">ID</span>
-                      <span className="text-[11px] text-muted-foreground font-mono truncate">{p.value}</span>
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">
+                        ID
+                      </span>
+                      <span className="text-[11px] text-muted-foreground font-mono truncate">
+                        {p.value}
+                      </span>
                     </div>
                     {p.baseUrl && (
                       <div className="flex items-baseline gap-1.5">
-                        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">URL</span>
+                        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">
+                          URL
+                        </span>
                         <span
                           className="text-[11px] text-muted-foreground font-mono truncate max-w-full"
                           title={p.baseUrl}
@@ -159,7 +157,7 @@ export default function ProviderSettings({
                       onClick={() => onEdit(p)}
                       title={t("provider.edit")}
                     >
-                      <Pencil className="h-3 w-3" />
+                      <Edit className="h-3 w-3" />
                       {t("provider.edit")}
                     </button>
                     {!p.isBuiltin && (
@@ -168,7 +166,7 @@ export default function ProviderSettings({
                         onClick={() => onDelete(p.id)}
                         title={t("provider.delete")}
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash className="h-3 w-3" />
                         {t("provider.delete")}
                       </button>
                     )}

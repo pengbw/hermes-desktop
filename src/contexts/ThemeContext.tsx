@@ -16,9 +16,7 @@ const STORAGE_KEY_NAME = "hermes-theme-name";
 const STORAGE_KEY_UI_STYLE = "hermes-ui-style";
 
 function getSystemMode(): "light" | "dark" {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 function getStoredBaseMode(): BaseMode {
@@ -46,15 +44,7 @@ function getStoredThemeName(): string {
 function getStoredUIStyle(): UIStyle {
   try {
     const stored = localStorage.getItem(STORAGE_KEY_UI_STYLE);
-    const validStyles: UIStyle[] = [
-      "vega",
-      "nova",
-      "maia",
-      "lyra",
-      "mira",
-      "luma",
-      "sera",
-    ];
+    const validStyles: UIStyle[] = ["vega", "nova", "maia", "lyra", "mira", "luma", "sera"];
     if (stored && validStyles.includes(stored as UIStyle)) {
       return stored as UIStyle;
     }
@@ -82,15 +72,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const currentUIStyle = useMemo(() => getUIStyle(uiStyle), [uiStyle]);
 
   const applyTheme = useCallback(
-    (
-      mode: "light" | "dark",
-      theme: typeof currentTheme,
-      style: typeof currentUIStyle
-    ) => {
+    (mode: "light" | "dark", theme: typeof currentTheme, style: typeof currentUIStyle) => {
       const root = document.documentElement;
       const vars = theme.variables[mode];
 
-      // Color variables
+      // Color variables (new system)
       root.style.setProperty("--background", vars.background);
       root.style.setProperty("--foreground", vars.foreground);
       root.style.setProperty("--card", vars.card);
@@ -107,6 +93,39 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.setProperty("--input", vars.input);
       root.style.setProperty("--ring", vars.ring);
       root.style.setProperty("--radius", theme.radius);
+
+      // Color variables (old system - for compatibility with StudioPanel.module.css)
+      root.style.setProperty("--color-bg", vars.background);
+      root.style.setProperty("--color-surface", vars.card);
+      root.style.setProperty("--color-text", vars.foreground);
+      root.style.setProperty("--color-text-secondary", vars.mutedForeground);
+      root.style.setProperty("--color-text-primary", vars.foreground);
+      root.style.setProperty("--color-border", vars.border);
+      root.style.setProperty("--color-section-bg", vars.muted);
+      root.style.setProperty("--color-primary", vars.primary);
+      root.style.setProperty("--color-primary-hover", vars.primary);
+      root.style.setProperty("--color-nav-hover", vars.accent);
+      root.style.setProperty(
+        "--color-shadow",
+        mode === "dark" ? "rgba(0, 0, 0, 0.3)" : "rgba(0, 0, 0, 0.06)"
+      );
+      root.style.setProperty("--color-input-bg", vars.input);
+      root.style.setProperty("--color-file-tag-bg", vars.primary);
+      root.style.setProperty("--color-file-tag-text", vars.primaryForeground);
+
+      // Additional old variables for StudioPanel
+      root.style.setProperty("--card-bg", vars.card);
+      root.style.setProperty("--text-primary", vars.foreground);
+      root.style.setProperty("--text-secondary", vars.mutedForeground);
+      root.style.setProperty("--text-tertiary", vars.mutedForeground);
+      root.style.setProperty("--border-color", vars.border);
+      root.style.setProperty("--input-bg", vars.input);
+      root.style.setProperty("--bg-primary", vars.card);
+      root.style.setProperty("--bg-secondary", vars.secondary);
+      root.style.setProperty("--bg-tertiary", vars.muted);
+      root.style.setProperty("--bg-hover", vars.accent);
+      root.style.setProperty("--hover-bg", vars.accent);
+      root.style.setProperty("--primary", vars.primary);
 
       // Font variables
       const font = theme.font;
@@ -140,10 +159,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.setProperty("--shadow-md", style.shadow.md);
       root.style.setProperty("--shadow-lg", style.shadow.lg);
       root.style.setProperty("--border-width", style.borderWidth);
-      root.style.setProperty(
-        "--component-density",
-        style.componentDensity
-      );
+      root.style.setProperty("--component-density", style.componentDensity);
 
       // Apply density class
       root.classList.remove("density-compact", "density-normal", "density-spacious");
@@ -222,9 +238,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  return (
-    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme(): ThemeContextValue {

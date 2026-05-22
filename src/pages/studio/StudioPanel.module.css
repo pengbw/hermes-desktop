@@ -74,8 +74,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
+  height: 40px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border-color, #f0f0f0);
+  flex-shrink: 0;
 }
 
 .studioModalHeader h3 {
@@ -3875,8 +3877,8 @@
 
 .studioSettingsModal {
   width: 100%;
-  max-width: 720px;
-  height: 520px;
+  max-width: 960px;
+  height: 680px;
   max-height: 90vh;
   background: var(--color-surface);
   border-radius: 12px;
@@ -3896,8 +3898,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  height: 40px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
+  flex-shrink: 0;
 }
 
 .studioSettingsHeader h3 {
@@ -5208,8 +5212,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
+  height: 40px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
+  flex-shrink: 0;
 }
 
 .taskMgmtEditHeader h3 {

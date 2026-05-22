@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { SkillItem } from "@core/types";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 interface RoleSkill {
   id: string;
@@ -67,6 +69,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
   const [skillSearch, setSkillSearch] = useState("");
 
   const [newRoleSkills, setNewRoleSkills] = useState<string[]>([]);
+  const [viewingRole, setViewingRole] = useState<AiRoleItem | null>(null);
 
   const loadRoles = async () => {
     try {
@@ -203,6 +206,10 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
     setSkillSearch("");
   };
 
+  const closeView = () => {
+    setViewingRole(null);
+  };
+
   if (loading) {
     return (
       <div className="animate-[fadeIn_0.2s_ease]">
@@ -216,7 +223,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
 
   return (
     <div className="animate-[fadeIn_0.2s_ease]">
-      <div className="bg-card rounded-xl p-5 shadow-sm mb-4">
+      <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[15px] font-semibold text-foreground m-0">{t("aiRoles.title")}</h3>
           <button
@@ -226,13 +233,20 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
             + {t("aiRoles.addRole")}
           </button>
         </div>
-        <p className="text-[13px] text-muted-foreground mb-4 leading-relaxed">{t("aiRoles.desc")}</p>
+        <p className="text-[13px] text-muted-foreground mb-4 leading-relaxed">
+          {t("aiRoles.desc")}
+        </p>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
           {roles.map((role) => (
             <div
               key={role.id}
-              className="bg-card border border-border rounded-xl p-4 flex flex-col gap-2 transition-all hover:border-primary/30 hover:shadow-md hover:-translate-y-px"
-              style={role.avatarColor ? { borderLeftColor: role.avatarColor, borderLeftWidth: 3 } : undefined}
+              className="relative bg-card border border-border rounded-xl p-3 flex flex-col gap-1 transition-all hover:border-primary/30 hover:shadow-md hover:-translate-y-px group cursor-pointer"
+              style={
+                role.avatarColor
+                  ? { borderLeftColor: role.avatarColor, borderLeftWidth: 3 }
+                  : undefined
+              }
+              onClick={() => setViewingRole(role)}
             >
               <div className="flex items-center gap-2 flex-wrap">
                 <span
@@ -250,7 +264,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                 </span>
                 <span className="text-sm font-semibold text-foreground">{role.name}</span>
                 {role.isBuiltin && (
-                  <span className="text-[10px] px-1.5 py-px rounded bg-primary/10 text-primary font-medium">{t("aiRoles.builtin")}</span>
+                  <span className="text-[10px] px-1.5 py-px rounded bg-primary/10 text-primary font-medium">
+                    {t("aiRoles.builtin")}
+                  </span>
                 )}
                 {role.avatarPreset && (
                   <span
@@ -263,18 +279,22 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed m-0 line-clamp-2">{role.description}</p>
-              <p className="text-[11px] text-muted-foreground leading-relaxed m-0 line-clamp-2">{role.responsibilities}</p>
-              <div className="flex gap-1 mt-auto pt-1">
+              <p className="text-xs text-muted-foreground leading-relaxed m-0 line-clamp-1">
+                {role.description}
+              </p>
+              <div
+                className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <button
-                  className="w-7 h-7 flex items-center justify-center rounded-md border-none bg-transparent text-muted-foreground cursor-pointer text-sm transition-colors hover:bg-muted hover:text-foreground"
+                  className="w-6 h-6 flex items-center justify-center rounded-md border-none bg-transparent text-muted-foreground cursor-pointer text-sm transition-colors hover:bg-muted hover:text-foreground"
                   onClick={() => startEdit(role)}
                 >
                   ✏️
                 </button>
                 {!role.isBuiltin && (
                   <button
-                    className="w-7 h-7 flex items-center justify-center rounded-md border-none bg-transparent text-muted-foreground cursor-pointer text-sm transition-colors hover:bg-red-500/10 hover:text-red-500"
+                    className="w-6 h-6 flex items-center justify-center rounded-md border-none bg-transparent text-muted-foreground cursor-pointer text-sm transition-colors hover:bg-red-500/10 hover:text-red-500"
                     onClick={() => handleDelete(role.id)}
                   >
                     🗑️
@@ -286,18 +306,31 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
         </div>
       </div>
       {(showNewRole || editingRole) && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[1000] animate-[fadeIn_0.2s_ease]" onClick={cancelEdit}>
-          <div className="bg-card border border-border rounded-xl w-full max-w-[720px] h-[520px] max-h-[90vh] flex flex-col shadow-xl animate-[modalIn_0.25s_ease] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <h3 className="text-lg font-semibold text-foreground m-0">{editingRole ? t("aiRoles.editRole") : t("aiRoles.addRole")}</h3>
-              <button className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors" onClick={cancelEdit}>
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-[1000] animate-[fadeIn_0.2s_ease]"
+          onClick={cancelEdit}
+        >
+          <div
+            className="bg-card border border-border rounded-xl w-full max-w-[720px] h-[520px] max-h-[90vh] flex flex-col shadow-xl animate-[modalIn_0.25s_ease] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between h-10 px-3 border-b border-border">
+              <h3 className="text-lg font-semibold text-foreground m-0">
+                {editingRole ? t("aiRoles.editRole") : t("aiRoles.addRole")}
+              </h3>
+              <button
+                className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
+                onClick={cancelEdit}
+              >
                 ✕
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-5">
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.roleIcon")}</label>
+                  <label className="text-[13px] font-medium text-foreground">
+                    {t("aiRoles.roleIcon")}
+                  </label>
                   <input
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors"
                     value={editForm.icon}
@@ -306,7 +339,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.roleName")}</label>
+                  <label className="text-[13px] font-medium text-foreground">
+                    {t("aiRoles.roleName")}
+                  </label>
                   <input
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors"
                     value={editForm.name}
@@ -324,7 +359,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.roleDesc")}</label>
+                  <label className="text-[13px] font-medium text-foreground">
+                    {t("aiRoles.roleDesc")}
+                  </label>
                   <input
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors"
                     value={editForm.description}
@@ -333,7 +370,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.roleResp")}</label>
+                  <label className="text-[13px] font-medium text-foreground">
+                    {t("aiRoles.roleResp")}
+                  </label>
                   <textarea
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors resize-y min-h-[80px]"
                     value={editForm.responsibilities}
@@ -343,7 +382,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.roleSoul")}</label>
+                  <label className="text-[13px] font-medium text-foreground">
+                    {t("aiRoles.roleSoul")}
+                  </label>
                   <textarea
                     className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors resize-y min-h-[80px]"
                     value={editForm.soulContent}
@@ -357,7 +398,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   {t("aiRoles.avatarSection")}
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.avatarPreset")}</label>
+                  <label className="text-[13px] font-medium text-foreground">
+                    {t("aiRoles.avatarPreset")}
+                  </label>
                   <div className="flex gap-2 flex-wrap">
                     {AVATAR_PRESETS.map((preset) => (
                       <button
@@ -381,7 +424,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-foreground">{t("aiRoles.avatarColor")}</label>
+                  <label className="text-[13px] font-medium text-foreground">
+                    {t("aiRoles.avatarColor")}
+                  </label>
                   <div className="flex items-center gap-2">
                     <input
                       type="color"
@@ -395,7 +440,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-foreground">{t("studio.avatarType")}</label>
+                  <label className="text-[13px] font-medium text-foreground">
+                    {t("studio.avatarType")}
+                  </label>
                   <div className="flex gap-2 flex-wrap">
                     <button
                       className={`px-2.5 py-1 border-2 rounded-lg bg-card cursor-pointer text-xs transition-all hover:border-primary hover:bg-primary/5 ${editForm.avatarType === "default" || !editForm.avatarUrl ? "font-semibold bg-primary/5 border-primary" : "border-border"}`}
@@ -468,7 +515,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                           className="bg-card border border-border rounded-xl w-full max-w-[400px] max-h-[70vh] flex flex-col shadow-xl animate-[modalIn_0.25s_ease] overflow-hidden"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                          <div className="flex items-center justify-between h-10 px-3 border-b border-border">
                             <h4 className="text-base font-semibold text-foreground m-0">技能库</h4>
                             <button
                               className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
@@ -494,7 +541,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                                   (s.description &&
                                     s.description.toLowerCase().includes(skillSearch.toLowerCase()))
                               ).length === 0 && (
-                              <div className="text-center text-sm text-muted-foreground py-6">无匹配技能</div>
+                              <div className="text-center text-sm text-muted-foreground py-6">
+                                无匹配技能
+                              </div>
                             )}
                             {availableSkills
                               .filter((s) => !editRoleSkills.some((rs) => rs.skillName === s.name))
@@ -596,7 +645,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                           className="bg-card border border-border rounded-xl w-full max-w-[400px] max-h-[70vh] flex flex-col shadow-xl animate-[modalIn_0.25s_ease] overflow-hidden"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                          <div className="flex items-center justify-between h-10 px-3 border-b border-border">
                             <h4 className="text-base font-semibold text-foreground m-0">技能库</h4>
                             <button
                               className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
@@ -622,7 +671,9 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                                   (s.description &&
                                     s.description.toLowerCase().includes(skillSearch.toLowerCase()))
                               ).length === 0 && (
-                              <div className="text-center text-sm text-muted-foreground py-6">无匹配技能</div>
+                              <div className="text-center text-sm text-muted-foreground py-6">
+                                无匹配技能
+                              </div>
                             )}
                             {availableSkills
                               .filter((s) => !newRoleSkills.includes(s.name))
@@ -669,9 +720,91 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                   >
                     {editingRole ? t("aiRoles.save") : t("aiRoles.create")}
                   </button>
-                  <button className="px-5 py-2 rounded-lg border border-border bg-card text-foreground text-sm font-medium cursor-pointer transition-all hover:bg-muted active:scale-[0.98]" onClick={cancelEdit}>
+                  <button
+                    className="px-5 py-2 rounded-lg border border-border bg-card text-foreground text-sm font-medium cursor-pointer transition-all hover:bg-muted active:scale-[0.98]"
+                    onClick={cancelEdit}
+                  >
                     {t("studio.cancel")}
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {viewingRole && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000]"
+          onClick={closeView}
+        >
+          <div
+            className="bg-card border border-border rounded-xl w-full max-w-[480px] max-h-[80vh] flex flex-col shadow-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="text-base font-semibold text-foreground m-0">
+                {t("aiRoles.roleDetail")}
+              </h3>
+              <button
+                className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
+                onClick={closeView}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <span
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-full text-lg shrink-0"
+                  style={
+                    viewingRole.avatarColor
+                      ? {
+                          backgroundColor: viewingRole.avatarColor + "22",
+                          color: viewingRole.avatarColor,
+                        }
+                      : undefined
+                  }
+                >
+                  {viewingRole.icon}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-base font-semibold text-foreground">{viewingRole.name}</div>
+                  {viewingRole.nickname && (
+                    <div className="text-xs text-muted-foreground">{viewingRole.nickname}</div>
+                  )}
+                </div>
+                {viewingRole.isBuiltin && (
+                  <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-px">
+                    {t("aiRoles.builtin")}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex flex-col gap-4">
+                <div>
+                  <div className="text-[13px] font-medium text-muted-foreground mb-1.5">
+                    {t("aiRoles.roleDesc")}
+                  </div>
+                  <div className="text-sm text-foreground leading-relaxed">
+                    {viewingRole.description || "-"}
+                  </div>
+                </div>
+                <Separator />
+                <div>
+                  <div className="text-[13px] font-medium text-muted-foreground mb-1.5">
+                    {t("aiRoles.roleResp")}
+                  </div>
+                  <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                    {viewingRole.responsibilities || "-"}
+                  </div>
+                </div>
+                <Separator />
+                <div>
+                  <div className="text-[13px] font-medium text-muted-foreground mb-1.5">
+                    {t("aiRoles.roleSoul")}
+                  </div>
+                  <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                    {viewingRole.soulContent || "-"}
+                  </div>
                 </div>
               </div>
             </div>

@@ -71,7 +71,7 @@ function ChatPanel({
   >([]);
   const [pendingKbIds, setPendingKbIds] = useState<string[]>([]);
   const [ttsEnabled, setTtsEnabled] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const messagesListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -206,10 +206,7 @@ function ChatPanel({
       />
 
       <div className="flex flex-1 flex-col overflow-hidden bg-background">
-        <div
-          className="flex-1 overflow-y-auto flex flex-col gap-4 px-6 py-4"
-          ref={messagesListRef}
-        >
+        <div className="flex-1 overflow-y-auto flex flex-col gap-4 px-6 py-4" ref={messagesListRef}>
           {messages.length === 0 && !isStreaming && (
             <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-12">
               <span>{t("chat.emptyChat")}</span>

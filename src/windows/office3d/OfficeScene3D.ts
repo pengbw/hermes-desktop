@@ -2283,6 +2283,14 @@ export class OfficeScene3D {
   moveTo(memberId: string, tc: number, tr: number) {
     const cg = this.charGroups.get(memberId);
     if (!cg) return;
+
+    if (cg.userData.seated) {
+      cg.userData.seated = false;
+      cg.children.forEach((child) => {
+        child.position.y += 0.4;
+      });
+    }
+
     const cc = cg.userData.col as number;
     const cr = cg.userData.row as number;
     const path = this.bfs(cc, cr, tc, tr);
@@ -2293,12 +2301,16 @@ export class OfficeScene3D {
   }
 
   bfs(fc: number, fr: number, tc: number, tr: number) {
-    if (fc === tc && fr === tr) return [];
+    const sc = Math.round(fc),
+      sr = Math.round(fr),
+      ec = Math.round(tc),
+      er = Math.round(tr);
+    if (sc === ec && sr === er) return [];
     const vis = new Set<string>();
     const q: { c: number; r: number; p: { col: number; row: number }[] }[] = [
-      { c: fc, r: fr, p: [] },
+      { c: sc, r: sr, p: [] },
     ];
-    vis.add(`${fc},${fr}`);
+    vis.add(`${sc},${sr}`);
     const ds = [
       { dc: 1, dr: 0 },
       { dc: -1, dr: 0 },
@@ -2312,7 +2324,7 @@ export class OfficeScene3D {
           nr = cur.r + d.dr,
           k = `${nc},${nr}`;
         if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS || vis.has(k)) continue;
-        const isT = nc === tc && nr === tr;
+        const isT = nc === ec && nr === er;
         if (!this.pathGrid[nr]?.[nc] && !isT) continue;
         const np = [...cur.p, { col: nc, row: nr }];
         if (isT) return np;
@@ -2398,7 +2410,7 @@ export class OfficeScene3D {
     if (!cg) return;
     const cc = cg.userData.col as number;
     const cr = cg.userData.row as number;
-    if (cc === home.col && cr === home.row) return;
+    if (Math.abs(cc - home.col) < 0.6 && Math.abs(cr - home.row) < 0.6) return;
     this.moveTo(memberId, home.col, home.row);
   }
 
@@ -3213,6 +3225,20 @@ export class OfficeScene3D {
         anim.t = 0;
         if (anim.step >= anim.path.length) {
           this.walkAnims.splice(i, 1);
+          const home = this.charHomeDesks.get(anim.memberId);
+          if (home) {
+            const cc = cg.userData.col as number;
+            const cr = cg.userData.row as number;
+            if (Math.abs(cc - home.col) < 1 && Math.abs(cr - home.row) < 1) {
+              cg.position.set((home.col + 0.5) * CELL, 0, (home.row + 0.5) * CELL);
+              cg.userData.col = home.col;
+              cg.userData.row = home.row;
+              cg.userData.seated = true;
+              cg.children.forEach((child) => {
+                child.position.y -= 0.4;
+              });
+            }
+          }
           continue;
         }
       }
@@ -3313,15 +3339,87 @@ export class OfficeScene3D {
   }
 
   updateMembers(members: GameMember[]) {
+    const desks = ZONES.filter((z) => z.type === "desk");
+    let deskIdx = this.members.length;
+
     for (const m of members) {
       const existing = this.members.find((old) => old.id === m.id);
-      if (existing && existing.status !== m.status) {
-        this.setMemberStatus(m.id, m.status || "idle");
-      } else if (!existing) {
-        const state = this.memberStates.get(m.id);
-        if (state && m.status) {
-          this.setMemberStatus(m.id, m.status);
+      if (existing) {
+        if (existing.status !== m.status) {
+          this.setMemberStatus(m.id, m.status || "idle");
         }
+      } else {
+        let col: number, row: number;
+        if (deskIdx < desks.length) {
+          const d = desks[deskIdx];
+          const deskCx = d.col * CELL + (d.cols * CELL) / 2;
+          const deskCz = d.row * CELL + (d.rows * CELL) / 2;
+          col = d.col + 0.5;
+          row = d.row + d.rows - 0.3;
+          const charGroup = this.buildCharacter(m, true);
+          charGroup.position.set(deskCx + 0.3, 0, deskCz - 1.2);
+          charGroup.userData = { col, row, memberId: m.id, seated: true };
+          this.scene.add(charGroup);
+          this.charGroups.set(m.id, charGroup);
+          this.charHomeDesks.set(m.id, { col, row });
+          deskIdx++;
+        } else {
+          col = 3 + deskIdx;
+          row = 7;
+          const charGroup = this.buildCharacter(m, false);
+          const pos = c2w(col, row);
+          charGroup.position.set(pos.x, 0, pos.z);
+          charGroup.userData = { col, row, memberId: m.id, seated: false };
+          this.scene.add(charGroup);
+          this.charGroups.set(m.id, charGroup);
+          this.charHomeDesks.set(m.id, { col, row });
+          deskIdx++;
+        }
+
+        const label = document.createElement("div");
+        label.textContent = m.name;
+        label.style.cssText = `
+          position:absolute;
+          background:rgba(255,255,255,0.9);
+          color:#2c3e50;
+          font-size:11px;
+          padding:2px 8px;
+          border-radius:10px;
+          font-family:sans-serif;
+          white-space:nowrap;
+          pointer-events:none;
+          transform:translate(-50%,-100%);
+          box-shadow:0 1px 4px rgba(0,0,0,0.15);
+        `;
+        this.labelContainer.appendChild(label);
+        this.charLabelEls.set(m.id, label);
+
+        const statusLabel = document.createElement("div");
+        statusLabel.textContent = "🟢 空闲";
+        statusLabel.style.cssText = `
+          position:absolute;
+          background:rgba(255,255,255,0.85);
+          color:#555;
+          font-size:10px;
+          padding:1px 6px;
+          border-radius:8px;
+          font-family:sans-serif;
+          white-space:nowrap;
+          pointer-events:none;
+          transform:translate(-50%,0);
+          box-shadow:0 1px 3px rgba(0,0,0,0.1);
+          margin-top:2px;
+        `;
+        this.labelContainer.appendChild(statusLabel);
+        this.charStatusLabelEls.set(m.id, statusLabel);
+
+        const initialStatus: MemberStatus = m.status || (m.isWorking ? "working" : "idle");
+        this.memberStates.set(m.id, {
+          status: initialStatus,
+          idleAction: "none",
+          idleActionTimer: Math.random() * this.idleActionInterval,
+        });
+        this.updateStatusLabel(m.id, initialStatus);
       }
     }
     this.members = members;

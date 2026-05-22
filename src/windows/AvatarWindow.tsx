@@ -136,14 +136,7 @@ export default function AvatarWindow() {
   }, []);
 
   const hasGreetedRef = useRef(false);
-
-  const triggerGreeting = useCallback(() => {
-    const greetIdx = GESTURES.findIndex((g) => g.name === "greeting");
-    if (greetIdx >= 0) {
-      gestureRef.current = { index: greetIdx, start: performance.now(), active: true };
-      hasGreetedRef.current = true;
-    }
-  }, []);
+  const initDoneRef = useRef(false);
 
   const applyExpression = useCallback((name: string, val: number, duration?: number) => {
     sharedApplyExpression(vrmRef.current, name, val, duration, () => {
@@ -266,8 +259,10 @@ export default function AvatarWindow() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || initDoneRef.current) return;
+    initDoneRef.current = true;
     let destroyed = false;
+    let renderer: THREE.WebGLRenderer | null = null;
 
     const init = async () => {
       try {
@@ -287,15 +282,24 @@ export default function AvatarWindow() {
             gesturesRef.current = GESTURES;
           }
         } catch {
-          // console.error("Failed to load gestures from DB", e);
+          // Ignore gesture loading errors
         }
 
-        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+        renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.setSize(350, 500);
         renderer.setClearColor(0x000000, 0);
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        const handleContextLost = () => {
+          if (!destroyed && renderer) {
+            renderer.forceContextLoss?.();
+            setTimeout(init, 500);
+          }
+        };
+        canvas.addEventListener("webglcontextlost", handleContextLost, false);
+
         rendererRef.current = renderer;
 
         const scene = new THREE.Scene();
@@ -357,7 +361,7 @@ export default function AvatarWindow() {
         const initTime = performance.now();
 
         const animate = () => {
-          if (destroyed) return;
+          if (destroyed || !renderer) return;
           animIdRef.current = requestAnimationFrame(animate);
 
           const now = performance.now();
@@ -599,7 +603,7 @@ export default function AvatarWindow() {
         rendererRef.current = null;
       }
     };
-  }, [handleMouseMove, triggerGreeting, applyExpression]);
+  }, []); // Only init once - callbacks are stable refs
 
   useEffect(() => {
     const timer = setInterval(async () => {

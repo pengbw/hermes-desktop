@@ -156,36 +156,49 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .await?;
 
     let builtin_providers = [
-        ("nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY"),
-        ("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
-        ("openai", "OpenAI", "https://api.openai.com/v1", "OPENAI_API_KEY"),
-        ("anthropic", "Anthropic", "https://api.anthropic.com/v1", "ANTHROPIC_API_KEY"),
-        ("nous", "Nous", "", "NOUS_API_KEY"),
-        ("deepseek", "DeepSeek", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY"),
-        ("ollama", "Ollama (Local)", "http://localhost:11434/v1", ""),
-        ("minimax", "MiniMax", "", "MINIMAX_API_KEY"),
-        ("minimax-cn", "MiniMax (China)", "", "MINIMAX_API_KEY"),
-        ("zai", "Z.AI / GLM", "", "ZAI_API_KEY"),
-        ("kimi", "Kimi", "https://api.moonshot.cn/v1", "KIMI_API_KEY"),
+        ("nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY", "nvidia"),
+        ("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", "openrouter"),
+        ("openai", "OpenAI", "https://api.openai.com/v1", "OPENAI_API_KEY", "openai"),
+        ("anthropic", "Anthropic", "https://api.anthropic.com/v1", "ANTHROPIC_API_KEY", "anthropic"),
+        ("nous", "Nous", "", "NOUS_API_KEY", "nous"),
+        ("deepseek", "DeepSeek", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY", "deepseek"),
+        ("ollama", "Ollama (Local)", "http://localhost:11434/v1", "", "ollama"),
+        ("minimax", "MiniMax", "", "MINIMAX_API_KEY", "minimax"),
+        ("minimax-cn", "MiniMax (China)", "", "MINIMAX_API_KEY", "minimax"),
+        ("zai", "Z.AI / GLM", "", "ZAI_API_KEY", "zai"),
+        ("kimi", "Kimi", "https://api.moonshot.cn/v1", "KIMI_API_KEY", "kimi"),
     ];
 
-    for (i, (value, name, base_url, api_key_env)) in builtin_providers.iter().enumerate() {
+    sqlx::query("ALTER TABLE providers ADD COLUMN icon TEXT NOT NULL DEFAULT ''")
+        .execute(pool)
+        .await
+        .ok();
+
+    for (i, (value, name, base_url, api_key_env, icon)) in builtin_providers.iter().enumerate() {
         let id = format!("builtin_{}", value);
         let now = chrono::Utc::now().timestamp_millis();
         sqlx::query(
-            "INSERT OR IGNORE INTO providers (id, name, value, base_url, api_key_env, is_builtin, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)"
+            "INSERT OR IGNORE INTO providers (id, name, value, base_url, api_key_env, icon, is_builtin, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)"
         )
         .bind(&id)
         .bind(name)
         .bind(value)
         .bind(base_url)
         .bind(api_key_env)
+        .bind(icon)
         .bind(i as i64)
         .bind(now)
         .bind(now)
         .execute(pool)
         .await
         .map_err(|e| e.to_string()).ok();
+
+        sqlx::query("UPDATE providers SET icon = ? WHERE value = ? AND icon = ''")
+            .bind(icon)
+            .bind(value)
+            .execute(pool)
+            .await
+            .ok();
     }
 
     sqlx::query(
@@ -1018,6 +1031,7 @@ pub struct Provider {
     pub base_url: String,
     pub api_key_env: String,
     pub api_key: String,
+    pub icon: String,
     pub is_builtin: bool,
     pub sort_order: i64,
     pub created_at: i64,

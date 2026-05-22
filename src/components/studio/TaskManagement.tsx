@@ -4,22 +4,7 @@ import { useState, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import AssignTaskModal from "./AssignTaskModal";
 import TaskProgressModal from "./TaskProgressModal";
-
-const TASK_STATUS_OPTIONS = [
-  { key: "triage", label: "待分类", color: "#b2bec3", icon: "📥" },
-  { key: "todo", label: "待办", color: "#6c5ce7", icon: "📋" },
-  { key: "ready", label: "就绪", color: "#0984e3", icon: "🟢" },
-  { key: "running", label: "进行中", color: "#fdcb6e", icon: "🔄" },
-  { key: "done", label: "完成", color: "#00b894", icon: "✅" },
-  { key: "blocked", label: "阻塞", color: "#e17055", icon: "🚫" },
-];
-
-const PRIORITY_OPTIONS = [
-  { key: 0, label: "无", color: "#999" },
-  { key: 1, label: "🟢 低", color: "#00b894" },
-  { key: 2, label: "🟡 中", color: "#fdcb6e" },
-  { key: 3, label: "🔴 高", color: "#e17055" },
-];
+import { useI18n } from "../../contexts/I18nContext";
 
 interface TaskManagementProps {
   tasks: ProjectTask[];
@@ -56,6 +41,24 @@ function TaskManagement({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [taskPage, setTaskPage] = useState(1);
   const TASK_PAGE_SIZE = 10;
+
+  const { t } = useI18n();
+
+  const TASK_STATUS_OPTIONS = [
+    { key: "triage", label: t("studio.taskStatus.triage"), color: "#b2bec3", icon: "📥" },
+    { key: "todo", label: t("studio.taskStatus.todo"), color: "#6c5ce7", icon: "📋" },
+    { key: "ready", label: t("studio.taskStatus.ready"), color: "#0984e3", icon: "🟢" },
+    { key: "running", label: t("studio.taskStatus.running"), color: "#fdcb6e", icon: "🔄" },
+    { key: "done", label: t("studio.taskStatus.done"), color: "#00b894", icon: "✅" },
+    { key: "blocked", label: t("studio.taskStatus.blocked"), color: "#e17055", icon: "🚫" },
+  ];
+
+  const PRIORITY_OPTIONS = [
+    { key: 0, label: t("studio.taskPriority.none"), color: "#999" },
+    { key: 1, label: t("studio.taskPriority.low"), color: "#00b894" },
+    { key: 2, label: t("studio.taskPriority.medium"), color: "#fdcb6e" },
+    { key: 3, label: t("studio.taskPriority.high"), color: "#e17055" },
+  ];
 
   const defaultSelectedId = useMemo(() => (tasks.length > 0 ? tasks[0].id : null), [tasks]);
   const activeTaskId = selectedTaskId ?? defaultSelectedId;

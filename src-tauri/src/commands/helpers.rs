@@ -667,8 +667,8 @@ except Exception as e:
             });
         } else {
             let _ = sqlx::query(
-                "INSERT INTO providers (id, name, value, base_url, api_key_env, is_builtin, sort_order, created_at, updated_at) \
-                 VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)"
+                "INSERT INTO providers (id, name, value, base_url, api_key_env, icon, is_builtin, sort_order, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, '', 1, ?, ?, ?)"
             )
             .bind(&db_id)
             .bind(name)
@@ -684,6 +684,32 @@ except Exception as e:
                 log::warn!("Failed to insert hermes provider {}: {}", pid, e);
             });
         }
+    }
+
+    let icon_map: &[(&str, &str)] = &[
+        ("alibaba", "alibaba"),
+        ("alibaba-coding-plan", "alibaba"),
+        ("huggingface", "huggingface"),
+        ("vercel", "vercel"),
+        ("github-copilot", "githubcopilot"),
+        ("xiaomi", "xiaomi"),
+        ("tencent-tokenhub", "tencent"),
+        ("xai", "xai"),
+        ("lmstudio", "lmstudio"),
+        ("stepfun", "stepfun"),
+        ("novita-ai", "novita"),
+        ("opencode", "opencode"),
+        ("opencode-go", "opencode"),
+        ("kilo", "kilogateway"),
+        ("ollama-cloud", "ollamacloud"),
+        ("kimi-for-coding", "kimi"),
+    ];
+    for (value, icon) in icon_map {
+        let _ = sqlx::query("UPDATE providers SET icon = ? WHERE value = ? AND icon = ''")
+            .bind(icon)
+            .bind(value)
+            .execute(&pool)
+            .await;
     }
 
     log::info!("Synced {} Hermes providers to local database", providers.len());

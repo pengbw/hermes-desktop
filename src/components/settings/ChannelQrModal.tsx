@@ -105,13 +105,22 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-card border border-border rounded-2xl w-[90%] max-w-[520px] max-h-[85vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-card border border-border rounded-2xl w-[90%] max-w-[520px] max-h-[85vh] overflow-y-auto shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between h-10 px-3 border-b border-border">
           <h3 className="text-base font-semibold text-foreground m-0">
             {t("channel.scanToConnect")} - {channel.name}
           </h3>
-          <button className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors" onClick={onClose}>
+          <button
+            className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
+            onClick={onClose}
+          >
             ✕
           </button>
         </div>
@@ -120,7 +129,9 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
           {channel.setupGuide && (
             <div className="bg-muted rounded-lg px-4 py-3 mb-4 text-xs text-muted-foreground leading-relaxed">
               {channel.setupGuide.split("\n").map((line, i) => (
-                <p key={i} className="m-0">{line}</p>
+                <p key={i} className="m-0">
+                  {line}
+                </p>
               ))}
             </div>
           )}
@@ -162,7 +173,9 @@ export default function ChannelQrModal({ channel, onClose, onConnected, t }: Cha
                 </div>
               ) : (
                 <div className="relative inline-block">
-                  <pre className="bg-muted rounded-lg p-4 text-xs text-foreground overflow-auto max-w-full border border-border">{qrData}</pre>
+                  <pre className="bg-muted rounded-lg p-4 text-xs text-foreground overflow-auto max-w-full border border-border">
+                    {qrData}
+                  </pre>
                   {confirming && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 rounded-lg text-white gap-2">
                       <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

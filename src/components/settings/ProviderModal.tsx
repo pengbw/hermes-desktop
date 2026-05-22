@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import ProviderIcon from "./ProviderIcon";
 
 interface Provider {
   id: string;
@@ -8,6 +9,7 @@ interface Provider {
   baseUrl: string;
   apiKeyEnv: string;
   apiKey: string;
+  icon: string;
   isBuiltin: boolean;
   sortOrder: number;
   createdAt: number;
@@ -117,12 +119,15 @@ export default function ProviderModal({
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] backdrop-blur-sm"
+      onClick={onClose}
+    >
       <div
         className="bg-card border border-border rounded-2xl w-[90%] max-w-[560px] max-h-[85vh] overflow-y-auto shadow-xl animate-[fadeIn_0.2s_ease]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-center justify-between h-10 px-3 border-b border-border">
           <h3 className="text-base font-semibold text-foreground m-0">
             {editingProvider && editingProvider.id
               ? t("provider.editTitle", { name: editingProvider.name })
@@ -130,7 +135,10 @@ export default function ProviderModal({
                 ? t("provider.addTitle")
                 : t("provider.manageTitle")}
           </h3>
-          <button className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors" onClick={onClose}>
+          <button
+            className="border-none bg-transparent text-lg cursor-pointer text-muted-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
+            onClick={onClose}
+          >
             ✕
           </button>
         </div>
@@ -144,7 +152,9 @@ export default function ProviderModal({
               </div>
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-muted-foreground">{t("provider.nameLabel")}</label>
+                  <label className="text-[13px] font-medium text-muted-foreground">
+                    {t("provider.nameLabel")}
+                  </label>
                   <input
                     type="text"
                     value={providerForm.name}
@@ -179,7 +189,9 @@ export default function ProviderModal({
               </div>
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-muted-foreground">{t("provider.baseUrlLabel")}</label>
+                  <label className="text-[13px] font-medium text-muted-foreground">
+                    {t("provider.baseUrlLabel")}
+                  </label>
                   <input
                     type="text"
                     value={providerForm.baseUrl}
@@ -205,7 +217,8 @@ export default function ProviderModal({
                         <div className="mb-2">
                           <div className="font-medium text-[11px] mb-1">什么是环境变量名？</div>
                           <div className="text-muted-foreground mb-1">
-                            API Key 环境变量名是存储在系统环境变量中的变量名，Hermes 会从环境变量中读取对应的 API Key
+                            API Key 环境变量名是存储在系统环境变量中的变量名，Hermes
+                            会从环境变量中读取对应的 API Key
                           </div>
                           <div className="text-muted-foreground">
                             如果直接填写了 API Key，环境变量名可留空
@@ -213,14 +226,30 @@ export default function ProviderModal({
                         </div>
                         <div className="mb-2">
                           <div className="font-medium text-[11px] mb-1">常用厂商环境变量名</div>
-                          <div className="text-muted-foreground"><b>OpenAI</b> — OPENAI_API_KEY</div>
-                          <div className="text-muted-foreground"><b>Anthropic</b> — ANTHROPIC_API_KEY</div>
-                          <div className="text-muted-foreground"><b>Google Gemini</b> — GOOGLE_API_KEY</div>
-                          <div className="text-muted-foreground"><b>xAI</b> — XAI_API_KEY</div>
-                          <div className="text-muted-foreground"><b>Mistral</b> — MISTRAL_API_KEY</div>
-                          <div className="text-muted-foreground"><b>DeepSeek</b> — DEEPSEEK_API_KEY</div>
-                          <div className="text-muted-foreground"><b>硅基流动</b> — SILICONFLOW_API_KEY</div>
-                          <div className="text-muted-foreground"><b>智谱 AI</b> — ZHIPU_API_KEY</div>
+                          <div className="text-muted-foreground">
+                            <b>OpenAI</b> — OPENAI_API_KEY
+                          </div>
+                          <div className="text-muted-foreground">
+                            <b>Anthropic</b> — ANTHROPIC_API_KEY
+                          </div>
+                          <div className="text-muted-foreground">
+                            <b>Google Gemini</b> — GOOGLE_API_KEY
+                          </div>
+                          <div className="text-muted-foreground">
+                            <b>xAI</b> — XAI_API_KEY
+                          </div>
+                          <div className="text-muted-foreground">
+                            <b>Mistral</b> — MISTRAL_API_KEY
+                          </div>
+                          <div className="text-muted-foreground">
+                            <b>DeepSeek</b> — DEEPSEEK_API_KEY
+                          </div>
+                          <div className="text-muted-foreground">
+                            <b>硅基流动</b> — SILICONFLOW_API_KEY
+                          </div>
+                          <div className="text-muted-foreground">
+                            <b>智谱 AI</b> — ZHIPU_API_KEY
+                          </div>
                         </div>
                         <div className="text-muted-foreground">
                           💡 建议使用环境变量管理 API Key，避免密钥泄露
@@ -239,7 +268,9 @@ export default function ProviderModal({
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[13px] font-medium text-muted-foreground">{t("provider.apiKeyLabel")}</label>
+                  <label className="text-[13px] font-medium text-muted-foreground">
+                    {t("provider.apiKeyLabel")}
+                  </label>
                   <div className="relative">
                     <input
                       type={showApiKey ? "text" : "password"}
@@ -378,19 +409,7 @@ export default function ProviderModal({
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 flex items-center justify-center text-xl shrink-0">
-                    {p.name === "OpenAI"
-                      ? "🤖"
-                      : p.name === "Anthropic"
-                        ? "🧠"
-                        : p.name === "Google"
-                          ? "🔍"
-                          : p.name === "xAI"
-                            ? "🚀"
-                            : p.name === "Mistral"
-                              ? "🌀"
-                              : p.name === "DeepSeek"
-                                ? "🔮"
-                                : "🔌"}
+                    <ProviderIcon providerName={p.name} icon={p.icon} size={40} />
                   </div>
                   <div className="flex flex-col gap-0.5 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">

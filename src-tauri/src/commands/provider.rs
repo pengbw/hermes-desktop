@@ -11,15 +11,15 @@ fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
 #[tauri::command]
 pub async fn list_providers(app: AppHandle) -> Result<Vec<db::Provider>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, i64, i64, i64, i64)>(
-        "SELECT id, name, value, base_url, api_key_env, api_key, is_builtin, sort_order, created_at, updated_at FROM providers ORDER BY sort_order ASC, created_at ASC"
+    let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, i64, i64, i64, i64)>(
+        "SELECT id, name, value, base_url, api_key_env, api_key, icon, is_builtin, sort_order, created_at, updated_at FROM providers ORDER BY sort_order ASC, created_at ASC"
     )
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, name, value, base_url, api_key_env, api_key, is_builtin, sort_order, created_at, updated_at)| db::Provider {
-        id, name, value, base_url, api_key_env, api_key, is_builtin: is_builtin != 0, sort_order, created_at, updated_at,
+    Ok(rows.into_iter().map(|(id, name, value, base_url, api_key_env, api_key, icon, is_builtin, sort_order, created_at, updated_at)| db::Provider {
+        id, name, value, base_url, api_key_env, api_key, icon, is_builtin: is_builtin != 0, sort_order, created_at, updated_at,
     }).collect())
 }
 
@@ -41,7 +41,7 @@ pub async fn create_provider(
     let api_key_env = req.api_key_env.as_deref().unwrap_or("").to_string();
     let api_key = req.api_key.as_deref().unwrap_or("").to_string();
 
-    sqlx::query("INSERT INTO providers (id, name, value, base_url, api_key_env, api_key, is_builtin, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)")
+    sqlx::query("INSERT INTO providers (id, name, value, base_url, api_key_env, api_key, icon, is_builtin, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '', 0, ?, ?, ?)")
         .bind(&id)
         .bind(&req.name)
         .bind(&req.value)
@@ -66,6 +66,7 @@ pub async fn create_provider(
         base_url: req.base_url.unwrap_or_default(),
         api_key_env,
         api_key,
+        icon: String::new(),
         is_builtin: false, sort_order, created_at: now, updated_at: now,
     })
 }
@@ -78,14 +79,14 @@ pub async fn update_provider(
     let pool = get_pool(&app)?;
     let now = chrono::Utc::now().timestamp_millis();
 
-    let provider: db::Provider = sqlx::query_as::<_, (String, String, String, String, String, String, i64, i64, i64, i64)>(
-        "SELECT id, name, value, base_url, api_key_env, api_key, is_builtin, sort_order, created_at, updated_at FROM providers WHERE id = ?"
+    let provider: db::Provider = sqlx::query_as::<_, (String, String, String, String, String, String, String, i64, i64, i64, i64)>(
+        "SELECT id, name, value, base_url, api_key_env, api_key, icon, is_builtin, sort_order, created_at, updated_at FROM providers WHERE id = ?"
     )
     .bind(&req.id)
     .fetch_one(&pool)
     .await
-    .map(|(id, name, value, base_url, api_key_env, api_key, is_builtin, sort_order, created_at, updated_at)| db::Provider {
-        id, name, value, base_url, api_key_env, api_key, is_builtin: is_builtin != 0, sort_order, created_at, updated_at,
+    .map(|(id, name, value, base_url, api_key_env, api_key, icon, is_builtin, sort_order, created_at, updated_at)| db::Provider {
+        id, name, value, base_url, api_key_env, api_key, icon, is_builtin: is_builtin != 0, sort_order, created_at, updated_at,
     })
     .map_err(|e| e.to_string())?;
 

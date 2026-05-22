@@ -197,14 +197,14 @@ function ProjectList({
               <button
                 className={styles.studioViewBtn + " " + (viewMode === "list" ? styles.active : "")}
                 onClick={() => onViewModeChange("list")}
-                title="列表"
+                title={t("studio.viewList")}
               >
                 ☰
               </button>
               <button
                 className={styles.studioViewBtn + " " + (viewMode === "card" ? styles.active : "")}
                 onClick={() => onViewModeChange("card")}
-                title="卡片"
+                title={t("studio.viewCard")}
               >
                 ⊞
               </button>

@@ -59,18 +59,37 @@
   --border-width: var(--border-width);
 
   /* 兼容旧变量 */
+  --color-primary: var(--primary);
   --color-primary-hover: var(--primary);
   --color-bg: var(--background);
+  --bg-primary: var(--background);
+  --bg-secondary: var(--secondary);
+  --bg-tertiary: var(--muted);
   --color-surface: var(--card);
+  --card-bg: var(--card);
   --color-text: var(--foreground);
+  --text-primary: var(--foreground);
+  --text-secondary: var(--muted-foreground);
+  --text-tertiary: var(--muted-foreground);
   --color-text-secondary: var(--muted-foreground);
   --color-accent: var(--accent);
+  --input-bg: var(--input);
+  --border-color: var(--border);
+  --color-border: var(--border);
+  --color-nav-hover: var(--accent);
+  --hover-bg: var(--accent);
+  --bg-hover: var(--accent);
+  --color-section-bg: var(--muted);
+  --color-shadow: rgba(0, 0, 0, 0.15);
+  --color-file-tag-bg: var(--primary);
+  --color-file-tag-text: var(--primary-foreground);
+  --color-toast-error-text: #ef4444;
 }
 
 /* 全局基础样式 - 使用暗色作为默认回退，避免初始加载闪白 */
 html {
-  background-color: var(--background, #0F172A);
-  color: var(--foreground, #F8FAFC);
+  background-color: var(--background, #0f172a);
+  color: var(--foreground, #f8fafc);
 }
 
 body {
@@ -105,11 +124,12 @@ code,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d0d0d0;
+  background: var(--muted-foreground, #d0d0d0);
   border-radius: 3px;
+  opacity: 0.4;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #b0b0b0;
+  opacity: 0.6;
 }
 
 /* 悬浮数字人窗口 - 透明背景 */
@@ -149,7 +169,8 @@ code,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
+  height: 40px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }

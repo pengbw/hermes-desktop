@@ -6,6 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import KnowledgeBaseList from "@components/knowledge/KnowledgeBaseList";
 import KnowledgeFileList from "@components/knowledge/KnowledgeFileList";
 import KnowledgeSearch from "@components/knowledge/KnowledgeSearch";
+import ProjectIconPicker from "@components/knowledge/ProjectIconPicker";
+import KbIcon from "@components/knowledge/KbIcon";
 import type { KnowledgeBase, KnowledgeFile } from "@core/types";
 import { useKnowledgeStore } from "../../stores/knowledgeStore";
 
@@ -382,7 +384,9 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
               </svg>
             </button>
             <div className={styles.kbDetailTitle}>
-              <span className={styles.kbDetailIcon}>{selectedKb.icon}</span>
+              <span className={styles.kbDetailIcon}>
+                <KbIcon icon={selectedKb.icon} />
+              </span>
               <h2>{selectedKb.name}</h2>
               <span
                 className={`${styles.kbDetailStatus} ${styles["kbDetailStatus" + selectedKb.status.charAt(0).toUpperCase() + selectedKb.status.slice(1)] || ""}`}
@@ -654,11 +658,9 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
             <div className={styles.kbForm}>
               <div className={styles.kbFormGroup}>
                 <label>{t("kb.icon")}</label>
-                <input
-                  type="text"
+                <ProjectIconPicker
                   value={form.icon}
-                  onChange={(e) => setForm({ ...form, icon: e.target.value })}
-                  className={styles.kbIconInput}
+                  onChange={(icon) => setForm({ ...form, icon })}
                 />
               </div>
               <div className={styles.kbFormGroup}>

@@ -23,6 +23,7 @@ import TaskManagement from "./TaskManagement";
 import PendingReviewPanel from "./PendingReviewPanel";
 import ArtifactReviewReminder from "./ArtifactReviewReminder";
 import ArtifactTree from "./ArtifactTree";
+import { useI18n } from "../../contexts/I18nContext";
 
 const VirtualOffice = lazy(() => import("../../windows/VirtualOffice"));
 
@@ -52,6 +53,7 @@ function ActivityFeed({
   allRoles: AiRoleItem[];
   getRoleName: (roleId: string) => string;
 }) {
+  const { t } = useI18n();
   const [activities, setActivities] = useState<ProjectActivity[]>([]);
   const [now, setNow] = useState(Date.now);
 
@@ -80,9 +82,9 @@ function ActivityFeed({
   const formatTime = (ts: number) => {
     if (!ts) return "";
     const diff = now - ts;
-    if (diff < 60000) return "刚刚";
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+    if (diff < 60000) return t("studio.activity.justNow");
+    if (diff < 3600000) return t("studio.activity.minutesAgo", { n: Math.floor(diff / 60000) });
+    if (diff < 86400000) return t("studio.activity.hoursAgo", { n: Math.floor(diff / 3600000) });
     return new Date(ts).toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
   };
 
@@ -91,14 +93,14 @@ function ActivityFeed({
   return (
     <div className={styles.studioDetailSection}>
       <div className={styles.studioDetailSectionHeader}>
-        <h3>📊 项目动态</h3>
+        <h3>{t("studio.activityFeed")}</h3>
       </div>
       <div className={styles.activityFeed}>
         {activities.map((act) => (
           <div key={act.id} className={styles.activityItem}>
             <span className={styles.activityIcon}>{ACTION_ICONS[act.action] || "📌"}</span>
             <span className={styles.activityRole}>
-              {act.roleId ? getRoleName(act.roleId) : "系统"}
+              {act.roleId ? getRoleName(act.roleId) : t("studio.activity.system")}
             </span>
             <span className={styles.activityAction}>{act.action.replace(/_/g, " ")}</span>
             {act.detail && <span className={styles.activityDetail}>{act.detail.slice(0, 60)}</span>}
@@ -506,12 +508,12 @@ function ProjectDetail({
                 }
                 onClick={() => setProjectDetailTab(tab)}
               >
-                {tab === "overview" && "🏢 概览"}
-                {tab === "taskmgmt" && "📋 任务"}
-                {tab === "kanban" && "📊 看板"}
-                {tab === "members" && "👥 成员"}
-                {tab === "workflows" && "🔄 工作流"}
-                {tab === "chat" && "💬 对话"}
+                {tab === "overview" && t("studio.overview")}
+                {tab === "taskmgmt" && t("studio.tasks")}
+                {tab === "kanban" && t("studio.kanban")}
+                {tab === "members" && t("studio.members")}
+                {tab === "workflows" && t("studio.workflows")}
+                {tab === "chat" && t("studio.chat")}
               </button>
             )
           )}
@@ -540,7 +542,7 @@ function ProjectDetail({
                     fontSize: 12,
                   }}
                 >
-                  📋 任务列表
+                  {t("studio.taskList")}
                 </button>
                 <button
                   onClick={() => setTaskSubTab("pending")}
@@ -554,7 +556,7 @@ function ProjectDetail({
                     fontSize: 12,
                   }}
                 >
-                  🔔 待办审核
+                  {t("studio.pendingReview")}
                 </button>
               </div>
               {taskSubTab === "list" ? (
@@ -592,7 +594,7 @@ function ProjectDetail({
               <div className={styles.studioDetailLeft}>
                 <div className={styles.studioDetailSection}>
                   <div className={styles.studioDetailSectionHeader}>
-                    <h3>📋 项目概括</h3>
+                    <h3>{t("studio.projectOverview")}</h3>
                   </div>
                   <div className={styles.studioOverviewTabs}>
                     <button
@@ -603,7 +605,7 @@ function ProjectDetail({
                       }
                       onClick={() => setOverviewSubTab("tasks")}
                       onDoubleClick={() => setProjectDetailTab("taskmgmt")}
-                      title="双击进入任务管理"
+                      title={t("studio.dblclickToManage")}
                     >
                       📋 任务{" "}
                       <span className={styles.studioOverviewTabCount}>{projectTasks.length}</span>
@@ -635,12 +637,36 @@ function ProjectDetail({
                                 string,
                                 { label: string; color: string; icon: string }
                               > = {
-                                triage: { label: "待分类", color: "#b2bec3", icon: "📥" },
-                                todo: { label: "待办", color: "#636e72", icon: "📋" },
-                                ready: { label: "就绪", color: "#0984e3", icon: "🟢" },
-                                running: { label: "进行中", color: "#fdcb6e", icon: "🔄" },
-                                done: { label: "已完成", color: "#00b894", icon: "✅" },
-                                blocked: { label: "阻塞", color: "#e17055", icon: "🚫" },
+                                triage: {
+                                  label: t("studio.taskStatus.triage"),
+                                  color: "#b2bec3",
+                                  icon: "📥",
+                                },
+                                todo: {
+                                  label: t("studio.taskStatus.todo"),
+                                  color: "#636e72",
+                                  icon: "📋",
+                                },
+                                ready: {
+                                  label: t("studio.taskStatus.ready"),
+                                  color: "#0984e3",
+                                  icon: "🟢",
+                                },
+                                running: {
+                                  label: t("studio.taskStatus.running"),
+                                  color: "#fdcb6e",
+                                  icon: "🔄",
+                                },
+                                done: {
+                                  label: t("studio.taskStatus.done"),
+                                  color: "#00b894",
+                                  icon: "✅",
+                                },
+                                blocked: {
+                                  label: t("studio.taskStatus.blocked"),
+                                  color: "#e17055",
+                                  icon: "🚫",
+                                },
                               };
                               const tsc = taskStatusConfig[task.status] || {
                                 label: task.status,
@@ -660,10 +686,10 @@ function ProjectDetail({
                                       {task.priority > 0 && (
                                         <span className={styles.studioArtifactListItemRole}>
                                           {task.priority >= 3
-                                            ? "🔴高"
+                                            ? t("studio.taskPriority.high")
                                             : task.priority <= 1
-                                              ? "🟢低"
-                                              : "🟡中"}
+                                              ? t("studio.taskPriority.low")
+                                              : t("studio.taskPriority.medium")}
                                         </span>
                                       )}
                                     </div>
@@ -962,7 +988,9 @@ function ProjectDetail({
                       onChange={(_e, newValue: string) => setChatInput(newValue)}
                       allowSuggestionsAboveCursor={true}
                       placeholder={
-                        projectChatStreaming ? "AI 正在回复..." : "输入消息，@ 提及角色..."
+                        projectChatStreaming
+                          ? t("studio.chat.replying")
+                          : t("studio.chat.placeholder")
                       }
                       disabled={projectChatStreaming}
                       onKeyDown={(e: React.KeyboardEvent) => {
@@ -1032,7 +1060,7 @@ function ProjectDetail({
                         }
                       }}
                     >
-                      {projectChatStreaming ? "..." : "发送"}
+                      {projectChatStreaming ? "..." : t("studio.chat.send")}
                     </button>
                   </div>
                   {projectWorkflows.length > 0 && projectMembers.length > 1 && (
@@ -1046,9 +1074,7 @@ function ProjectDetail({
                           const firstMember = projectMembers[0];
                           if (!firstMember) return;
                           const startRoleId = chatTargetRole || firstMember.roleId;
-                          const message =
-                            chatInput.trim() ||
-                            "请开始执行你的工作任务，完成后将产出传递给下游角色。";
+                          const message = chatInput.trim() || t("studio.chat.defaultPrompt");
                           await invoke("run_workflow_auto_chat", {
                             projectId: project.id,
                             startRoleId,
@@ -1067,7 +1093,9 @@ function ProjectDetail({
                         }
                       }}
                     >
-                      {autoDelegateRunning ? "🔄 协作中..." : "🤝 自动协作"}
+                      {autoDelegateRunning
+                        ? t("studio.chat.autoDelegating")
+                        : t("studio.chat.autoDelegate")}
                     </button>
                   )}
                 </div>

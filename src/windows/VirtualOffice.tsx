@@ -82,6 +82,7 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
 
       const init = () => {
         if (sceneRef.current || dead) return;
+        if (el.clientWidth === 0 || el.clientHeight === 0) return;
         const scene = new OfficeScene3D(el, toGM(members), officeTheme, officeLayout);
         scene.onZoneClick = (z) => {
           setZoneInfo(z.label);
@@ -97,11 +98,11 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
         sceneRef.current = scene;
       };
 
-      if (el.clientHeight > 0) init();
+      if (el.clientHeight > 0 && el.clientWidth > 0) init();
       else {
         const obs = new ResizeObserver((entries) => {
           for (const e of entries) {
-            if (e.contentRect.height > 0 && !sceneRef.current && !dead) {
+            if (e.contentRect.height > 0 && e.contentRect.width > 0 && !sceneRef.current && !dead) {
               obs.disconnect();
               init();
             }
@@ -158,8 +159,13 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
       <div className={styles.virtualOffice3d}>
         <div className={styles.office3dContainer} ref={containerRef} />
 
-        <div className={`${styles.memberPanel} ${panelCollapsed ? styles.memberPanelCollapsed : ""}`}>
-          <div className={styles.memberPanelHeader} onClick={() => setPanelCollapsed(!panelCollapsed)}>
+        <div
+          className={`${styles.memberPanel} ${panelCollapsed ? styles.memberPanelCollapsed : ""}`}
+        >
+          <div
+            className={styles.memberPanelHeader}
+            onClick={() => setPanelCollapsed(!panelCollapsed)}
+          >
             <span>👥</span>
             <span className={styles.memberPanelTitle}>人员</span>
             <span className={styles.memberPanelCount}>{members.length}</span>

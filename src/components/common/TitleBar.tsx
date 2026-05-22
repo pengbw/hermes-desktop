@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, X } from "lucide-react";
+import logoIcon from "@assets/icons/128x128.svg";
 import type { Tab } from "../../stores/types";
 
 interface TitleBarProps {
@@ -73,14 +74,7 @@ export default function TitleBar({
     >
       {/* Logo + 拖拽区域 */}
       <div className="flex items-center gap-2 px-3 h-full" data-tauri-drag-region>
-        <img
-          src="/icons/32x32.png"
-          alt="Hermes"
-          className="w-5 h-5"
-          onError={(e) => {
-            e.currentTarget.style.display = "none";
-          }}
-        />
+        <img src={logoIcon} alt="Hermes" className="w-5 h-5" />
         <span className="text-sm font-medium text-foreground">Hermes Desktop</span>
       </div>
 

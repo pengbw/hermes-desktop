@@ -248,7 +248,7 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
   };
 
   return (
-    <div className="bg-card rounded-xl p-5 shadow-sm">
+    <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[15px] font-semibold text-foreground m-0">{t("kb.settings.title")}</h2>
       </div>
@@ -372,7 +372,11 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
             {localModelStatus === "ready" && (
               <button
                 className="mt-2 px-3.5 py-1 text-[13px] border border-primary rounded-md text-primary cursor-pointer transition-all hover:bg-primary hover:text-white"
-                style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "#fff", border: "none" }}
+                style={{
+                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  color: "#fff",
+                  border: "none",
+                }}
                 onClick={handleInstallOnnxModel}
               >
                 ⚡ 安装 ONNX 加速
@@ -447,7 +451,9 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
               )}
             </div>
             <div className="flex items-center justify-between gap-2 mt-2">
-              <span className="text-xs text-muted-foreground">{t("kb.settings.cloudProviderHint")}</span>
+              <span className="text-xs text-muted-foreground">
+                {t("kb.settings.cloudProviderHint")}
+              </span>
               <button
                 className="px-2.5 py-[3px] text-[13px] border border-primary rounded-md bg-transparent text-primary cursor-pointer transition-all hover:bg-primary hover:text-white whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                 onClick={handleTestCloud}
@@ -640,7 +646,9 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
                 {kbConfig.defaultMaxContextChunks}
               </span>
             </div>
-            <span className="text-xs text-muted-foreground mt-1">{t("kb.settings.chunksHint")}</span>
+            <span className="text-xs text-muted-foreground mt-1">
+              {t("kb.settings.chunksHint")}
+            </span>
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="flex items-center justify-between gap-3 cursor-pointer">

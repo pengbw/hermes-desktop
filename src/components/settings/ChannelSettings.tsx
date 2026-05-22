@@ -85,7 +85,7 @@ export default function ChannelSettings({ t }: ChannelSettingsProps) {
   const groupOrder: Array<keyof typeof CHANNEL_GROUPS> = ["domestic", "international", "other"];
 
   return (
-    <div className="bg-card rounded-xl p-5 shadow-sm">
+    <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-[15px] font-semibold text-foreground m-0">{t("channel.title")}</h2>
         <div className="text-[13px] text-muted-foreground bg-muted px-3 py-1 rounded-xl">

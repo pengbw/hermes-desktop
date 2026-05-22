@@ -4,7 +4,7 @@ import MarkdownRenderer from "@components/MarkdownRenderer";
 import AudioPlayer from "@components/chat/AudioPlayer";
 import { useI18n } from "@contexts/I18nContext";
 import type { Message, AttachedFile, KnowledgeSource } from "@core/types";
-import { FileText, BookOpen, Volume2, VolumeX, Pause, Play, Square, Loader2 } from "lucide-react";
+import { FileText, BookOpen, Volume2, Pause, Play, Square, Loader2 } from "lucide-react";
 
 interface MessageBubbleProps {
   message: Message;
@@ -156,15 +156,9 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
   const isUser = message.role === "user";
 
   return (
-    <div
-      className={`flex gap-2.5 items-start ${isUser ? "flex-row-reverse" : ""}`}
-    >
+    <div className={`flex gap-2.5 items-start ${isUser ? "flex-row-reverse" : ""}`}>
       <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 overflow-hidden bg-muted">
-        {isUser ? (
-          "👤"
-        ) : (
-          <img src="/bot.svg" alt="bot" className="w-full h-full object-cover" />
-        )}
+        {isUser ? "👤" : <img src="/bot.svg" alt="bot" className="w-full h-full object-cover" />}
       </div>
 
       {isVoiceMessage ? (
@@ -175,7 +169,9 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
             isUser={isUser}
           />
           {showTranscript && message.content && (
-            <div className={`mt-1.5 text-xs opacity-75 leading-relaxed break-words pt-1.5 border-t ${isUser ? "border-white/15" : "border-black/5"}`}>
+            <div
+              className={`mt-1.5 text-xs opacity-75 leading-relaxed break-words pt-1.5 border-t ${isUser ? "border-white/15" : "border-black/5"}`}
+            >
               {isUser ? message.content : <MarkdownRenderer content={message.content} />}
             </div>
           )}
@@ -206,9 +202,7 @@ function MessageBubbleInner({ message, ttsEnabled = false }: MessageBubbleProps)
                 <div
                   key={i}
                   className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs ${
-                    isUser
-                      ? "bg-white/15 text-white/90"
-                      : "bg-background text-primary"
+                    isUser ? "bg-white/15 text-white/90" : "bg-background text-primary"
                   }`}
                 >
                   <FileText className="h-3 w-3" />

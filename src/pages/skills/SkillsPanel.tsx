@@ -282,7 +282,11 @@ function SkillsPanel({
       <div className={skillStyles.skillsHeader}>
         <div className={skillStyles.skillsHeaderLeft}></div>
         <div className={skillStyles.skillsHeaderActions}>
-          <button className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium cursor-pointer transition-all hover:bg-primary/90 hover:shadow-md active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleRefresh} disabled={loading}>
+          <button
+            className="px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium cursor-pointer transition-all hover:bg-primary/90 hover:shadow-md active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleRefresh}
+            disabled={loading}
+          >
             {loading ? "..." : t("skills.refresh")}
           </button>
         </div>
@@ -346,21 +350,20 @@ function SkillsPanel({
 
       {!loading && catalogResult && catalogResult.skills.length > 0 && (
         <div className={skillStyles.skillsGrid}>
-          {catalogResult.skills.map((skill) => (
-            <div key={skill.id} className={skillStyles.skillCard}>
-              <div className={skillStyles.skillCardTop}>
-                <div className={skillStyles.skillCardIcon} data-category={skill.category}>
-                  <span className={skillStyles.skillIconEmoji}>
-                    {skill.category ? getCategoryIcon(skill.category) : "🔧"}
-                  </span>
-                  <span className={skillStyles.skillIconLetter}>{getSkillInitial(skill.name)}</span>
-                </div>
-                <div className={skillStyles.skillCardHeader}>
-                  <span className={skillStyles.skillCardName}>{skill.name}</span>
-                  {skill.version && (
-                    <span className={skillStyles.skillVersion}>v{skill.version}</span>
-                  )}
-                </div>
+          {catalogResult.skills.map((skill, index) => (
+            <div
+              key={skill.id}
+              className={skillStyles.skillCard}
+              style={{ animationDelay: `${index * 0.05}s` }}
+              onMouseEnter={() => setTooltipSkill(skill.id)}
+              onMouseLeave={() => setTooltipSkill(null)}
+            >
+              <div className={skillStyles.skillCardHeader}>
+                <span
+                  className={`${skillStyles.skillCornerTag} ${skill.installed ? skillStyles.skillCornerTagInstalled : skillStyles.skillCornerTagNotInstalled}`}
+                >
+                  {skill.installed ? t("skills.installed") : t("skills.notInstalled")}
+                </span>
                 <div className={skillStyles.skillCardMenuWrap}>
                   <button
                     className={skillStyles.skillCardMenuBtn}
@@ -405,48 +408,63 @@ function SkillsPanel({
                     </div>
                   )}
                 </div>
-              </div>
-              <div className={skillStyles.skillCardBottom}>
-                <div className={skillStyles.skillCardTags}>
-                  <span className={`${skillStyles.sourceBadge} ${skill.source}`}>
-                    {getSourceLabel(skill.source)}
+                <div className={skillStyles.skillIcon}>
+                  <span className={skillStyles.skillIconEmoji}>
+                    {skill.category ? getCategoryIcon(skill.category) : "🔧"}
                   </span>
-                  <span
-                    className={`${skillStyles.enabledBadge} ${skill.installed ? skillStyles.enabled : skillStyles.disabled}`}
-                  >
-                    {skill.installed ? t("skills.installed") : t("skills.notInstalled")}
-                  </span>
-                  {skill.categoryLabel && (
-                    <span className={skillStyles.tagBadge}>{skill.categoryLabel}</span>
-                  )}
-                  {skill.tags.slice(0, 2).map((tag) => (
-                    <span key={tag} className={skillStyles.tagBadge}>
-                      {tag}
-                    </span>
-                  ))}
+                  <span className={skillStyles.skillIconLetter}>{getSkillInitial(skill.name)}</span>
                 </div>
-                {!skill.installed && (
+                <div className={skillStyles.skillTitle}>{skill.name}</div>
+                {skill.version && <div className={skillStyles.skillVersion}>v{skill.version}</div>}
+              </div>
+              <div className={skillStyles.skillCardBody}>
+                <div className={skillStyles.skillMetaRow}>
+                  <span className={skillStyles.skillMetaLabel}>Source</span>
+                  <span className={skillStyles.skillMetaValue}>{getSourceLabel(skill.source)}</span>
+                </div>
+                {skill.categoryLabel && (
+                  <div className={skillStyles.skillMetaRow}>
+                    <span className={skillStyles.skillMetaLabel}>Category</span>
+                    <span className={skillStyles.skillMetaValue}>{skill.categoryLabel}</span>
+                  </div>
+                )}
+                {skill.tags.length > 0 && (
+                  <div className={skillStyles.skillMetaRow}>
+                    <span className={skillStyles.skillMetaLabel}>Tags</span>
+                    <span className={skillStyles.skillMetaValue}>
+                      {skill.tags.slice(0, 3).join(", ")}
+                    </span>
+                  </div>
+                )}
+                {skill.description && (
+                  <div className={skillStyles.skillDescTooltip}>
+                    {tooltipSkill === skill.id && (
+                      <div className={skillStyles.descTooltipContent}>{skill.description}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className={skillStyles.skillCardFooter}>
+                <button className={skillStyles.skillBtn} onClick={() => handleInspect(skill)}>
+                  {t("skills.viewDetail")}
+                </button>
+                {!skill.installed ? (
                   <button
-                    className={skillStyles.installBtn}
+                    className={skillStyles.skillBtnPrimary}
                     disabled={installing === skill.identifier}
                     onClick={() => handleInstall(skill)}
                   >
                     {installing === skill.identifier ? "..." : t("skills.install")}
                   </button>
+                ) : (
+                  <button
+                    className={`${skillStyles.skillBtn} ${skillStyles.skillBtnDanger}`}
+                    onClick={() => handleUninstall(skill)}
+                  >
+                    {t("skills.uninstall")}
+                  </button>
                 )}
               </div>
-              {skill.description && (
-                <div
-                  className={skillStyles.skillDescTooltip}
-                  onMouseEnter={() => setTooltipSkill(skill.id)}
-                  onMouseLeave={() => setTooltipSkill(null)}
-                >
-                  <span className={skillStyles.descIndicator}>ℹ</span>
-                  {tooltipSkill === skill.id && (
-                    <div className={skillStyles.descTooltipContent}>{skill.description}</div>
-                  )}
-                </div>
-              )}
             </div>
           ))}
         </div>

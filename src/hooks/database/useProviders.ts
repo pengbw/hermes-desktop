@@ -6,7 +6,13 @@ interface Provider {
   name: string;
   value: string;
   baseUrl: string;
+  apiKeyEnv: string;
   apiKey: string;
+  icon: string;
+  isBuiltin: boolean;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export function useProviders() {

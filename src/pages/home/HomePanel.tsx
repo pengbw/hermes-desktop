@@ -30,7 +30,7 @@ interface HomePanelProps {
 
 function HomePanel({ t, sendMessage, isStreaming }: HomePanelProps) {
   const [cardIndex, setCardIndex] = useState(0);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const customCards = loadCustomCards();
   const allCards = [...BUILTIN_CARDS, ...customCards];
   const cardsPerRow = 4;

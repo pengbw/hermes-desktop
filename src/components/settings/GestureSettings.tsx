@@ -93,7 +93,7 @@ export default function GestureSettings({
 
   return (
     <div className="animate-[fadeIn_0.2s_ease]">
-      <div className="bg-card rounded-xl p-5 shadow-sm mb-4">
+      <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[15px] font-semibold text-foreground m-0">{t("gesture.title")}</h3>
           <div className="flex items-center gap-3">
@@ -144,7 +144,9 @@ export default function GestureSettings({
                     </div>
                     <div className="flex flex-col gap-1.5 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-foreground leading-tight truncate">{g.name}</span>
+                        <span className="text-sm font-semibold text-foreground leading-tight truncate">
+                          {g.name}
+                        </span>
                         <span
                           className={`text-[10px] font-medium px-2 py-px rounded-full leading-relaxed tracking-wide shrink-0 ${
                             isSystem
