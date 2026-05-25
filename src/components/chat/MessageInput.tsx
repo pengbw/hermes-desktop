@@ -53,7 +53,7 @@ export default function MessageInput({
   pendingKbIds,
   setPendingKbIds,
 }: MessageInputProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
 
   const { voiceState, installError, progressText, micError, toggleRecording, installStt } =
@@ -108,10 +108,9 @@ export default function MessageInput({
   useEffect(() => {
     const loadProvidersAndConfig = async () => {
       try {
-        const list =
-          await invoke<
-            { id: string; name: string; value: string; baseUrl: string; apiKey: string }[]
-          >("list_providers");
+        const list = await invoke<
+          { id: string; name: string; value: string; baseUrl: string; apiKey: string }[]
+        >("list_providers", { locale });
         setProviders(list);
 
         const config = await invoke<{ model: string; provider: string }>("get_hermes_config");
@@ -252,14 +251,22 @@ export default function MessageInput({
 
   const getVoiceTooltip = () => {
     switch (voiceState) {
-      case "checking": return "...";
-      case "transcribing": return t("chat.voiceTranscribing") || "Sending...";
-      case "installing": return progressText || t("chat.voiceInstalling") || "Installing...";
-      case "install-error": return installError || t("chat.voiceInstallHint") || "Click to retry";
-      case "not-installed": return t("chat.voiceInstallHint") || "Click to install voice recognition";
-      case "mic-error": return micError || "Microphone error - click to retry";
-      case "recording": return t("chat.voiceStop");
-      default: return t("chat.voiceStart");
+      case "checking":
+        return "...";
+      case "transcribing":
+        return t("chat.voiceTranscribing") || "Sending...";
+      case "installing":
+        return progressText || t("chat.voiceInstalling") || "Installing...";
+      case "install-error":
+        return installError || t("chat.voiceInstallHint") || "Click to retry";
+      case "not-installed":
+        return t("chat.voiceInstallHint") || "Click to install voice recognition";
+      case "mic-error":
+        return micError || "Microphone error - click to retry";
+      case "recording":
+        return t("chat.voiceStop");
+      default:
+        return t("chat.voiceStart");
     }
   };
 
@@ -273,7 +280,10 @@ export default function MessageInput({
   };
 
   const isVoiceDisabled =
-    isStreaming || voiceState === "checking" || voiceState === "transcribing" || voiceState === "installing";
+    isStreaming ||
+    voiceState === "checking" ||
+    voiceState === "transcribing" ||
+    voiceState === "installing";
 
   return (
     <div
@@ -319,10 +329,14 @@ export default function MessageInput({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          onCompositionStart={() => { isComposingRef.current = true; }}
+          onCompositionStart={() => {
+            isComposingRef.current = true;
+          }}
           onCompositionEnd={() => {
             lastCompositionEndRef.current = performance.now();
-            queueMicrotask(() => { isComposingRef.current = false; });
+            queueMicrotask(() => {
+              isComposingRef.current = false;
+            });
           }}
           placeholder={t("chat.inputPlaceholder")}
           rows={1}
@@ -416,13 +430,21 @@ export default function MessageInput({
                   className={`h-7 w-7 text-muted-foreground hover:text-foreground ${voiceState === "recording" ? "text-red-500" : ""} ${voiceState === "mic-error" || voiceState === "install-error" ? "text-red-500" : ""}`}
                   title={getVoiceTooltip()}
                   disabled={isVoiceDisabled}
-                  onClick={voiceState === "not-installed" || voiceState === "install-error" ? installStt : toggleRecording}
+                  onClick={
+                    voiceState === "not-installed" || voiceState === "install-error"
+                      ? installStt
+                      : toggleRecording
+                  }
                 >
                   {getVoiceIcon()}
                 </Button>
-                {voiceEnabled && progressText && (voiceState === "installing" || voiceState === "transcribing") && (
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">{progressText}</span>
-                )}
+                {voiceEnabled &&
+                  progressText &&
+                  (voiceState === "installing" || voiceState === "transcribing") && (
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {progressText}
+                    </span>
+                  )}
               </>
             )}
           </div>
@@ -453,7 +475,9 @@ export default function MessageInput({
                       >
                         <option value="">选择供应商</option>
                         {providers.map((p) => (
-                          <option key={p.id} value={p.value}>{p.name}</option>
+                          <option key={p.id} value={p.value}>
+                            {p.name}
+                          </option>
                         ))}
                       </select>
                       <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
@@ -473,7 +497,9 @@ export default function MessageInput({
                         >
                           <span className="truncate">{m.id}</span>
                           {m.ownedBy && (
-                            <span className="text-[10px] text-muted-foreground ml-2 shrink-0">{m.ownedBy}</span>
+                            <span className="text-[10px] text-muted-foreground ml-2 shrink-0">
+                              {m.ownedBy}
+                            </span>
                           )}
                         </button>
                       ))

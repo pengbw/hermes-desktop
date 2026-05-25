@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { QuickCard, HermesConfigData } from "@core/types";
-import { BUILTIN_CARDS } from "@constants/builtinCards";
+import { getBuiltinCards } from "@seeds";
 import { CARDS_STORAGE_KEY } from "@constants/config";
 import HermesStatus from "@components/home/HermesStatus";
 import QuickActions from "@components/home/QuickActions";
@@ -32,7 +32,7 @@ function HomePanel({ t, sendMessage, isStreaming }: HomePanelProps) {
   const [cardIndex, setCardIndex] = useState(0);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const customCards = loadCustomCards();
-  const allCards = [...BUILTIN_CARDS, ...customCards];
+  const allCards = [...getBuiltinCards(), ...customCards];
   const cardsPerRow = 4;
 
   useEffect(() => {

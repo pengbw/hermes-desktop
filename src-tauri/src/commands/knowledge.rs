@@ -411,12 +411,21 @@ async fn embed_text_ollama(endpoint: &str, model: &str, text: &str) -> Result<Ve
     }
 
     let json: serde_json::Value = resp.json().await.map_err(|e| format!("解析Ollama嵌入响应失败: {}", e))?;
-    let embeddings = json["embeddings"].as_array().or_else(|| json["embedding"].as_array()).ok_or("Ollama嵌入响应缺少embeddings字段")?;
-    if let Some(first) = embeddings.first() {
-        let arr = first.as_array().or_else(|| Some(embeddings)).unwrap();
-        return Ok(arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect());
+
+    if let Some(embeddings_arr) = json["embeddings"].as_array() {
+        if let Some(first) = embeddings_arr.first() {
+            if let Some(vec) = first.as_array() {
+                return Ok(vec.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect());
+            }
+        }
+        return Err("Ollama嵌入响应embeddings格式错误".to_string());
     }
-    Err("Ollama嵌入响应格式错误".to_string())
+
+    if let Some(embedding) = json["embedding"].as_array() {
+        return Ok(embedding.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect());
+    }
+
+    Err("Ollama嵌入响应缺少embeddings或embedding字段".to_string())
 }
 
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
@@ -651,60 +660,62 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
 
                 let mut vectors: Vec<Option<Vec<f32>>> = vec![None; chunks.len()];
 
-                if let Some((ref base_url, ref api_key, ref embed_model)) = cloud_provider_info {
-                    let batch_size = 20;
-                    let mut batch_futures = Vec::new();
-                    let mut batch_ranges = Vec::new();
+                if !use_local_embedding {
+                    if let Some((ref base_url, ref api_key, ref embed_model)) = cloud_provider_info {
+                        let batch_size = 20;
+                        let mut batch_futures = Vec::new();
+                        let mut batch_ranges = Vec::new();
 
-                    for batch_start in (0..chunks.len()).step_by(batch_size) {
-                        let batch_end = std::cmp::min(batch_start + batch_size, chunks.len());
-                        let batch: Vec<String> = chunks[batch_start..batch_end].to_vec();
-                        batch_ranges.push((batch_start, batch_end));
-                        let bu = base_url.clone();
-                        let ak = api_key.clone();
-                        let em = embed_model.clone();
-                        batch_futures.push(async move {
-                            embed_text_cloud(&bu, &ak, &em, &batch).await
-                        });
-                    }
+                        for batch_start in (0..chunks.len()).step_by(batch_size) {
+                            let batch_end = std::cmp::min(batch_start + batch_size, chunks.len());
+                            let batch: Vec<String> = chunks[batch_start..batch_end].to_vec();
+                            batch_ranges.push((batch_start, batch_end));
+                            let bu = base_url.clone();
+                            let ak = api_key.clone();
+                            let em = embed_model.clone();
+                            batch_futures.push(async move {
+                                embed_text_cloud(&bu, &ak, &em, &batch).await
+                            });
+                        }
 
-                    let results = futures_util::future::join_all(batch_futures).await;
-                    for (i, result) in results.into_iter().enumerate() {
-                        let (start, end) = batch_ranges[i];
-                        match result {
-                            Ok(embeddings) => {
-                                for (j, emb) in embeddings.iter().enumerate() {
-                                    if start + j < vectors.len() {
-                                        vectors[start + j] = Some(emb.clone());
+                        let results = futures_util::future::join_all(batch_futures).await;
+                        for (i, result) in results.into_iter().enumerate() {
+                            let (start, end) = batch_ranges[i];
+                            match result {
+                                Ok(embeddings) => {
+                                    for (j, emb) in embeddings.iter().enumerate() {
+                                        if start + j < vectors.len() {
+                                            vectors[start + j] = Some(emb.clone());
+                                        }
                                     }
                                 }
-                            }
-                            Err(e) => {
-                                log::warn!("[kb_index] Cloud batch {} embedding failed: {}", i, e);
-                                for ci in start..end {
-                                    match embed_text_cloud(base_url, api_key, embed_model, &[chunks[ci].clone()]).await {
-                                        Ok(emb) => { if let Some(v) = emb.first() { vectors[ci] = Some(v.clone()); } }
-                                        Err(e2) => { log::warn!("[kb_index] Single embedding also failed for chunk {}: {}", ci, e2); }
+                                Err(e) => {
+                                    log::warn!("[kb_index] Cloud batch {} embedding failed: {}", i, e);
+                                    for ci in start..end {
+                                        match embed_text_cloud(base_url, api_key, embed_model, &[chunks[ci].clone()]).await {
+                                            Ok(emb) => { if let Some(v) = emb.first() { vectors[ci] = Some(v.clone()); } }
+                                            Err(e2) => { log::warn!("[kb_index] Single embedding also failed for chunk {}: {}", ci, e2); }
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                } else if let Some((ref endpoint, ref ollama_model)) = ollama_info {
-                    let mut embed_futures = Vec::new();
-                    for chunk in chunks.iter() {
-                        let ep = endpoint.clone();
-                        let om = ollama_model.clone();
-                        let c = chunk.clone();
-                        embed_futures.push(async move {
-                            embed_text_ollama(&ep, &om, &c).await
-                        });
-                    }
-                    let results = futures_util::future::join_all(embed_futures).await;
-                    for (ci, result) in results.into_iter().enumerate() {
-                        match result {
-                            Ok(vec) => { vectors[ci] = Some(vec); }
-                            Err(e) => { log::warn!("[kb_index] Ollama embedding failed for chunk {}: {}", ci, e); }
+                    } else if let Some((ref endpoint, ref ollama_model)) = ollama_info {
+                        let mut embed_futures = Vec::new();
+                        for chunk in chunks.iter() {
+                            let ep = endpoint.clone();
+                            let om = ollama_model.clone();
+                            let c = chunk.clone();
+                            embed_futures.push(async move {
+                                embed_text_ollama(&ep, &om, &c).await
+                            });
+                        }
+                        let results = futures_util::future::join_all(embed_futures).await;
+                        for (ci, result) in results.into_iter().enumerate() {
+                            match result {
+                                Ok(vec) => { vectors[ci] = Some(vec); }
+                                Err(e) => { log::warn!("[kb_index] Ollama embedding failed for chunk {}: {}", ci, e); }
+                            }
                         }
                     }
                 }
@@ -991,12 +1002,14 @@ pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str,
         .collect();
 
     if !keywords.is_empty() {
-        // SAFETY: conditions contain only "content LIKE ?" literals (parametrized), no user input in SQL text
-        let conditions: Vec<String> = keywords.iter().map(|_| "content LIKE ?".to_string()).collect();
+        let conditions: Vec<&str> = keywords.iter().map(|_| "content LIKE ?").collect();
         let where_clause = conditions.join(" OR ");
 
-        let sql = format!("SELECT kc.content, kf.file_name, kf.file_path FROM knowledge_chunks kc LEFT JOIN knowledge_files kf ON kc.file_id = kf.id WHERE kc.knowledge_base_id = ? AND ({}) LIMIT ?", where_clause);
-        let mut sql_query = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(&sql).bind(id);
+        let sql = format!(
+            "SELECT kc.content, kf.file_name, kf.file_path FROM knowledge_chunks kc LEFT JOIN knowledge_files kf ON kc.file_id = kf.id WHERE kc.knowledge_base_id = ? AND ({}) LIMIT ?",
+            where_clause
+        );
+        let mut sql_query = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(&sql).bind(&id);
         for kw in &keywords {
             sql_query = sql_query.bind(format!("%{}%", kw.replace('%', "\\%").replace('_', "\\_")));
         }
@@ -1183,13 +1196,20 @@ pub async fn check_local_embedding_model() -> Result<String, String> {
         .join("models")
         .join("all-MiniLM-L6-v2");
 
+    #[cfg(not(target_os = "windows"))]
     let onnx_file = data_dir.join("model.onnx");
     let model_file = data_dir.join("model.safetensors");
     let config_file = data_dir.join("config.json");
+    let tokenizer_file = data_dir.join("tokenizer.json");
 
-    if onnx_file.exists() {
-        Ok("onnx_ready".to_string())
-    } else if model_file.exists() && config_file.exists() {
+    let has_tokenizer = tokenizer_file.exists();
+
+    #[cfg(not(target_os = "windows"))]
+    if onnx_file.exists() && has_tokenizer {
+        return Ok("onnx_ready".to_string());
+    }
+
+    if model_file.exists() && config_file.exists() && has_tokenizer {
         Ok("ready".to_string())
     } else {
         Ok("missing".to_string())
@@ -1214,8 +1234,18 @@ pub async fn install_local_embedding_model(app: AppHandle) -> Result<String, Str
     let mirror_base = "https://hf-mirror.com/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
     let origin_base = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
 
+    #[cfg(not(target_os = "windows"))]
+    let onnx_exists = data_dir.join("model.onnx").exists();
+    #[cfg(target_os = "windows")]
+    let onnx_exists: bool = false;
+
     let file_names = vec!["config.json", "special_tokens_map.json", "tokenizer.json", "model.safetensors"];
     let file_paths: Vec<std::path::PathBuf> = vec![config_path, special_tokens_path, tokenizer_path, model_path];
+
+    #[cfg(not(target_os = "windows"))]
+    let skip_names: Vec<&str> = if onnx_exists { vec!["model.safetensors"] } else { vec![] };
+    #[cfg(target_os = "windows")]
+    let skip_names: Vec<&str> = vec![];
 
     let total = file_names.len();
     let client = reqwest::Client::builder()
@@ -1224,6 +1254,9 @@ pub async fn install_local_embedding_model(app: AppHandle) -> Result<String, Str
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
     for (i, (name, path)) in file_names.iter().zip(file_paths.iter()).enumerate() {
+        if skip_names.contains(name) || path.exists() {
+            continue;
+        }
         let file_name = name.to_string();
         let _ = app.emit("local-embedding-model-progress", (i as f64 / total as f64 * 100.0) as u8);
 
@@ -1277,6 +1310,10 @@ pub async fn install_local_embedding_model(app: AppHandle) -> Result<String, Str
 
     let _ = app.emit("local-embedding-model-progress", 100u8);
     let _ = app.emit("local-embedding-model-installed", ());
+    #[cfg(not(target_os = "windows"))]
+    if onnx_exists {
+        return Ok("onnx_ready".to_string());
+    }
     Ok("ready".to_string())
 }
 
@@ -1289,6 +1326,53 @@ pub async fn install_onnx_model(app: AppHandle) -> Result<String, String> {
         .join("all-MiniLM-L6-v2");
 
     let _ = std::fs::create_dir_all(&data_dir);
+
+    let tokenizer_path = data_dir.join("tokenizer.json");
+    let config_path = data_dir.join("config.json");
+    let special_tokens_path = data_dir.join("special_tokens_map.json");
+
+    let mirror_base = "https://hf-mirror.com/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
+    let origin_base = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
+
+    let small_files = vec![
+        ("tokenizer.json", &tokenizer_path),
+        ("config.json", &config_path),
+        ("special_tokens_map.json", &special_tokens_path),
+    ];
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    for (name, path) in &small_files {
+        if path.exists() {
+            continue;
+        }
+        let mirror_url = format!("{}/{}", mirror_base, name);
+        let origin_url = format!("{}/{}", origin_base, name);
+
+        let resp = match client.get(&mirror_url).send().await {
+            Ok(r) if r.status().is_success() => r,
+            Ok(r) => {
+                drop(r);
+                client.get(&origin_url).send().await
+                    .map_err(|e| format!("Download {} failed: {}", name, e))?
+            }
+            Err(_) => {
+                client.get(&origin_url).send().await
+                    .map_err(|e| format!("Download {} failed: {}", name, e))?
+            }
+        };
+
+        if !resp.status().is_success() {
+            return Err(format!("Download {} failed with status: {}", name, resp.status()));
+        }
+
+        let bytes = resp.bytes().await.map_err(|e| format!("Download {} read error: {}", name, e))?;
+        std::fs::write(path, &bytes).map_err(|e| format!("Write {} error: {}", name, e))?;
+        log::info!("[onnx] Downloaded {}", name);
+    }
 
     let onnx_dest = data_dir.join("model.onnx");
     if onnx_dest.exists() {

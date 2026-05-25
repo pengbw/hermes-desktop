@@ -80,7 +80,7 @@ function SettingsPanel() {
 
   const loadProviders = async (): Promise<Provider[]> => {
     try {
-      const raw: unknown[] = await invoke("list_providers");
+      const raw: unknown[] = await invoke("list_providers", { locale });
       const list = (raw as Record<string, unknown>[]).map((item) => ({
         id: (item.id ?? item.ID ?? "") as string,
         name: (item.name ?? item.Name ?? "") as string,
@@ -191,6 +191,7 @@ function SettingsPanel() {
       "baseUrl",
       "maxTurns",
       "workspaceRoot",
+      "conversationStoragePath",
       "hermesApiBase",
       "hermesApiKey",
     ],
@@ -242,6 +243,14 @@ function SettingsPanel() {
           const cfg = config;
           await invoke("set_config", { key: "workspace_root", value: cfg?.workspaceRoot || "" });
           needRestartGateway = true;
+          continue;
+        }
+        if (field === "conversationStoragePath") {
+          const cfg = config;
+          await invoke("set_config", {
+            key: "conversation_storage_path",
+            value: cfg?.conversationStoragePath || "",
+          });
           continue;
         }
         if (field === "hermesApiBase") {
@@ -315,8 +324,12 @@ function SettingsPanel() {
       setVoiceEnabled(result.voice_enabled);
       try {
         const wsRoot = await invoke<string>("get_config", { key: "workspace_root" });
+        const convStoragePath = await invoke<string>("get_config", {
+          key: "conversation_storage_path",
+        });
         const cfg: HermesConfigData = { ...result };
         cfg.workspaceRoot = wsRoot || "";
+        cfg.conversationStoragePath = convStoragePath || "";
         setConfig(cfg);
       } catch {
         // console.warn("Failed to parse config:", err);
@@ -461,6 +474,12 @@ function SettingsPanel() {
                 cfg.workspaceRoot = v;
                 setConfig(cfg);
                 markDirty("workspaceRoot");
+              }}
+              onConversationStoragePathChange={(v) => {
+                const cfg: HermesConfigData = { ...config! };
+                cfg.conversationStoragePath = v;
+                setConfig(cfg);
+                markDirty("conversationStoragePath");
               }}
               onHermesApiBaseChange={(v) => {
                 setHermesApiBase(v);

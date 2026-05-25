@@ -44,8 +44,10 @@ pub fn set_titlebar_theme(app: AppHandle, dark: bool) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn toggle_avatar_window(app: AppHandle) -> Result<bool, String> {
-    let avatar = app.get_webview_window("avatar")
-        .ok_or("Avatar window not found")?;
+    let avatar = match app.get_webview_window("avatar") {
+        Some(w) => w,
+        None => return Err("Avatar window not found".into()),
+    };
 
     let visible = avatar.is_visible().map_err(|e| e.to_string())?;
     if visible {

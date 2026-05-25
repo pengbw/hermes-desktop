@@ -1,3 +1,5 @@
+use crate::crypto::file_storage;
+use crate::crypto::key_manager;
 use crate::database::models as db;
 use crate::commands::project::seed_builtin_templates;
 use sqlx::SqlitePool;
@@ -6,6 +8,24 @@ use tauri::{AppHandle, Manager};
 fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
     let state = app.state::<crate::commands::helpers::AppState>();
     Ok(state.db_pool.clone())
+}
+
+async fn get_conversation_storage_path(pool: &SqlitePool) -> Option<String> {
+    sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'conversation_storage_path'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .filter(|v| !v.is_empty())
+}
+
+async fn ensure_key_initialized(pool: &SqlitePool) -> Result<(), String> {
+    if key_manager::get_cached_key().is_some() {
+        return Ok(());
+    }
+    let storage_path = get_conversation_storage_path(pool).await;
+    key_manager::init_or_load_key(storage_path.as_deref())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -38,6 +58,10 @@ pub async fn create_avatar_conversation(app: AppHandle) -> Result<db::Conversati
         .await
         .map_err(|e| e.to_string())?;
 
+    ensure_key_initialized(&pool).await?;
+    let sp = get_conversation_storage_path(&pool).await;
+    file_storage::write_conversation_file(sp.as_deref(), &id, vec![])?;
+
     Ok(db::Conversation {
         id,
         title: "Avatar Chat".to_string(),
@@ -67,26 +91,23 @@ pub async fn get_avatar_messages(app: AppHandle) -> Result<Vec<db::Message>, Str
         None => return Ok(vec![]),
     };
 
-    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, i64, Option<String>, Option<f64>, Option<String>)>(
-        "SELECT id, role, content, thinking, files, timestamp, audio_path, audio_duration, message_type FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
-    )
-    .bind(&conversation_id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    ensure_key_initialized(&pool).await?;
+    let sp = get_conversation_storage_path(&pool).await;
 
-    let messages = rows
+    let encrypted_messages = file_storage::read_conversation_file(sp.as_deref(), &conversation_id)?;
+
+    let messages = encrypted_messages
         .into_iter()
-        .map(|(id, role, content, thinking, files, timestamp, audio_path, audio_duration, message_type)| db::Message {
-            id,
-            role,
-            content,
-            thinking: thinking.filter(|s| !s.is_empty()),
-            files: files.filter(|s| !s.is_empty()),
-            timestamp,
-            audio_path: audio_path.filter(|s| !s.is_empty()),
-            audio_duration,
-            message_type: message_type.filter(|s| !s.is_empty()),
+        .map(|em| db::Message {
+            id: em.id,
+            role: em.role,
+            content: em.content,
+            thinking: em.thinking.filter(|s| !s.is_empty()),
+            files: em.files.filter(|s| !s.is_empty()),
+            timestamp: em.timestamp,
+            audio_path: em.audio_path.filter(|s| !s.is_empty()),
+            audio_duration: em.audio_duration.filter(|d| *d >= 0.0),
+            message_type: em.message_type.filter(|s| !s.is_empty()),
         })
         .collect();
 
@@ -220,17 +241,35 @@ pub async fn delete_avatar_gesture(app: AppHandle, id: String) -> Result<(), Str
 }
 
 #[tauri::command]
-pub async fn list_ai_roles(app: AppHandle) -> Result<Vec<db::AiRole>, String> {
+pub async fn list_ai_roles(app: AppHandle, locale: Option<String>) -> Result<Vec<db::AiRole>, String> {
     let pool = get_pool(&app)?;
 
     let _ = seed_builtin_templates(&pool).await;
 
-    let rows = sqlx::query_as::<_, db::AiRole>(
+    let mut rows = sqlx::query_as::<_, db::AiRole>(
         "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles ORDER BY sort_order ASC, created_at ASC"
     )
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
+
+    let loc = locale.as_deref().unwrap_or("zh-CN");
+    let templates_data = crate::database::seeds::load_project_templates();
+
+    for role in &mut rows {
+        if role.is_builtin {
+            let seed_id = role.id.strip_prefix("builtin_").unwrap_or(&role.id);
+            for tmpl in &templates_data.templates {
+                if let Some(seed) = tmpl.roles.iter().find(|r| r.id == seed_id) {
+                    role.name = crate::database::seeds::resolve_localized(&seed.name, loc).to_string();
+                    role.description = crate::database::seeds::resolve_localized(&seed.description, loc).to_string();
+                    role.responsibilities = crate::database::seeds::resolve_localized(&seed.responsibilities, loc).to_string();
+                    role.soul_content = crate::database::seeds::resolve_localized(&seed.soul_content, loc).to_string();
+                    break;
+                }
+            }
+        }
+    }
 
     Ok(rows)
 }
@@ -353,10 +392,27 @@ pub async fn upload_vrm_avatar(app: AppHandle, role_id: String, file_path: Strin
         .and_then(|e| e.to_str())
         .unwrap_or("vrm")
         .to_string();
+    let allowed_exts = ["vrm", "glb", "gltf", "png", "jpg", "jpeg", "webp"];
+    if !allowed_exts.contains(&ext.to_lowercase().as_str()) {
+        return Err(format!("不支持的文件类型: {}", ext));
+    }
+
+    let src_path = std::path::Path::new(&file_path);
+    let canonical = std::fs::canonicalize(src_path).map_err(|_| "源文件不存在".to_string())?;
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_default();
+    let home_canonical = std::fs::canonicalize(&home).unwrap_or_else(|_| std::path::PathBuf::from(&home));
+    let data_dir = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let data_canonical = std::fs::canonicalize(&data_dir).unwrap_or_else(|_| data_dir.clone());
+    if !canonical.starts_with(&home_canonical) && !canonical.starts_with(&data_canonical) {
+        return Err("无权访问该路径".to_string());
+    }
+
     let dest_name = format!("{}.{}", role_id, ext);
     let dest_path = avatar_dir.join(&dest_name);
 
-    std::fs::copy(&file_path, &dest_path).map_err(|e| e.to_string())?;
+    std::fs::copy(&canonical, &dest_path).map_err(|e| e.to_string())?;
 
     let avatar_url = dest_path.to_string_lossy().to_string();
 

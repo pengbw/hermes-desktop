@@ -1,0 +1,94 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-05-24",
+  "cards": [
+    {
+      "id": "mindmap",
+      "name": { "zh-CN": "思维导图", "zh-XG": "思維導圖", "en": "Mind Map" },
+      "icon": "🧠",
+      "prompt": {
+        "zh-CN": "请帮我生成一个关于「主题」的思维导图，用markdown格式列出清晰的层级结构，包含中心主题、主要分支和细节要点。",
+        "zh-XG": "請幫我生成一個關於「主題」的思維導圖，用markdown格式列出清晰的層級結構，包含中心主題、主要分支和細節要點。",
+        "en": "Please help me generate a mind map about [topic], using markdown format with clear hierarchical structure, including central theme, main branches, and detail points."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "weekly",
+      "name": { "zh-CN": "周报生成", "zh-XG": "週報生成", "en": "Weekly Report" },
+      "icon": "📊",
+      "prompt": {
+        "zh-CN": "请根据以下工作内容，帮我生成一份结构清晰的专业周报，包含本周完成事项（分类列出）、下周工作计划、遇到的风险和解决方案三个部分。",
+        "zh-XG": "請根據以下工作內容，幫我生成一份結構清晰的專業週報，包含本週完成事項（分類列出）、下週工作計畫、遇到的風險和解決方案三個部分。",
+        "en": "Based on the following work content, please generate a well-structured professional weekly report with three sections: completed items this week (categorized), next week's work plan, and risks encountered with solutions."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "codereview",
+      "name": { "zh-CN": "代码审查", "zh-XG": "程式碼審查", "en": "Code Review" },
+      "icon": "🔍",
+      "prompt": {
+        "zh-CN": "请对以下代码进行详细审查，从以下几个方面分析：1.逻辑缺陷和潜在bug 2.性能瓶颈和优化建议 3.安全漏洞 4.代码可读性和维护性改进建议。",
+        "zh-XG": "請對以下程式碼進行詳細審查，從以下幾個方面分析：1.邏輯缺陷和潛在bug 2.效能瓶頸和優化建議 3.安全漏洞 4.程式碼可讀性和維護性改進建議。",
+        "en": "Please review the following code in detail, analyzing from these aspects: 1. Logic defects and potential bugs 2. Performance bottlenecks and optimization suggestions 3. Security vulnerabilities 4. Code readability and maintainability improvements."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "translator",
+      "name": { "zh-CN": "翻译助手", "zh-XG": "翻譯助手", "en": "Translation Assistant" },
+      "icon": "🌐",
+      "prompt": {
+        "zh-CN": "请将以下内容翻译成英文，要求：1.保持专业严谨的技术术语 2.语句流畅自然，符合英文表达习惯 3.完整保留原文信息不遗漏。",
+        "zh-XG": "請將以下內容翻譯成英文，要求：1.保持專業嚴謹的技術術語 2.語句流暢自然，符合英文表達習慣 3.完整保留原文資訊不遺漏。",
+        "en": "Please translate the following content into Chinese, ensuring: 1. Accurate technical terminology 2. Natural and fluent expression 3. Complete preservation of original information."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "summary",
+      "name": { "zh-CN": "文章总结", "zh-XG": "文章總結", "en": "Article Summary" },
+      "icon": "📝",
+      "prompt": {
+        "zh-CN": "请用简洁精炼的语言总结以下文章的3-5个核心观点，每个观点用一句话概括，然后给出一个整体的摘要。请保留关键数据和结论。",
+        "zh-XG": "請用簡潔精煉的語言總結以下文章的3-5個核心觀點，每個觀點用一句話概括，然後給出一個整體的摘要。請保留關鍵資料和結論。",
+        "en": "Please summarize the following article in 3-5 core viewpoints concisely, each viewpoint in one sentence, then provide an overall summary. Preserve key data and conclusions."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "brainstorm",
+      "name": { "zh-CN": "头脑风暴", "zh-XG": "腦力激盪", "en": "Brainstorm" },
+      "icon": "💡",
+      "prompt": {
+        "zh-CN": "请针对「项目/想法」进行头脑风暴，提供10个创意方向或改进思路，每个方向附带简要说明和可行性评估（高/中/低）。",
+        "zh-XG": "請針對「專案/想法」進行腦力激盪，提供10個創意方向或改進思路，每個方向附帶簡要說明和可行性評估（高/中/低）。",
+        "en": "Please brainstorm about [project/idea], providing 10 creative directions or improvement ideas, each with a brief description and feasibility assessment (high/medium/low)."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "explain",
+      "name": { "zh-CN": "通俗解释", "zh-XG": "通俗解釋", "en": "Simple Explanation" },
+      "icon": "🎓",
+      "prompt": {
+        "zh-CN": "请用通俗易懂的方式向非专业人士解释以下概念。要求：1.使用生动的比喻 2.避免使用专业术语 3.分步骤说明 4.控制在500字以内。",
+        "zh-XG": "請用通俗易懂的方式向非專業人士解釋以下概念。要求：1.使用生動的比喻 2.避免使用專業術語 3.分步驟說明 4.控制在500字以內。",
+        "en": "Please explain the following concept in simple terms for non-professionals. Requirements: 1. Use vivid analogies 2. Avoid jargon 3. Explain step by step 4. Keep within 500 words."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "social",
+      "name": { "zh-CN": "社交媒体", "zh-XG": "社群媒體", "en": "Social Media" },
+      "icon": "📱",
+      "prompt": {
+        "zh-CN": "请为以下内容生成适合发布在微博/小红书/朋友圈的社交媒体文案。要求：1.风格活泼有吸引力 2.添加合适的emoji 3.包含2-3个版本供选择 4.附带合适的#话题标签。",
+        "zh-XG": "請為以下內容生成適合發布在微博/小紅書/朋友圈的社群媒體文案。要求：1.風格活潑有吸引力 2.添加合適的emoji 3.包含2-3個版本供選擇 4.附帶合適的#話題標籤。",
+        "en": "Please generate social media copy for the following content suitable for Twitter/Instagram/Mastodon. Requirements: 1. Lively and attractive style 2. Add appropriate emojis 3. Include 2-3 versions to choose from 4. Include relevant #hashtags."
+      },
+      "source": "builtin"
+    }
+  ]
+}

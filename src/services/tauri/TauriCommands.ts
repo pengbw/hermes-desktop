@@ -94,10 +94,10 @@ export const TauriCommands = {
     return invoke<string>("chat_with_hermes_api", { ...params });
   },
 
-  async listProviders(): Promise<
-    { id: string; name: string; value: string; baseUrl: string; apiKey: string }[]
-  > {
-    return invoke("list_providers");
+  async listProviders(
+    locale?: string
+  ): Promise<{ id: string; name: string; value: string; baseUrl: string; apiKey: string }[]> {
+    return invoke("list_providers", locale ? { locale } : undefined);
   },
 
   async createProvider(req: CreateProviderRequest): Promise<void> {
@@ -128,8 +128,8 @@ export const TauriCommands = {
     return invoke("delete_avatar_gesture", { id });
   },
 
-  async listAiRoles(): Promise<AiRoleItem[]> {
-    return invoke<AiRoleItem[]>("list_ai_roles");
+  async listAiRoles(locale?: string): Promise<AiRoleItem[]> {
+    return invoke<AiRoleItem[]>("list_ai_roles", locale ? { locale } : undefined);
   },
 
   async createAiRole(req: CreateAiRoleRequest): Promise<AiRoleItem> {
@@ -515,10 +515,16 @@ export const TauriCommands = {
 
   async updateMessageTokens(
     messageId: string,
+    projectId: string,
     promptTokens: number,
     completionTokens: number
   ): Promise<void> {
-    return invoke("update_message_tokens", { messageId, promptTokens, completionTokens });
+    return invoke("update_message_tokens", {
+      messageId,
+      projectId,
+      promptTokens,
+      completionTokens,
+    });
   },
 
   async preprocessSkillTemplate(
@@ -529,12 +535,18 @@ export const TauriCommands = {
     return invoke("preprocess_skill_template", { projectId, roleId, template });
   },
 
-  async listProjectTemplates(): Promise<ProjectTemplateDetail[]> {
-    return invoke<ProjectTemplateDetail[]>("list_project_templates");
+  async listProjectTemplates(locale?: string): Promise<ProjectTemplateDetail[]> {
+    return invoke<ProjectTemplateDetail[]>(
+      "list_project_templates",
+      locale ? { locale } : undefined
+    );
   },
 
-  async createProjectFromTemplate(req: CreateProjectFromTemplateRequest): Promise<ProjectItem> {
-    return invoke<ProjectItem>("create_project_from_template", { req });
+  async createProjectFromTemplate(
+    req: CreateProjectFromTemplateRequest,
+    locale?: string
+  ): Promise<ProjectItem> {
+    return invoke<ProjectItem>("create_project_from_template", { req, locale });
   },
 
   async listChannelStatuses(): Promise<ChannelStatusResult[]> {

@@ -336,13 +336,9 @@ pub(crate) fn kill_hermes_process() {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .output();
-        let _ = command("taskkill")
-            .args(&["/F", "/IM", "python.exe"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .output();
-        let _ = command("taskkill")
-            .args(&["/F", "/IM", "python3.exe"])
+        let _ = command("powershell")
+            .args(["-NoProfile", "-Command",
+                "Get-Process python,python3 -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*hermes*' } | Stop-Process -Force"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .output();
@@ -765,6 +761,10 @@ pub(crate) struct InstallProgress {
     pub line: String,
     pub done: bool,
     pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step: Option<String>,
 }
 
 pub(crate) fn ensure_gateway_config(app: &AppHandle) {
@@ -781,7 +781,7 @@ pub(crate) fn ensure_gateway_config(app: &AppHandle) {
         match hermes_config_set("GATEWAY_ALLOW_ALL_USERS", "true") {
             Ok(_) => {
                 let _ = app.emit("install-progress", InstallProgress {
-                    line: "Gateway API access configured".to_string(), done: false, success: false,
+                    line: "Gateway API access configured".to_string(), done: false, success: false, progress: Some(85), step: Some("config".to_string()),
                 });
             }
             Err(e) => log::warn!("Failed to set GATEWAY_ALLOW_ALL_USERS via hermes config set: {}", e),
@@ -794,7 +794,7 @@ pub(crate) fn ensure_gateway_config(app: &AppHandle) {
             Ok(_) => {
                 let _ = hermes_config_set("platforms.api_server.enabled", "true");
                 let _ = app.emit("install-progress", InstallProgress {
-                    line: "Local API Server enabled (port 8642)".to_string(), done: false, success: false,
+                    line: "Local API Server enabled (port 8642)".to_string(), done: false, success: false, progress: Some(88), step: Some("config".to_string()),
                 });
             }
             Err(e) => log::warn!("Failed to set api_server config via hermes config set: {}", e),
@@ -807,7 +807,7 @@ pub(crate) fn ensure_gateway_config(app: &AppHandle) {
                 let _ = hermes_config_set("agent.gateway_timeout", "300");
                 let _ = hermes_config_set("agent.gateway_notify_interval", "0");
                 let _ = app.emit("install-progress", InstallProgress {
-                    line: "Gateway agent max_iterations=10 configured".to_string(), done: false, success: false,
+                    line: "Gateway agent max_iterations=10 configured".to_string(), done: false, success: false, progress: Some(90), step: Some("config".to_string()),
                 });
             }
             Err(e) => log::warn!("Failed to set agent config via hermes config set: {}", e),
@@ -1043,7 +1043,7 @@ pub(crate) fn try_install_python_via_uv(app: &AppHandle) -> Option<String> {
         Some(e) => e,
         None => {
             let _ = app.emit("install-progress", InstallProgress {
-                line: "Installing uv package manager...".to_string(), done: false, success: false,
+                line: "Installing uv package manager...".to_string(), done: false, success: false, progress: Some(15), step: Some("uv".to_string()),
             });
             let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
             let uv_target = format!("{}\\.local\\bin\\uv.exe", user_profile);
@@ -1083,7 +1083,7 @@ pub(crate) fn try_install_python_via_uv(app: &AppHandle) -> Option<String> {
     };
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Installing Python 3.11 via uv...".to_string(), done: false, success: false,
+        line: "Installing Python 3.11 via uv...".to_string(), done: false, success: false, progress: Some(22), step: Some("python".to_string()),
     });
     let _ = command(&uv_exe).args(["python", "install", "3.11"]).output();
     let _ = command(&uv_exe).args(["python", "install", "3.12"]).output();
@@ -1253,7 +1253,7 @@ pub(crate) fn try_install_python_via_uv(app: &AppHandle) -> Option<String> {
         Some(e) => e,
         None => {
             let _ = app.emit("install-progress", InstallProgress {
-                line: "Installing uv package manager...".to_string(), done: false, success: false,
+                line: "Installing uv package manager...".to_string(), done: false, success: false, progress: Some(15), step: Some("uv".to_string()),
             });
             let uv_target = format!("{}/.local/bin/uv", home);
             if !std::path::Path::new(&uv_target).exists() {
@@ -1291,7 +1291,7 @@ pub(crate) fn try_install_python_via_uv(app: &AppHandle) -> Option<String> {
     };
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Installing Python 3.12 via uv...".to_string(), done: false, success: false,
+        line: "Installing Python 3.12 via uv...".to_string(), done: false, success: false, progress: Some(22), step: Some("python".to_string()),
     });
     let install_312 = command(&uv_exe).args(["python", "install", "3.12"]).output();
     if let Ok(ref output) = install_312 {
@@ -1523,7 +1523,13 @@ impl DebouncedEmitter {
     /// Add a data change type to the pending queue for a project, then schedule a flush after 500ms
     pub(crate) fn add_change(&self, app: &AppHandle, project_id: &str, data_type: &str) {
         let should_schedule = {
-            let mut pending = self.pending.lock().unwrap();
+            let mut pending = match self.pending.lock() {
+                Ok(p) => p,
+                Err(e) => {
+                    log::error!("Failed to acquire pending lock: {}", e);
+                    return;
+                }
+            };
             let (changes, scheduled) = pending
                 .entry(project_id.to_string())
                 .or_insert_with(|| (HashSet::new(), false));

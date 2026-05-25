@@ -25,6 +25,7 @@ export default defineConfig(async () => ({
       "@stores": path.resolve(__dirname, "./src/stores"),
       "@utils": path.resolve(__dirname, "./src/utils"),
       "@constants": path.resolve(__dirname, "./src/constants"),
+      "@seeds": path.resolve(__dirname, "./src/seeds"),
       "@i18n": path.resolve(__dirname, "./src/i18n"),
       "@contexts": path.resolve(__dirname, "./src/contexts"),
       "@styles": path.resolve(__dirname, "./src/styles"),

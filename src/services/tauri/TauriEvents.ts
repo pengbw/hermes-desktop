@@ -2,9 +2,11 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { KnowledgeSource } from "@core/types";
 
 export interface InstallProgress {
-  step: string;
-  progress: number;
-  message: string;
+  line: string;
+  done: boolean;
+  success: boolean;
+  progress?: number;
+  step?: string;
 }
 
 export interface EmbeddingModelProgress {

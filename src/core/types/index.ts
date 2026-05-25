@@ -79,6 +79,7 @@ export interface HermesConfigData {
   workspaceRoot?: string;
   hermesApiBase?: string;
   hermesApiKey?: string;
+  conversationStoragePath?: string;
   config_path: string;
   env_path: string;
 }

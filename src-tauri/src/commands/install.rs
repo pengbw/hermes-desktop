@@ -173,7 +173,7 @@ pub async fn install_hermes_agent(app: AppHandle, method: String) -> Result<bool
     log::info!("[install] Starting installation, method={}", method);
     let _ = app.emit(
         "install-progress",
-        InstallProgress { line: "Detecting system environment...".to_string(), done: false, success: false },
+        InstallProgress { line: "Detecting system environment...".to_string(), done: false, success: false, progress: Some(5), step: Some("detect".to_string()) },
     );
 
     kill_hermes_process();
@@ -355,7 +355,7 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
     let venv_dir = format!("{}/venv", hermes_dir);
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Extracting project from bundled source...".to_string(), done: false, success: false,
+        line: "Extracting project from bundled source...".to_string(), done: false, success: false, progress: Some(10), step: Some("extract".to_string()),
     });
 
     if std::path::Path::new(&hermes_dir).exists() {
@@ -403,7 +403,7 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
     }
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Source code ready".to_string(), done: false, success: false,
+        line: "Source code ready".to_string(), done: false, success: false, progress: Some(20), step: Some("extract".to_string()),
     });
 
     let python = find_unix_python()
@@ -411,11 +411,11 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
         .ok_or("Python 3.11+ not found, and auto-install failed. Please install Python 3.11+ manually.")?;
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: format!("Using Python: {}", python), done: false, success: false,
+        line: format!("Using Python: {}", python), done: false, success: false, progress: Some(25), step: Some("python".to_string()),
     });
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Creating virtual environment...".to_string(), done: false, success: false,
+        line: "Creating virtual environment...".to_string(), done: false, success: false, progress: Some(30), step: Some("venv".to_string()),
     });
 
     let venv = command(&python)
@@ -430,22 +430,20 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
     }
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Virtual environment created, installing dependencies...".to_string(), done: false, success: false,
+        line: "Virtual environment created, installing dependencies...".to_string(), done: false, success: false, progress: Some(40), step: Some("pip".to_string()),
     });
 
     let python_exe = format!("{}/bin/python", venv_dir);
     let _pip_upgrade = command(&python_exe)
         .args(["-m", "pip", "install", "--upgrade", "pip",
-               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
-               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output();
 
     let install = command(&python_exe)
         .args(["-m", "pip", "install", "-e", &hermes_dir,
-               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
-               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -457,27 +455,25 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
     }
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Installing gateway dependencies...".to_string(), done: false, success: false,
+        line: "Installing gateway dependencies...".to_string(), done: false, success: false, progress: Some(60), step: Some("deps".to_string()),
     });
 
     let _ = command(&python_exe)
         .args(["-m", "pip", "install", "aiohttp",
-               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
-               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output();
 
     let _ = command(&python_exe)
         .args(["-m", "pip", "install", "edge-tts",
-               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
-               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output();
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Dependencies installed, verifying...".to_string(), done: false, success: false,
+        line: "Dependencies installed, verifying...".to_string(), done: false, success: false, progress: Some(75), step: Some("verify".to_string()),
     });
 
     let venv_hermes_bin = format!("{}/bin/hermes", venv_dir);
@@ -517,7 +513,7 @@ async fn unix_native_install(app: &AppHandle) -> Result<bool, String> {
 
     let _ = app.emit("install-progress", InstallProgress {
         line: if actual_installed { "Installation complete".to_string() } else { "Installation failed".to_string() },
-        done: true, success: actual_installed,
+        done: true, success: actual_installed, progress: Some(if actual_installed { 100 } else { 75 }), step: Some("done".to_string()),
     });
 
     Ok(actual_installed)
@@ -532,7 +528,7 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
     let venv_dir = format!("{}\\venv", hermes_dir);
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Extracting project from bundled source...".to_string(), done: false, success: false,
+        line: "Extracting project from bundled source...".to_string(), done: false, success: false, progress: Some(10), step: Some("extract".to_string()),
     });
 
     if std::path::Path::new(&hermes_dir).exists() {
@@ -581,7 +577,7 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
     }
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Source code ready".to_string(), done: false, success: false,
+        line: "Source code ready".to_string(), done: false, success: false, progress: Some(20), step: Some("extract".to_string()),
     });
 
     let python = find_windows_python()
@@ -589,11 +585,11 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
         .ok_or("Python not found, please install Python 3.11 or higher")?;
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: format!("Using Python: {}", python), done: false, success: false,
+        line: format!("Using Python: {}", python), done: false, success: false, progress: Some(25), step: Some("python".to_string()),
     });
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Creating virtual environment...".to_string(), done: false, success: false,
+        line: "Creating virtual environment...".to_string(), done: false, success: false, progress: Some(30), step: Some("venv".to_string()),
     });
 
     let venv = command(&python)
@@ -621,22 +617,20 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
     }
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Virtual environment created, installing dependencies (Tsinghua mirror)...".to_string(), done: false, success: false,
+        line: "Virtual environment created, installing dependencies (Tsinghua mirror)...".to_string(), done: false, success: false, progress: Some(40), step: Some("pip".to_string()),
     });
 
     let python_exe = format!("{}\\Scripts\\python.exe", venv_dir);
     let install = command(&python_exe)
         .args(["-m", "pip", "install", "--upgrade", "pip",
-               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
-               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output();
 
     let install = command(&python_exe)
         .args(["-m", "pip", "install", "-e", &hermes_dir,
-               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
-               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -648,27 +642,25 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
     }
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Installing gateway dependencies...".to_string(), done: false, success: false,
+        line: "Installing gateway dependencies...".to_string(), done: false, success: false, progress: Some(60), step: Some("deps".to_string()),
     });
 
     let _ = command(&python_exe)
         .args(["-m", "pip", "install", "aiohttp",
-               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
-               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output();
 
     let _ = command(&python_exe)
         .args(["-m", "pip", "install", "edge-tts",
-               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/",
-               "--trusted-host", "pypi.tuna.tsinghua.edu.cn"])
+               "-i", "https://pypi.tuna.tsinghua.edu.cn/simple/"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output();
 
     let _ = app.emit("install-progress", InstallProgress {
-        line: "Dependencies installed, verifying...".to_string(), done: false, success: false,
+        line: "Dependencies installed, verifying...".to_string(), done: false, success: false, progress: Some(75), step: Some("verify".to_string()),
     });
 
     let venv_hermes_bin = format!("{}\\Scripts\\hermes.exe", venv_dir);
@@ -700,7 +692,7 @@ async fn windows_native_install(app: &AppHandle) -> Result<bool, String> {
 
     let _ = app.emit("install-progress", InstallProgress {
         line: if actual_installed { "Installation complete".to_string() } else { "Installation failed".to_string() },
-        done: true, success: actual_installed,
+        done: true, success: actual_installed, progress: Some(if actual_installed { 100 } else { 75 }), step: Some("done".to_string()),
     });
 
     Ok(actual_installed)

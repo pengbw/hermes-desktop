@@ -11,6 +11,14 @@ fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
     Ok(state.db_pool.clone())
 }
 
+fn resolve_locale_json(json_str: &str, locale: &str) -> String {
+    if let Ok(map) = serde_json::from_str::<std::collections::HashMap<String, String>>(json_str) {
+        crate::database::seeds::resolve_localized(&map, locale).to_string()
+    } else {
+        json_str.to_string()
+    }
+}
+
 #[derive(Serialize, Clone)]
 struct HermesSkill {
     name: String,
@@ -572,6 +580,7 @@ pub async fn list_skill_catalog(
     installed_filter: Option<String>,
     page: Option<usize>,
     page_size: Option<usize>,
+    locale: Option<String>,
 ) -> Result<SkillCatalogResult, String> {
     let pool = get_pool(&app)?;
 
@@ -605,6 +614,7 @@ pub async fn list_skill_catalog(
     if let Some(ref c) = bind_category { q = q.bind(c); }
     if let Some(ref s) = bind_source { q = q.bind(s); }
 
+    let loc = locale.as_deref().unwrap_or("zh-CN");
     let rows = q.fetch_all(&pool).await.map_err(|e| e.to_string())?;
 
     let mut all_skills: Vec<CatalogSkill> = rows.into_iter().map(|(id, name, identifier, category, category_label, description, source, trust, version, tags_str, config_schema_str, user_config_str, sort_order, _created_at, _updated_at)| {
@@ -612,7 +622,9 @@ pub async fn list_skill_catalog(
         let config_schema: serde_json::Value = serde_json::from_str(&config_schema_str).unwrap_or(serde_json::Value::Null);
         let user_config: serde_json::Value = serde_json::from_str(&user_config_str).unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
         let installed = installed_set.contains(&identifier) || installed_set.contains(&name);
-        CatalogSkill { id, name, identifier, category, category_label, description, source, trust, version, tags, config_schema, user_config, installed, sort_order }
+        let resolved_cat_label = resolve_locale_json(&category_label, loc);
+        let resolved_desc = resolve_locale_json(&description, loc);
+        CatalogSkill { id, name, identifier, category, category_label: resolved_cat_label, description: resolved_desc, source, trust, version, tags, config_schema, user_config, installed, sort_order }
     }).collect();
 
     let installed_names_in_catalog: HashSet<String> = all_skills.iter()
@@ -901,7 +913,7 @@ struct CatalogFile {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct CatalogCategoryDef {
     id: String,
-    label: String,
+    label: crate::database::seeds::LocalizedString,
     icon: String,
 }
 
@@ -912,9 +924,9 @@ struct CatalogSkillDef {
     #[serde(default)]
     category: String,
     #[serde(rename = "categoryLabel", default)]
-    category_label: String,
+    category_label: crate::database::seeds::LocalizedString,
     #[serde(default)]
-    description: String,
+    description: crate::database::seeds::LocalizedString,
     #[serde(default = "default_source")]
     source: String,
     #[serde(default)]
@@ -980,14 +992,16 @@ pub async fn load_skill_catalog_from_file(app: AppHandle) -> Result<usize, Strin
     let mut count = 0usize;
 
     for skill_def in &catalog.skills {
-        let cat_label = if skill_def.category_label.is_empty() {
+        let cat_label_str = if skill_def.category_label.is_empty() {
             catalog.categories.iter()
                 .find(|c| c.id == skill_def.category)
-                .map(|c| c.label.clone())
+                .map(|c| serde_json::to_string(&c.label).unwrap_or_default())
                 .unwrap_or_default()
         } else {
-            skill_def.category_label.clone()
+            serde_json::to_string(&skill_def.category_label).unwrap_or_default()
         };
+
+        let desc_str = serde_json::to_string(&skill_def.description).unwrap_or_default();
 
         let id = uuid::Uuid::new_v4().to_string();
         let tags = serde_json::to_string(&skill_def.tags).unwrap_or_else(|_| "[]".to_string());
@@ -998,8 +1012,8 @@ pub async fn load_skill_catalog_from_file(app: AppHandle) -> Result<usize, Strin
             .bind(&skill_def.name)
             .bind(&skill_def.identifier)
             .bind(&skill_def.category)
-            .bind(&cat_label)
-            .bind(&skill_def.description)
+            .bind(&cat_label_str)
+            .bind(&desc_str)
             .bind(&skill_def.source)
             .bind(&skill_def.trust)
             .bind(&tags)

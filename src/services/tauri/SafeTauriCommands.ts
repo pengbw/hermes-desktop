@@ -73,10 +73,10 @@ export const SafeTauriCommands = {
     return wrapInvoke<Message>("create_message", args);
   },
 
-  async listProviders() {
+  async listProviders(locale?: string) {
     return wrapInvoke<
       Array<{ id: string; name: string; value: string; baseUrl: string; apiKey: string }>
-    >("list_providers");
+    >("list_providers", locale ? { locale } : undefined);
   },
 
   async listKnowledgeBases() {
@@ -87,8 +87,8 @@ export const SafeTauriCommands = {
     return wrapInvoke<ProjectItem[]>("list_projects");
   },
 
-  async listAiRoles() {
-    return wrapInvoke<AiRoleItem[]>("list_ai_roles");
+  async listAiRoles(locale?: string) {
+    return wrapInvoke<AiRoleItem[]>("list_ai_roles", locale ? { locale } : undefined);
   },
 
   async listSkills() {

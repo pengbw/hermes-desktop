@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { HermesConfigData } from "@core/types";
 import { Eye, EyeOff, RotateCw } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 
 interface AgentSettingsProps {
   config: HermesConfigData | null;
@@ -21,6 +22,7 @@ interface AgentSettingsProps {
   onProviderChange: (provider: string) => void;
   onMaxTurnsChange: (turns: number) => void;
   onWorkspaceRootChange: (root: string) => void;
+  onConversationStoragePathChange: (path: string) => void;
   onHermesApiBaseChange: (base: string) => void;
   onHermesApiKeyChange: (key: string) => void;
   onRefreshModels: (provider: string) => void;
@@ -48,6 +50,7 @@ export default function AgentSettings({
   onProviderChange,
   onMaxTurnsChange,
   onWorkspaceRootChange,
+  onConversationStoragePathChange,
   onHermesApiBaseChange,
   onHermesApiKeyChange,
   onRefreshModels,
@@ -56,6 +59,13 @@ export default function AgentSettings({
   t,
 }: AgentSettingsProps) {
   const [showApiKey, setShowApiKey] = useState(false);
+  const [defaultStoragePath, setDefaultStoragePath] = useState("");
+
+  useEffect(() => {
+    invoke<string>("get_default_conversation_storage_path")
+      .then(setDefaultStoragePath)
+      .catch(() => {});
+  }, []);
   return (
     <div className="animate-in fade-in slide-in-from-bottom-1.5 duration-200">
       <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
@@ -307,6 +317,27 @@ export default function AgentSettings({
               />
               <p className="text-xs text-muted-foreground m-0">
                 {t("system.workspace.rootDirHint")}
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[13px] text-muted-foreground font-medium flex items-center gap-2">
+                {t("system.conversation.storagePath") || "对话存储路径"}
+                {dirtyFields.has("conversationStoragePath") && (
+                  <span className="text-[10px] px-1.5 py-px rounded-md bg-primary/20 text-primary font-semibold">
+                    {t("common.modified")}
+                  </span>
+                )}
+              </label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground outline-none focus:border-primary transition-colors h-10"
+                value={config?.conversationStoragePath || ""}
+                onChange={(e) => onConversationStoragePathChange(e.target.value)}
+                placeholder={defaultStoragePath || t("system.conversation.storagePathPlaceholder")}
+              />
+              <p className="text-xs text-muted-foreground m-0">
+                {t("system.conversation.storagePathHint") ||
+                  "对话记录加密存储的目录路径，留空使用默认路径。修改后需重启应用生效。"}
               </p>
             </div>
           </div>

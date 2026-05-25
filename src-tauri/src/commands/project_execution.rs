@@ -1,5 +1,6 @@
 use crate::commands::project::{get_pool, record_activity, mark_auto_delegate_failure, repair_legacy_software_dev_workflow, clean_context_tags};
 use crate::commands::helpers::{self, build_role_constraint_rules, call_hermes_api_streaming, call_hermes_api_non_streaming};
+use crate::crypto::{file_storage, key_manager};
 use crate::database::models as db;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -37,7 +38,8 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
     if let Some((tid, ttitle)) = active_task {
         if !project_workspace.is_empty() {
             let safe_title = ttitle.replace(|c: char| !c.is_alphanumeric() && c != ' ' && c != '-' && c != '_', "_");
-            project_workspace = format!("{}/{}_{}", project_workspace.trim_end_matches('/'), safe_title, &tid[0..8]);
+            let ws_path = std::path::PathBuf::from(project_workspace.trim_end_matches(|c| c == '/' || c == '\\'));
+            project_workspace = ws_path.join(format!("{}_{}", safe_title, &tid[0..8])).to_string_lossy().to_string();
             let _ = std::fs::create_dir_all(&project_workspace);
         }
     }
@@ -193,16 +195,54 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
         })
     ];
 
-    let recent_msgs: Vec<(String, String, String)> = sqlx::query_as(
-        "SELECT pm.role_id, pm.content, COALESCE(r.nickname, r.name, pm.role_id) FROM project_messages pm LEFT JOIN ai_roles r ON pm.role_id = r.id WHERE pm.project_id = ? ORDER BY pm.created_at DESC LIMIT 40"
+    let sp: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_config WHERE key = 'conversation_storage_path'"
     )
-    .bind(&project_id)
-    .fetch_all(&pool)
+    .fetch_optional(&pool)
     .await
-    .map_err(|e| e.to_string())?
-    .into_iter()
-    .rev()
-    .collect();
+    .ok()
+    .flatten()
+    .filter(|v: &String| !v.is_empty());
+
+    if key_manager::get_cached_key().is_none() {
+        let _ = key_manager::init_or_load_key(sp.as_deref());
+    }
+
+    let recent_msgs: Vec<(String, String, String)> = match file_storage::read_project_messages_file(sp.as_deref(), &project_id) {
+        Ok(msgs) => {
+            let role_ids: Vec<String> = msgs.iter().map(|m| m.role_id.clone()).collect();
+            let role_names: std::collections::HashMap<String, String> = if !role_ids.is_empty() {
+                let placeholders: Vec<String> = role_ids.iter().map(|_| "?".to_string()).collect();
+                let query = format!(
+                    "SELECT id, COALESCE(nickname, name, id) FROM ai_roles WHERE id IN ({})",
+                    placeholders.join(",")
+                );
+                let mut q = sqlx::query_as::<_, (String, String)>(&query);
+                for rid in &role_ids {
+                    q = q.bind(rid);
+                }
+                q.fetch_all(&pool)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .collect()
+            } else {
+                std::collections::HashMap::new()
+            };
+            msgs.into_iter()
+                .rev()
+                .take(40)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .map(|m| {
+                    let name = role_names.get(&m.role_id).cloned().unwrap_or_else(|| m.role_id.clone());
+                    (m.role_id, m.content, name)
+                })
+                .collect()
+        }
+        Err(_) => Vec::new(),
+    };
 
     let mut context_messages: Vec<serde_json::Value> = Vec::new();
 
@@ -425,7 +465,8 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
         if let Some((tid, ttitle)) = active_task {
             if !project_workspace.is_empty() {
                 let safe_title = ttitle.replace(|c: char| !c.is_alphanumeric() && c != ' ' && c != '-' && c != '_', "_");
-                project_workspace = format!("{}/{}_{}", project_workspace.trim_end_matches('/'), safe_title, &tid[0..8]);
+                let ws_path = std::path::PathBuf::from(project_workspace.trim_end_matches(|c| c == '/' || c == '\\'));
+                project_workspace = ws_path.join(format!("{}_{}", safe_title, &tid[0..8])).to_string_lossy().to_string();
                 let _ = std::fs::create_dir_all(&project_workspace);
             }
         }
@@ -518,6 +559,19 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
             system_prompt.push_str(&format!("\n\n你当前被分配的任务：\n{}", task_lines.join("\n")));
         }
 
+        let sp: Option<String> = sqlx::query_scalar(
+            "SELECT value FROM app_config WHERE key = 'conversation_storage_path'"
+        )
+        .fetch_optional(&pool)
+        .await
+        .ok()
+        .flatten()
+        .filter(|v: &String| !v.is_empty());
+
+        if key_manager::get_cached_key().is_none() {
+            let _ = key_manager::init_or_load_key(sp.as_deref());
+        }
+
         let mut messages = vec![
             serde_json::json!({
                 "role": "system",
@@ -529,16 +583,41 @@ pub async fn chat_with_project_roles(app: AppHandle, project_id: String, role_id
             })
         ];
 
-        let recent_msgs: Vec<(String, String, String)> = sqlx::query_as(
-            "SELECT pm.role_id, pm.content, COALESCE(r.nickname, r.name, pm.role_id) FROM project_messages pm LEFT JOIN ai_roles r ON pm.role_id = r.id WHERE pm.project_id = ? ORDER BY pm.created_at DESC LIMIT 20"
-        )
-        .bind(&project_id)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .rev()
-        .collect();
+        let recent_msgs: Vec<(String, String, String)> = match file_storage::read_project_messages_file(sp.as_deref(), &project_id) {
+            Ok(msgs) => {
+                let role_ids: Vec<String> = msgs.iter().map(|m| m.role_id.clone()).collect();
+                let role_names: std::collections::HashMap<String, String> = if !role_ids.is_empty() {
+                    let placeholders: Vec<String> = role_ids.iter().map(|_| "?".to_string()).collect();
+                    let query = format!(
+                        "SELECT id, COALESCE(nickname, name, id) FROM ai_roles WHERE id IN ({})",
+                        placeholders.join(",")
+                    );
+                    let mut q = sqlx::query_as::<_, (String, String)>(&query);
+                    for rid in &role_ids {
+                        q = q.bind(rid);
+                    }
+                    q.fetch_all(&pool)
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .collect()
+                } else {
+                    std::collections::HashMap::new()
+                };
+                msgs.into_iter()
+                    .rev()
+                    .take(20)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .map(|m| {
+                        let name = role_names.get(&m.role_id).cloned().unwrap_or_else(|| m.role_id.clone());
+                        (m.role_id, m.content, name)
+                    })
+                    .collect()
+            }
+            Err(_) => Vec::new(),
+        };
 
         let mut context_messages: Vec<serde_json::Value> = Vec::new();
         for (msg_role_id, msg_content, msg_role_name) in &recent_msgs {
@@ -709,15 +788,28 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
     delegate_message.push_str(&format!("\n\n请基于「{}」的产出，从你「{}」的职责角度（{}）进行分析和执行。", from_name, to_name, to_resp));
 
     let msg_id = uuid::Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO project_messages (id, project_id, role_id, content, message_type, created_at) VALUES (?, ?, ?, ?, 'auto_delegate', ?)")
-        .bind(&msg_id)
-        .bind(&project_id)
-        .bind(&effective_from_role_id)
-        .bind(&delegate_message)
-        .bind(now)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let sp: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_config WHERE key = 'conversation_storage_path'"
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .filter(|v: &String| !v.is_empty());
+
+    if key_manager::get_cached_key().is_none() {
+        let _ = key_manager::init_or_load_key(sp.as_deref());
+    }
+
+    let _ = file_storage::append_message_to_project(sp.as_deref(), &project_id, file_storage::EncryptedProjectMessage {
+        id: msg_id.clone(),
+        role_id: effective_from_role_id.clone(),
+        content: delegate_message.clone(),
+        message_type: "auto_delegate".to_string(),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        created_at: now,
+    });
 
     let api_base = helpers::hermes_api_base_from_pool(&pool).await;
     let api_key = helpers::hermes_api_key_from_pool(&pool).await;
@@ -740,7 +832,8 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
     if let Some((tid, ttitle)) = active_task {
         if !project_workspace.is_empty() {
             let safe_title = ttitle.replace(|c: char| !c.is_alphanumeric() && c != ' ' && c != '-' && c != '_', "_");
-            project_workspace = format!("{}/{}_{}", project_workspace.trim_end_matches('/'), safe_title, &tid[0..8]);
+            let ws_path = std::path::PathBuf::from(project_workspace.trim_end_matches(|c| c == '/' || c == '\\'));
+            project_workspace = ws_path.join(format!("{}_{}", safe_title, &tid[0..8])).to_string_lossy().to_string();
             let _ = std::fs::create_dir_all(&project_workspace);
         }
     }
@@ -851,15 +944,28 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
 
     let reply_msg_id = uuid::Uuid::new_v4().to_string();
     let now2 = chrono::Utc::now().timestamp_millis();
-    sqlx::query("INSERT INTO project_messages (id, project_id, role_id, content, message_type, created_at) VALUES (?, ?, ?, ?, 'auto_reply', ?)")
-        .bind(&reply_msg_id)
-        .bind(&project_id)
-        .bind(&to_role_id)
-        .bind(&reply)
-        .bind(now2)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let sp2: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_config WHERE key = 'conversation_storage_path'"
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .filter(|v: &String| !v.is_empty());
+
+    if key_manager::get_cached_key().is_none() {
+        let _ = key_manager::init_or_load_key(sp2.as_deref());
+    }
+
+    let _ = file_storage::append_message_to_project(sp2.as_deref(), &project_id, file_storage::EncryptedProjectMessage {
+        id: reply_msg_id.clone(),
+        role_id: to_role_id.clone(),
+        content: reply.clone(),
+        message_type: "auto_reply".to_string(),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        created_at: now2,
+    });
 
     let _ = app.emit(&event_id, serde_json::json!({
         "fromRoleId": from_role_id,
@@ -925,7 +1031,9 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                             }).map(|s| s.as_str()).unwrap_or(default_file);
 
                             if !matched_file.is_empty() {
-                                let full_path = format!("{}/{}", rec_workspace.trim_end_matches('/'), matched_file.trim_start_matches('/'));
+                                let ws_base = std::path::PathBuf::from(rec_workspace.trim_end_matches(|c| c == '/' || c == '\\'));
+                                let file_rel = matched_file.trim_start_matches(|c| c == '/' || c == '\\');
+                                let full_path = ws_base.join(file_rel).to_string_lossy().to_string();
                                 let now_fp = chrono::Utc::now().timestamp_millis();
                                 let result = sqlx::query(
                                     "UPDATE project_artifacts SET file_path = ?, updated_at = ? WHERE id = ?"

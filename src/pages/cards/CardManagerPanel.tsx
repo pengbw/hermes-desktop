@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import type { QuickCard } from "@core/types";
-import { BUILTIN_CARDS } from "@constants/builtinCards";
+import { getBuiltinCards } from "@seeds";
 import { CARDS_STORAGE_KEY } from "@constants/config";
 import { Badge } from "@/components/ui/badge";
 import styles from "./CardManagerPanel.module.css";
@@ -90,7 +90,7 @@ function CardManagerPanel({
       <div className={styles.cardManagerBuiltin}>
         <h4>{t("card.builtin")}</h4>
         <div className={styles.cardManagerGrid}>
-          {BUILTIN_CARDS.map((card) => (
+          {getBuiltinCards().map((card) => (
             <div
               key={card.id}
               className={styles.cardManagerItem + " " + styles.builtin + " cursor-pointer"}

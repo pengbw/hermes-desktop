@@ -1,0 +1,30 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-05-24",
+  "gestures": [
+    {
+      "name": "silent",
+      "duration": 0,
+      "lookAtX": 0.0,
+      "lookAtY": 0.0,
+      "tilt": 0.0,
+      "poseFile": "silent.json"
+    },
+    {
+      "name": "greeting",
+      "duration": 8000,
+      "lookAtX": 0.0,
+      "lookAtY": 0.0,
+      "tilt": 0.0,
+      "poseFile": "greeting.json"
+    },
+    {
+      "name": "think",
+      "duration": 5000,
+      "lookAtX": 0.3,
+      "lookAtY": -0.3,
+      "tilt": -0.08,
+      "poseFile": "think.json"
+    }
+  ]
+}

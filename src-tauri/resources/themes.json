@@ -1,0 +1,941 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-05-24",
+  "defaultTheme": "classic",
+  "fonts": {
+    "default": {
+      "family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": {
+        "xs": "0.75rem",
+        "sm": "0.875rem",
+        "base": "1rem",
+        "lg": "1.125rem",
+        "xl": "1.25rem",
+        "2xl": "1.5rem",
+        "3xl": "1.875rem"
+      },
+      "weight": {
+        "normal": "400",
+        "medium": "500",
+        "semibold": "600",
+        "bold": "700"
+      },
+      "lineHeight": {
+        "tight": "1.25",
+        "normal": "1.5",
+        "relaxed": "1.75"
+      }
+    },
+    "modern": {
+      "family": "\"Inter\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": {
+        "xs": "0.75rem",
+        "sm": "0.8125rem",
+        "base": "0.9375rem",
+        "lg": "1.0625rem",
+        "xl": "1.25rem",
+        "2xl": "1.5rem",
+        "3xl": "2rem"
+      },
+      "weight": {
+        "normal": "400",
+        "medium": "500",
+        "semibold": "600",
+        "bold": "700"
+      },
+      "lineHeight": {
+        "tight": "1.2",
+        "normal": "1.4",
+        "relaxed": "1.6"
+      }
+    },
+    "elegant": {
+      "family": "\"Georgia\", \"Noto Serif SC\", \"Songti SC\", serif",
+      "size": {
+        "xs": "0.75rem",
+        "sm": "0.875rem",
+        "base": "1rem",
+        "lg": "1.125rem",
+        "xl": "1.375rem",
+        "2xl": "1.625rem",
+        "3xl": "2rem"
+      },
+      "weight": {
+        "normal": "400",
+        "medium": "500",
+        "semibold": "600",
+        "bold": "700"
+      },
+      "lineHeight": {
+        "tight": "1.3",
+        "normal": "1.6",
+        "relaxed": "1.8"
+      }
+    },
+    "playful": {
+      "family": "\"Nunito\", \"Quicksand\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+      "size": {
+        "xs": "0.8125rem",
+        "sm": "0.9375rem",
+        "base": "1.0625rem",
+        "lg": "1.1875rem",
+        "xl": "1.375rem",
+        "2xl": "1.625rem",
+        "3xl": "2.125rem"
+      },
+      "weight": {
+        "normal": "400",
+        "medium": "500",
+        "semibold": "600",
+        "bold": "800"
+      },
+      "lineHeight": {
+        "tight": "1.2",
+        "normal": "1.5",
+        "relaxed": "1.7"
+      }
+    }
+  },
+  "themes": [
+    {
+      "name": "classic",
+      "label": {
+        "zh-CN": "经典标准",
+        "en": "Classic Standard",
+        "zh-XG": "经典标准"
+      },
+      "description": {
+        "zh-CN": "最常见的组合，适用于大多数场景",
+        "en": "Most common combination, suitable for most scenarios",
+        "zh-XG": "最常见的组合，适用于大多数场景"
+      },
+      "radius": "0.5rem",
+      "font": "default",
+      "variables": {
+        "light": {
+          "background": "#FFFFFF",
+          "foreground": "#0F172A",
+          "card": "#FFFFFF",
+          "cardForeground": "#0F172A",
+          "primary": "#3B82F6",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#F1F5F9",
+          "secondaryForeground": "#0F172A",
+          "muted": "#F8FAFC",
+          "mutedForeground": "#64748B",
+          "accent": "#EFF6FF",
+          "accentForeground": "#1D4ED8",
+          "border": "#E2E8F0",
+          "input": "#E2E8F0",
+          "ring": "#3B82F6"
+        },
+        "dark": {
+          "background": "#0F172A",
+          "foreground": "#F8FAFC",
+          "card": "#1E293B",
+          "cardForeground": "#F8FAFC",
+          "primary": "#60A5FA",
+          "primaryForeground": "#0F172A",
+          "secondary": "#1E293B",
+          "secondaryForeground": "#F8FAFC",
+          "muted": "#334155",
+          "mutedForeground": "#94A3B8",
+          "accent": "#1E3A5F",
+          "accentForeground": "#93C5FD",
+          "border": "#334155",
+          "input": "#334155",
+          "ring": "#60A5FA"
+        }
+      },
+      "preview": {
+        "accent": "#3B82F6",
+        "bg": "#F8FAFC",
+        "text": "#0F172A"
+      }
+    },
+    {
+      "name": "vivid",
+      "label": {
+        "zh-CN": "鲜艳活力",
+        "en": "Vivid & Vibrant",
+        "zh-XG": "鲜艳活力"
+      },
+      "description": {
+        "zh-CN": "高饱和度，适合年轻化产品和创意应用",
+        "en": "High saturation, suitable for youthful and creative apps",
+        "zh-XG": "高饱和度，适合年轻化产品和创意应用"
+      },
+      "radius": "0.75rem",
+      "font": "default",
+      "variables": {
+        "light": {
+          "background": "#FFFBEB",
+          "foreground": "#431407",
+          "card": "#FFFFFF",
+          "cardForeground": "#431407",
+          "primary": "#F97316",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#FFF7ED",
+          "secondaryForeground": "#9A3412",
+          "muted": "#FFEDD5",
+          "mutedForeground": "#C2410C",
+          "accent": "#FDBA74",
+          "accentForeground": "#7C2D12",
+          "border": "#FED7AA",
+          "input": "#FED7AA",
+          "ring": "#F97316"
+        },
+        "dark": {
+          "background": "#431407",
+          "foreground": "#FFEDD5",
+          "card": "#7C2D12",
+          "cardForeground": "#FFEDD5",
+          "primary": "#FB923C",
+          "primaryForeground": "#431407",
+          "secondary": "#9A3412",
+          "secondaryForeground": "#FFEDD5",
+          "muted": "#7C2D12",
+          "mutedForeground": "#FDBA74",
+          "accent": "#C2410C",
+          "accentForeground": "#FED7AA",
+          "border": "#9A3412",
+          "input": "#9A3412",
+          "ring": "#FB923C"
+        }
+      },
+      "preview": {
+        "accent": "#F97316",
+        "bg": "#FFFBEB",
+        "text": "#431407"
+      }
+    },
+    {
+      "name": "subtle",
+      "label": {
+        "zh-CN": "柔和优雅",
+        "en": "Subtle & Elegant",
+        "zh-XG": "柔和优雅"
+      },
+      "description": {
+        "zh-CN": "低对比度，适合高端品牌和优雅界面",
+        "en": "Low contrast, suitable for premium brands and elegant interfaces",
+        "zh-XG": "低对比度，适合高端品牌和优雅界面"
+      },
+      "radius": "0.5rem",
+      "font": "elegant",
+      "variables": {
+        "light": {
+          "background": "#FAF9FB",
+          "foreground": "#2E2A30",
+          "card": "#FFFFFF",
+          "cardForeground": "#2E2A30",
+          "primary": "#8B7E8E",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#F5F3F7",
+          "secondaryForeground": "#4A4450",
+          "muted": "#EDE9F2",
+          "mutedForeground": "#7A7480",
+          "accent": "#E8E0F0",
+          "accentForeground": "#5A5070",
+          "border": "#DDD5E5",
+          "input": "#DDD5E5",
+          "ring": "#8B7E8E"
+        },
+        "dark": {
+          "background": "#1E1A22",
+          "foreground": "#F0EDF5",
+          "card": "#2E2A35",
+          "cardForeground": "#F0EDF5",
+          "primary": "#A89BB0",
+          "primaryForeground": "#1E1A22",
+          "secondary": "#3E3A45",
+          "secondaryForeground": "#F0EDF5",
+          "muted": "#3E3A45",
+          "mutedForeground": "#A89BB0",
+          "accent": "#4E4A55",
+          "accentForeground": "#C8BDD0",
+          "border": "#4E4A55",
+          "input": "#4E4A55",
+          "ring": "#A89BB0"
+        }
+      },
+      "preview": {
+        "accent": "#8B7E8E",
+        "bg": "#FAF9FB",
+        "text": "#2E2A30"
+      }
+    },
+    {
+      "name": "warm",
+      "label": {
+        "zh-CN": "暖色温馨",
+        "en": "Warm & Cozy",
+        "zh-XG": "暖色温馨"
+      },
+      "description": {
+        "zh-CN": "暖色调为主，营造友好温暖的氛围",
+        "en": "Warm tones, creating a friendly and cozy atmosphere",
+        "zh-XG": "暖色调为主，营造友好温暖的氛围"
+      },
+      "radius": "0.75rem",
+      "font": "default",
+      "variables": {
+        "light": {
+          "background": "#FFFBF5",
+          "foreground": "#451A03",
+          "card": "#FFFFFF",
+          "cardForeground": "#451A03",
+          "primary": "#D97706",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#FEF3C7",
+          "secondaryForeground": "#92400E",
+          "muted": "#FDE68A",
+          "mutedForeground": "#B45309",
+          "accent": "#FCD34D",
+          "accentForeground": "#78350F",
+          "border": "#FDE68A",
+          "input": "#FDE68A",
+          "ring": "#D97706"
+        },
+        "dark": {
+          "background": "#451A03",
+          "foreground": "#FEF3C7",
+          "card": "#78350F",
+          "cardForeground": "#FEF3C7",
+          "primary": "#FBBF24",
+          "primaryForeground": "#451A03",
+          "secondary": "#92400E",
+          "secondaryForeground": "#FEF3C7",
+          "muted": "#78350F",
+          "mutedForeground": "#FCD34D",
+          "accent": "#B45309",
+          "accentForeground": "#FDE68A",
+          "border": "#92400E",
+          "input": "#92400E",
+          "ring": "#FBBF24"
+        }
+      },
+      "preview": {
+        "accent": "#D97706",
+        "bg": "#FFFBF5",
+        "text": "#451A03"
+      }
+    },
+    {
+      "name": "cool",
+      "label": {
+        "zh-CN": "冷色专业",
+        "en": "Cool & Professional",
+        "zh-XG": "冷色专业"
+      },
+      "description": {
+        "zh-CN": "冷色调为主，适合科技和专业应用",
+        "en": "Cool tones, suitable for tech and professional apps",
+        "zh-XG": "冷色调为主，适合科技和专业应用"
+      },
+      "radius": "0.375rem",
+      "font": "modern",
+      "variables": {
+        "light": {
+          "background": "#F0F9FF",
+          "foreground": "#082F49",
+          "card": "#FFFFFF",
+          "cardForeground": "#082F49",
+          "primary": "#0EA5E9",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#E0F2FE",
+          "secondaryForeground": "#075985",
+          "muted": "#BAE6FD",
+          "mutedForeground": "#0369A1",
+          "accent": "#7DD3FC",
+          "accentForeground": "#0C4A6E",
+          "border": "#BAE6FD",
+          "input": "#BAE6FD",
+          "ring": "#0EA5E9"
+        },
+        "dark": {
+          "background": "#082F49",
+          "foreground": "#E0F2FE",
+          "card": "#0C4A6E",
+          "cardForeground": "#E0F2FE",
+          "primary": "#38BDF8",
+          "primaryForeground": "#082F49",
+          "secondary": "#075985",
+          "secondaryForeground": "#E0F2FE",
+          "muted": "#0C4A6E",
+          "mutedForeground": "#7DD3FC",
+          "accent": "#0369A1",
+          "accentForeground": "#BAE6FD",
+          "border": "#075985",
+          "input": "#075985",
+          "ring": "#38BDF8"
+        }
+      },
+      "preview": {
+        "accent": "#0EA5E9",
+        "bg": "#F0F9FF",
+        "text": "#082F49"
+      }
+    },
+    {
+      "name": "nature",
+      "label": {
+        "zh-CN": "自然清新",
+        "en": "Natural & Fresh",
+        "zh-XG": "自然清新"
+      },
+      "description": {
+        "zh-CN": "自然色系，适合环保、健康类产品",
+        "en": "Natural colors, suitable for eco and health products",
+        "zh-XG": "自然色系，适合环保、健康类产品"
+      },
+      "radius": "1rem",
+      "font": "default",
+      "variables": {
+        "light": {
+          "background": "#F0FDF4",
+          "foreground": "#14532D",
+          "card": "#FFFFFF",
+          "cardForeground": "#14532D",
+          "primary": "#22C55E",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#DCFCE7",
+          "secondaryForeground": "#166534",
+          "muted": "#BBF7D0",
+          "mutedForeground": "#15803D",
+          "accent": "#86EFAC",
+          "accentForeground": "#14532D",
+          "border": "#BBF7D0",
+          "input": "#BBF7D0",
+          "ring": "#22C55E"
+        },
+        "dark": {
+          "background": "#14532D",
+          "foreground": "#DCFCE7",
+          "card": "#166534",
+          "cardForeground": "#DCFCE7",
+          "primary": "#4ADE80",
+          "primaryForeground": "#14532D",
+          "secondary": "#166534",
+          "secondaryForeground": "#DCFCE7",
+          "muted": "#166534",
+          "mutedForeground": "#86EFAC",
+          "accent": "#15803D",
+          "accentForeground": "#BBF7D0",
+          "border": "#166534",
+          "input": "#166534",
+          "ring": "#4ADE80"
+        }
+      },
+      "preview": {
+        "accent": "#22C55E",
+        "bg": "#F0FDF4",
+        "text": "#14532D"
+      }
+    },
+    {
+      "name": "modern",
+      "label": {
+        "zh-CN": "现代简约",
+        "en": "Modern & Minimal",
+        "zh-XG": "现代简约"
+      },
+      "description": {
+        "zh-CN": "现代感强，适合科技产品和 SaaS 应用",
+        "en": "Strong modern feel, suitable for tech and SaaS apps",
+        "zh-XG": "现代感强，适合科技产品和 SaaS 应用"
+      },
+      "radius": "0.25rem",
+      "font": "modern",
+      "variables": {
+        "light": {
+          "background": "#F8FAFC",
+          "foreground": "#0F172A",
+          "card": "#FFFFFF",
+          "cardForeground": "#0F172A",
+          "primary": "#0F172A",
+          "primaryForeground": "#F8FAFC",
+          "secondary": "#F1F5F9",
+          "secondaryForeground": "#334155",
+          "muted": "#E2E8F0",
+          "mutedForeground": "#64748B",
+          "accent": "#CBD5E1",
+          "accentForeground": "#0F172A",
+          "border": "#E2E8F0",
+          "input": "#E2E8F0",
+          "ring": "#0F172A"
+        },
+        "dark": {
+          "background": "#020617",
+          "foreground": "#F8FAFC",
+          "card": "#0F172A",
+          "cardForeground": "#F8FAFC",
+          "primary": "#F8FAFC",
+          "primaryForeground": "#020617",
+          "secondary": "#1E293B",
+          "secondaryForeground": "#CBD5E1",
+          "muted": "#1E293B",
+          "mutedForeground": "#94A3B8",
+          "accent": "#334155",
+          "accentForeground": "#F8FAFC",
+          "border": "#1E293B",
+          "input": "#1E293B",
+          "ring": "#F8FAFC"
+        }
+      },
+      "preview": {
+        "accent": "#0F172A",
+        "bg": "#F8FAFC",
+        "text": "#0F172A"
+      }
+    },
+    {
+      "name": "vibrant",
+      "label": {
+        "zh-CN": "活力四射",
+        "en": "Vibrant & Energetic",
+        "zh-XG": "活力四射"
+      },
+      "description": {
+        "zh-CN": "高能量配色，适合运动、游戏类应用",
+        "en": "High energy colors, suitable for sports and gaming apps",
+        "zh-XG": "高能量配色，适合运动、游戏类应用"
+      },
+      "radius": "1rem",
+      "font": "playful",
+      "variables": {
+        "light": {
+          "background": "#FEF2F2",
+          "foreground": "#450A0A",
+          "card": "#FFFFFF",
+          "cardForeground": "#450A0A",
+          "primary": "#EF4444",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#FEE2E2",
+          "secondaryForeground": "#991B1B",
+          "muted": "#FECACA",
+          "mutedForeground": "#B91C1C",
+          "accent": "#F87171",
+          "accentForeground": "#7F1D1D",
+          "border": "#FECACA",
+          "input": "#FECACA",
+          "ring": "#EF4444"
+        },
+        "dark": {
+          "background": "#450A0A",
+          "foreground": "#FEE2E2",
+          "card": "#7F1D1D",
+          "cardForeground": "#FEE2E2",
+          "primary": "#F87171",
+          "primaryForeground": "#450A0A",
+          "secondary": "#991B1B",
+          "secondaryForeground": "#FEE2E2",
+          "muted": "#7F1D1D",
+          "mutedForeground": "#F87171",
+          "accent": "#B91C1C",
+          "accentForeground": "#FECACA",
+          "border": "#991B1B",
+          "input": "#991B1B",
+          "ring": "#F87171"
+        }
+      },
+      "preview": {
+        "accent": "#EF4444",
+        "bg": "#FEF2F2",
+        "text": "#450A0A"
+      }
+    },
+    {
+      "name": "professional",
+      "label": {
+        "zh-CN": "商务专业",
+        "en": "Business Professional",
+        "zh-XG": "商务专业"
+      },
+      "description": {
+        "zh-CN": "稳重大气，适合企业级应用和 B2B 产品",
+        "en": "Steady and grand, suitable for enterprise and B2B products",
+        "zh-XG": "稳重大气，适合企业级应用和 B2B 产品"
+      },
+      "radius": "0.375rem",
+      "font": "modern",
+      "variables": {
+        "light": {
+          "background": "#FAFAFA",
+          "foreground": "#171717",
+          "card": "#FFFFFF",
+          "cardForeground": "#171717",
+          "primary": "#2563EB",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#F5F5F5",
+          "secondaryForeground": "#404040",
+          "muted": "#E5E5E5",
+          "mutedForeground": "#737373",
+          "accent": "#DBEAFE",
+          "accentForeground": "#1E40AF",
+          "border": "#E5E5E5",
+          "input": "#E5E5E5",
+          "ring": "#2563EB"
+        },
+        "dark": {
+          "background": "#0A0A0A",
+          "foreground": "#FAFAFA",
+          "card": "#171717",
+          "cardForeground": "#FAFAFA",
+          "primary": "#3B82F6",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#262626",
+          "secondaryForeground": "#D4D4D4",
+          "muted": "#262626",
+          "mutedForeground": "#A3A3A3",
+          "accent": "#1E3A5F",
+          "accentForeground": "#93C5FD",
+          "border": "#262626",
+          "input": "#262626",
+          "ring": "#3B82F6"
+        }
+      },
+      "preview": {
+        "accent": "#2563EB",
+        "bg": "#FAFAFA",
+        "text": "#171717"
+      }
+    },
+    {
+      "name": "soft",
+      "label": {
+        "zh-CN": "梦幻柔美",
+        "en": "Dreamy & Soft",
+        "zh-XG": "梦幻柔美"
+      },
+      "description": {
+        "zh-CN": "柔和色调，适合设计工具和创意平台",
+        "en": "Soft tones, suitable for design tools and creative platforms",
+        "zh-XG": "柔和色调，适合设计工具和创意平台"
+      },
+      "radius": "1rem",
+      "font": "elegant",
+      "variables": {
+        "light": {
+          "background": "#FAF5FF",
+          "foreground": "#3B0764",
+          "card": "#FFFFFF",
+          "cardForeground": "#3B0764",
+          "primary": "#A855F7",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#F3E8FF",
+          "secondaryForeground": "#6B21A8",
+          "muted": "#E9D5FF",
+          "mutedForeground": "#9333EA",
+          "accent": "#D8B4FE",
+          "accentForeground": "#581C87",
+          "border": "#E9D5FF",
+          "input": "#E9D5FF",
+          "ring": "#A855F7"
+        },
+        "dark": {
+          "background": "#3B0764",
+          "foreground": "#F3E8FF",
+          "card": "#581C87",
+          "cardForeground": "#F3E8FF",
+          "primary": "#C084FC",
+          "primaryForeground": "#3B0764",
+          "secondary": "#6B21A8",
+          "secondaryForeground": "#F3E8FF",
+          "muted": "#581C87",
+          "mutedForeground": "#D8B4FE",
+          "accent": "#7E22CE",
+          "accentForeground": "#E9D5FF",
+          "border": "#6B21A8",
+          "input": "#6B21A8",
+          "ring": "#C084FC"
+        }
+      },
+      "preview": {
+        "accent": "#A855F7",
+        "bg": "#FAF5FF",
+        "text": "#3B0764"
+      }
+    },
+    {
+      "name": "bold",
+      "label": {
+        "zh-CN": "大胆醒目",
+        "en": "Bold & Striking",
+        "zh-XG": "大胆醒目"
+      },
+      "description": {
+        "zh-CN": "高对比度，适合需要强烈视觉冲击的场景",
+        "en": "High contrast, suitable for strong visual impact",
+        "zh-XG": "高对比度，适合需要强烈视觉冲击的场景"
+      },
+      "radius": "0.25rem",
+      "font": "modern",
+      "variables": {
+        "light": {
+          "background": "#FFFFFF",
+          "foreground": "#000000",
+          "card": "#FFFFFF",
+          "cardForeground": "#000000",
+          "primary": "#000000",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#F5F5F5",
+          "secondaryForeground": "#171717",
+          "muted": "#E5E5E5",
+          "mutedForeground": "#525252",
+          "accent": "#FF00FF",
+          "accentForeground": "#FFFFFF",
+          "border": "#000000",
+          "input": "#E5E5E5",
+          "ring": "#FF00FF"
+        },
+        "dark": {
+          "background": "#000000",
+          "foreground": "#FFFFFF",
+          "card": "#171717",
+          "cardForeground": "#FFFFFF",
+          "primary": "#FFFFFF",
+          "primaryForeground": "#000000",
+          "secondary": "#262626",
+          "secondaryForeground": "#FFFFFF",
+          "muted": "#262626",
+          "mutedForeground": "#A3A3A3",
+          "accent": "#FF00FF",
+          "accentForeground": "#FFFFFF",
+          "border": "#404040",
+          "input": "#262626",
+          "ring": "#FF00FF"
+        }
+      },
+      "preview": {
+        "accent": "#FF00FF",
+        "bg": "#FFFFFF",
+        "text": "#000000"
+      }
+    },
+    {
+      "name": "calm",
+      "label": {
+        "zh-CN": "平静舒缓",
+        "en": "Calm & Soothing",
+        "zh-XG": "平静舒缓"
+      },
+      "description": {
+        "zh-CN": "低饱和度，适合长时间使用的应用",
+        "en": "Low saturation, suitable for long-term use apps",
+        "zh-XG": "低饱和度，适合长时间使用的应用"
+      },
+      "radius": "0.75rem",
+      "font": "default",
+      "variables": {
+        "light": {
+          "background": "#F5F5F0",
+          "foreground": "#44403C",
+          "card": "#FFFFFF",
+          "cardForeground": "#44403C",
+          "primary": "#78716C",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#E7E5E4",
+          "secondaryForeground": "#57534E",
+          "muted": "#D6D3D1",
+          "mutedForeground": "#78716C",
+          "accent": "#A8A29E",
+          "accentForeground": "#292524",
+          "border": "#D6D3D1",
+          "input": "#D6D3D1",
+          "ring": "#78716C"
+        },
+        "dark": {
+          "background": "#1C1917",
+          "foreground": "#E7E5E4",
+          "card": "#292524",
+          "cardForeground": "#E7E5E4",
+          "primary": "#A8A29E",
+          "primaryForeground": "#1C1917",
+          "secondary": "#44403C",
+          "secondaryForeground": "#E7E5E4",
+          "muted": "#44403C",
+          "mutedForeground": "#A8A29E",
+          "accent": "#57534E",
+          "accentForeground": "#D6D3D1",
+          "border": "#44403C",
+          "input": "#44403C",
+          "ring": "#A8A29E"
+        }
+      },
+      "preview": {
+        "accent": "#78716C",
+        "bg": "#F5F5F0",
+        "text": "#44403C"
+      }
+    },
+    {
+      "name": "candy",
+      "label": {
+        "zh-CN": "糖果色彩",
+        "en": "Candy Colors",
+        "zh-XG": "糖果色彩"
+      },
+      "description": {
+        "zh-CN": "明快可爱，适合儿童产品和趣味应用",
+        "en": "Bright and cute, suitable for kids and fun apps",
+        "zh-XG": "明快可爱，适合儿童产品和趣味应用"
+      },
+      "radius": "1.5rem",
+      "font": "playful",
+      "variables": {
+        "light": {
+          "background": "#FDF2F8",
+          "foreground": "#831843",
+          "card": "#FFFFFF",
+          "cardForeground": "#831843",
+          "primary": "#EC4899",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#FCE7F3",
+          "secondaryForeground": "#BE185D",
+          "muted": "#FBCFE8",
+          "mutedForeground": "#DB2777",
+          "accent": "#F9A8D4",
+          "accentForeground": "#9D174D",
+          "border": "#FBCFE8",
+          "input": "#FBCFE8",
+          "ring": "#EC4899"
+        },
+        "dark": {
+          "background": "#831843",
+          "foreground": "#FCE7F3",
+          "card": "#9D174D",
+          "cardForeground": "#FCE7F3",
+          "primary": "#F472B6",
+          "primaryForeground": "#831843",
+          "secondary": "#BE185D",
+          "secondaryForeground": "#FCE7F3",
+          "muted": "#9D174D",
+          "mutedForeground": "#F9A8D4",
+          "accent": "#DB2777",
+          "accentForeground": "#FBCFE8",
+          "border": "#BE185D",
+          "input": "#BE185D",
+          "ring": "#F472B6"
+        }
+      },
+      "preview": {
+        "accent": "#EC4899",
+        "bg": "#FDF2F8",
+        "text": "#831843"
+      }
+    },
+    {
+      "name": "deep",
+      "label": {
+        "zh-CN": "深邃神秘",
+        "en": "Deep & Mysterious",
+        "zh-XG": "深邃神秘"
+      },
+      "description": {
+        "zh-CN": "深色调，适合暗黑主题和神秘风格",
+        "en": "Dark tones, suitable for dark themes and mysterious styles",
+        "zh-XG": "深色调，适合暗黑主题和神秘风格"
+      },
+      "radius": "0.5rem",
+      "font": "default",
+      "variables": {
+        "light": {
+          "background": "#F8FAFC",
+          "foreground": "#0F172A",
+          "card": "#FFFFFF",
+          "cardForeground": "#0F172A",
+          "primary": "#6366F1",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#E0E7FF",
+          "secondaryForeground": "#3730A3",
+          "muted": "#C7D2FE",
+          "mutedForeground": "#4F46E5",
+          "accent": "#818CF8",
+          "accentForeground": "#312E81",
+          "border": "#C7D2FE",
+          "input": "#C7D2FE",
+          "ring": "#6366F1"
+        },
+        "dark": {
+          "background": "#020617",
+          "foreground": "#E0E7FF",
+          "card": "#0F172A",
+          "cardForeground": "#E0E7FF",
+          "primary": "#818CF8",
+          "primaryForeground": "#020617",
+          "secondary": "#1E1B4B",
+          "secondaryForeground": "#C7D2FE",
+          "muted": "#1E1B4B",
+          "mutedForeground": "#818CF8",
+          "accent": "#312E81",
+          "accentForeground": "#A5B4FC",
+          "border": "#1E1B4B",
+          "input": "#1E1B4B",
+          "ring": "#818CF8"
+        }
+      },
+      "preview": {
+        "accent": "#6366F1",
+        "bg": "#F8FAFC",
+        "text": "#0F172A"
+      }
+    },
+    {
+      "name": "light",
+      "label": {
+        "zh-CN": "清新淡雅",
+        "en": "Light & Airy",
+        "zh-XG": "清新淡雅"
+      },
+      "description": {
+        "zh-CN": "浅色调，适合简洁清爽的界面",
+        "en": "Light tones, suitable for clean and fresh interfaces",
+        "zh-XG": "浅色调，适合简洁清爽的界面"
+      },
+      "radius": "0.75rem",
+      "font": "default",
+      "variables": {
+        "light": {
+          "background": "#FFFFFF",
+          "foreground": "#334155",
+          "card": "#F8FAFC",
+          "cardForeground": "#334155",
+          "primary": "#64748B",
+          "primaryForeground": "#FFFFFF",
+          "secondary": "#F1F5F9",
+          "secondaryForeground": "#475569",
+          "muted": "#E2E8F0",
+          "mutedForeground": "#94A3B8",
+          "accent": "#CBD5E1",
+          "accentForeground": "#334155",
+          "border": "#E2E8F0",
+          "input": "#E2E8F0",
+          "ring": "#64748B"
+        },
+        "dark": {
+          "background": "#0F172A",
+          "foreground": "#F1F5F9",
+          "card": "#1E293B",
+          "cardForeground": "#F1F5F9",
+          "primary": "#94A3B8",
+          "primaryForeground": "#0F172A",
+          "secondary": "#334155",
+          "secondaryForeground": "#F1F5F9",
+          "muted": "#334155",
+          "mutedForeground": "#CBD5E1",
+          "accent": "#475569",
+          "accentForeground": "#E2E8F0",
+          "border": "#334155",
+          "input": "#334155",
+          "ring": "#94A3B8"
+        }
+      },
+      "preview": {
+        "accent": "#64748B",
+        "bg": "#FFFFFF",
+        "text": "#334155"
+      }
+    }
+  ]
+}

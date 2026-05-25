@@ -111,7 +111,7 @@ describe("MessageInput", () => {
 
     render(<MessageInput {...defaultProps} />);
 
-    expect(mockInvoke).toHaveBeenCalledWith("list_providers");
+    expect(mockInvoke).toHaveBeenCalledWith("list_providers", { locale: "zh-CN" });
     expect(mockInvoke).toHaveBeenCalledWith("get_hermes_config");
   });
 

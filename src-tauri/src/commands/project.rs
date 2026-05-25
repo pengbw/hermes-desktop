@@ -1,4 +1,5 @@
 use crate::commands::helpers::{self, AppState, call_hermes_api_non_streaming};
+use crate::crypto::{file_storage, key_manager};
 use crate::database::models as db;
 use sqlx::{Row, SqlitePool};
 use std::sync::OnceLock;
@@ -260,26 +261,15 @@ pub(crate) async fn repair_legacy_software_dev_workflow(
 pub(crate) async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), String> {
     let now = chrono::Utc::now().timestamp_millis();
 
-    let templates = [
-        ("software_dev", "软件开发", "🏗️", "产品经理→开发工程师→测试工程师→代码审查", "遵循敏捷开发流程，每个迭代产出可交付的增量。代码必须经过审查才能合并。", "1. 需求文档需明确验收标准\n2. 代码实现需包含单元测试\n3. 测试报告需覆盖功能与边界\n4. 审查反馈需具体可操作"),
-        ("content_creation", "内容创作", "🎨", "策划→撰稿→编辑→审核发布", "内容创作遵循选题→大纲→初稿→修改→发布的标准流程，确保内容质量和品牌一致性。", "1. 选题需有明确目标受众和价值主张\n2. 大纲需包含核心论点和结构\n3. 初稿需语言流畅、逻辑清晰\n4. 审核需检查事实准确性和品牌调性"),
-        ("data_analysis", "数据分析", "📊", "需求→数据采集→分析建模→报告输出", "数据分析项目需确保数据质量和分析方法的科学性，结论需有数据支撑。", "1. 需求分析需明确分析目标和关键指标\n2. 数据采集需记录数据来源和质量评估\n3. 分析建模需说明方法选择理由\n4. 报告需包含结论、建议和局限性说明"),
-        ("marketing_campaign", "营销策划", "📢", "策略→创意→执行→效果评估", "营销策划需以数据驱动决策，每个环节需有明确的KPI和可衡量的成果指标。", "1. 策略需基于市场调研和用户洞察\n2. 创意方案需包含多种形式和渠道\n3. 执行计划需有时间线和责任分工\n4. 效果评估需对比预期与实际KPI"),
-        ("game_dev", "游戏开发", "🎮", "策划→美术→程序→测试→上线", "游戏开发需以玩家体验为核心，每个系统需经过充分测试和平衡性调整。", "1. 策划文档需包含核心玩法和系统设计\n2. 美术资源需符合风格指南和性能要求\n3. 程序实现需遵循架构规范和编码标准\n4. 测试需覆盖功能、性能和兼容性"),
-        ("research_project", "学术研究", "🔬", "选题→文献→实验→论文撰写", "学术研究需遵循严谨的方法论，确保研究的可复现性和学术诚信。", "1. 选题需有学术价值和创新性\n2. 文献综述需全面且批判性分析\n3. 实验设计需控制变量和偏差\n4. 论文需符合学术写作规范"),
-    ];
+    let templates_data = crate::database::seeds::load_project_templates();
 
-    for (idx, (tmpl_id, name, icon, desc, rule, guidelines)) in templates.iter().enumerate() {
-        let id = format!("builtin_{}", tmpl_id);
+    for (idx, tmpl) in templates_data.templates.iter().enumerate() {
+        let id = format!("builtin_{}", tmpl.id);
         sqlx::query(
-            "INSERT INTO project_templates (id, name, icon, description, project_rule, project_guidelines, is_builtin, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, icon=excluded.icon, description=excluded.description, project_rule=excluded.project_rule, project_guidelines=excluded.project_guidelines, sort_order=excluded.sort_order, updated_at=excluded.updated_at"
+            "INSERT INTO project_templates (id, name, icon, description, project_rule, project_guidelines, is_builtin, sort_order, created_at, updated_at) VALUES (?, '', ?, '', '', '', 1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET icon=excluded.icon, sort_order=excluded.sort_order, updated_at=excluded.updated_at"
         )
         .bind(&id)
-        .bind(name)
-        .bind(icon)
-        .bind(desc)
-        .bind(rule)
-        .bind(guidelines)
+        .bind(&tmpl.icon)
         .bind(idx as i64)
         .bind(now)
         .bind(now)
@@ -288,45 +278,16 @@ pub(crate) async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), Stri
         .map_err(|e| e.to_string())?;
     }
 
-    let builtin_roles: Vec<(&str, &str, &str, &str, &str, &str, &str, &str, &str)> = vec![
-        ("software_dev_pm", "产品经理", "PM", "📋", "负责需求收集、分析和文档编写，确保产品方向正确", "需求收集与分析、编写需求文档与用户故事、制定产品路线图、与开发团队沟通需求细节、验收交付成果", "你是一位经验丰富的产品经理，擅长将模糊的想法转化为清晰的需求。你注重用户体验，善于倾听各方意见并做出权衡。你会主动思考需求的边界条件和异常场景，确保开发团队有足够的信息来实现功能。输出格式规范，逻辑清晰。", "business", "#4A90D9"),
-        ("software_dev_dev", "开发工程师", "Dev", "💻", "负责根据需求文档进行代码实现和技术方案设计", "技术方案设计、代码编写与实现、单元测试编写、Bug修复、技术文档撰写", "你是一位资深开发工程师，精通多种编程语言和技术栈。你注重代码质量和可维护性，遵循SOLID原则和设计模式。你会仔细阅读需求文档，遇到不明确的地方会主动提问。编码风格简洁优雅，注释清晰，测试覆盖充分。", "tech", "#50C878"),
-        ("software_dev_qa", "测试工程师", "QA", "🔍", "负责功能测试、回归测试和质量保障", "测试用例设计、功能测试执行、回归测试、缺陷报告与跟踪、测试报告编写", "你是一位严谨的测试工程师，擅长发现软件中的潜在问题。你会从用户角度和使用场景出发设计测试用例，覆盖正常流程和异常场景。你的缺陷报告详细且可复现，测试报告清晰展示质量状况。你关注边界条件和性能表现。", "analyst", "#FF6B6B"),
-        ("software_dev_reviewer", "代码审查员", "Reviewer", "🛡️", "负责代码审查，确保代码质量和规范一致性", "代码审查、架构评审、最佳实践建议、技术债务识别、代码规范检查", "你是一位注重代码质量的审查员，拥有丰富的代码审查经验。你关注代码的可读性、可维护性、安全性和性能。你的审查意见具体且建设性，不仅指出问题，还会提供改进建议。你理解技术债务的权衡，能在完美与实用之间找到平衡。", "expert", "#9B59B6"),
-        ("content_creation_planner", "内容策划", "Planner", "💡", "负责内容选题、策略规划和方向把控", "选题策划、内容日历制定、目标受众分析、竞品内容研究、内容方向把控", "你是一位敏锐的内容策划师，善于捕捉热点话题和用户需求。你擅长从数据中发现内容机会，制定有策略的内容计划。你的选题既有深度又有传播力，能够平衡品牌调性与受众兴趣。输出的大纲结构清晰，重点突出。", "creative", "#E74C3C"),
-        ("content_creation_writer", "撰稿人", "Writer", "✍️", "负责根据大纲撰写内容初稿", "内容撰写、素材收集与整理、文风把控、SEO优化、引用标注", "你是一位文笔优美的撰稿人，擅长将大纲转化为引人入胜的文章。你的文字简洁有力，善于用故事和案例阐述观点。你注重逻辑连贯性，段落过渡自然。你会根据不同平台和受众调整写作风格，同时保持内容的深度和准确性。", "writer", "#3498DB"),
-        ("content_creation_editor", "编辑", "Editor", "📝", "负责内容修改润色和质量提升", "内容润色、结构调整、语言规范、格式统一、可读性优化", "你是一位严谨的编辑，对文字有极高的敏感度。你善于发现文章中的逻辑漏洞和表达不当之处，并能给出精准的修改建议。你注重内容的可读性和节奏感，确保每一段话都有存在的价值。你的修改既保留作者的原创风格，又提升整体质量。", "business", "#2ECC71"),
-        ("content_creation_auditor", "审核员", "Auditor", "✅", "负责内容终审，确保合规与品质", "合规审查、事实核查、品牌调性审核、发布前终审、反馈汇总", "你是一位细致的内容审核员，对合规性和准确性有极高的标准。你会仔细核查文中的事实和数据，确保没有误导性信息。你关注内容的法律合规性和品牌一致性，审核意见明确具体，分类标注问题的优先级。", "expert", "#F39C12"),
-        ("data_analysis_ba", "业务分析师", "BA", "📈", "负责业务需求分析和指标定义", "业务需求分析、KPI定义、分析目标拆解、报告解读与建议、业务方沟通", "你是一位精通业务的分析师，擅长将业务问题转化为可分析的数据问题。你了解行业指标体系，能够定义合理的KPI和分析框架。你的分析目标清晰可量化，报告中的建议切实可行。你善于用数据讲故事，让非技术人员也能理解分析结果。", "business", "#3498DB"),
-        ("data_analysis_de", "数据工程师", "DE", "⚙️", "负责数据采集、清洗和管道搭建", "数据采集与集成、数据清洗与转换、数据管道搭建、数据质量保障、数据文档编写", "你是一位经验丰富的数据工程师，擅长处理各种数据源和格式。你注重数据质量和可追溯性，会详细记录数据来源、清洗规则和转换逻辑。你的数据处理脚本健壮高效，能够处理异常数据和缺失值。你会主动评估数据质量并给出改进建议。", "tech", "#27AE60"),
-        ("data_analysis_ds", "数据科学家", "DS", "🧪", "负责数据建模、分析和洞察提取", "探索性数据分析、统计建模与假设检验、机器学习模型构建、可视化分析、分析报告撰写", "你是一位严谨的数据科学家，精通统计分析和机器学习方法。你注重分析方法的选择和假设的合理性，会说明方法选择的原因和局限性。你的分析过程可复现，结论有统计显著性支撑。你善于从数据中发现非显而易见的洞察，并用清晰的可视化呈现。", "analyst", "#8E44AD"),
-        ("marketing_strategist", "营销策略师", "Strategist", "🎯", "负责营销策略制定和市场分析", "市场调研与分析、目标受众画像、营销策略制定、预算规划、KPI设定", "你是一位资深的营销策略师，擅长从市场数据和用户行为中提炼洞察。你的策略既有创意又有数据支撑，能够精准定位目标受众。你了解各种营销渠道的特点和适用场景，善于整合多渠道策略。你的方案总是包含清晰的目标、执行路径和衡量指标。", "business", "#E74C3C"),
-        ("marketing_creative", "创意设计师", "Creative", "🎭", "负责创意方案设计和视觉呈现", "创意概念发想、视觉方案设计、文案创作、品牌调性把控、素材规范制定", "你是一位充满创意的设计师，善于将策略转化为打动人心的创意表达。你的创意既有冲击力又符合品牌调性，能够引发目标受众的情感共鸣。你注重细节和美感，输出的创意方案包含完整的视觉规范和文案。你会考虑不同渠道的适配需求。", "creative", "#9B59B6"),
-        ("marketing_executor", "执行专员", "Executor", "🚀", "负责营销活动的落地执行和协调", "执行计划制定、资源协调与排期、渠道投放管理、进度跟踪、问题处理", "你是一位高效的执行专员，擅长将创意方案转化为可落地的执行计划。你注重时间管理和资源协调，能够处理多线并行的任务。你的执行计划详细具体，包含每个环节的时间节点和验收标准。遇到问题你会快速响应并提供替代方案。", "tech", "#F39C12"),
-        ("marketing_analyst", "效果分析师", "Analyst", "📉", "负责营销效果追踪和数据分析", "数据埋点与采集、效果指标监控、ROI分析、归因分析、优化建议", "你是一位注重效果的分析师，擅长用数据评估营销活动的实际表现。你会建立完整的数据追踪体系，确保每个环节的效果可量化。你的分析不仅关注表面数据，还会深入挖掘归因关系。你的优化建议基于数据，具体且可操作。", "analyst", "#1ABC9C"),
-        ("game_dev_designer", "游戏策划", "Designer", "🎲", "负责游戏系统设计和玩法策划", "核心玩法设计、系统设计文档、数值平衡、关卡设计、用户体验优化", "你是一位富有创造力的游戏策划，擅长设计引人入胜的游戏系统。你注重玩家体验和游戏平衡性，每个系统都有清晰的设计目标和数值支撑。你的设计文档详细且可执行，包含边界条件和异常处理。你会从玩家心理出发设计奖励和成长曲线。", "creative", "#E74C3C"),
-        ("game_dev_artist", "美术设计师", "Artist", "🖌️", "负责游戏视觉设计和美术资源产出", "视觉风格定义、角色与场景设计、UI/UX设计、美术规范文档、资源优化建议", "你是一位多才多艺的美术设计师，擅长多种美术风格。你注重视觉表现力和性能优化的平衡，设计的资源既美观又高效。你的美术规范文档清晰完整，包含色彩体系、风格参考和技术规范。你会考虑不同分辨率和平台的适配需求。", "creative", "#9B59B6"),
-        ("game_dev_coder", "游戏程序员", "Coder", "⌨️", "负责游戏逻辑实现和技术架构", "游戏架构设计、核心系统实现、性能优化、工具开发、技术文档", "你是一位经验丰富的游戏程序员，精通游戏引擎和性能优化。你注重代码架构的扩展性和可维护性，善于处理实时交互和网络同步等复杂问题。你的实现严格遵循策划文档，遇到技术限制会主动沟通替代方案。代码风格规范，注释清晰。", "tech", "#2ECC71"),
-        ("game_dev_tester", "游戏测试员", "Tester", "🕹️", "负责游戏功能测试和品质保障", "功能测试、兼容性测试、性能测试、平衡性测试、缺陷报告与回归", "你是一位细致的游戏测试员，擅长发现游戏中的各种问题。你会从核心玩家和休闲玩家两个角度测试游戏体验，关注功能正确性、性能表现和平衡性。你的缺陷报告包含复现步骤、预期行为和实际行为。你会特别关注游戏的手感和反馈体验。", "analyst", "#F39C12"),
-        ("research_pi", "研究负责人", "PI", "🎓", "负责研究方向把控和课题管理", "研究选题与方向把控、研究计划制定、资源协调、进度管理、成果审核", "你是一位资深的研究负责人，拥有丰富的科研项目管理经验。你擅长把握研究方向，确保研究的创新性和可行性。你的研究计划系统完整，包含明确的时间节点和里程碑。你注重学术规范和研究伦理，对研究质量有极高的标准。", "expert", "#2C3E50"),
-        ("research_lr", "文献研究员", "LR", "📚", "负责文献检索、综述撰写和知识梳理", "文献检索与筛选、文献综述撰写、研究前沿追踪、方法论比较、知识图谱构建", "你是一位博学的文献研究员，擅长系统性地检索和梳理学术文献。你的文献综述全面且有批判性分析，能够识别研究空白和争议焦点。你注重引用的准确性和规范性，善于从大量文献中提炼核心观点和趋势。", "analyst", "#8E44AD"),
-        ("research_er", "实验研究员", "ER", "🔬", "负责实验设计、数据采集和结果分析", "实验方案设计、数据采集与管理、统计分析、实验报告撰写、可复现性验证", "你是一位严谨的实验研究员，精通实验设计和统计分析方法。你注重实验的可控性和可复现性，会详细记录实验条件和参数。你的数据分析方法选择合理，结果解读客观谨慎。你会主动报告实验的局限性和潜在偏差。", "tech", "#16A085"),
-    ];
-
-    for (i, (role_id, name, nickname, icon, desc, resp, soul, preset, color)) in builtin_roles.iter().enumerate() {
-        let id = format!("builtin_{}", role_id);
+    for (i, role) in templates_data.templates.iter().flat_map(|t| &t.roles).enumerate() {
+        let id = format!("builtin_{}", role.id);
         sqlx::query(
-            "INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', 'default', ?, ?, ?, 1, 100, 'neutral', ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, nickname=excluded.nickname, icon=excluded.icon, description=excluded.description, responsibilities=excluded.responsibilities, soul_content=excluded.soul_content, avatar_preset=excluded.avatar_preset, avatar_color=excluded.avatar_color, sort_order=excluded.sort_order, updated_at=excluded.updated_at"
+            "INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at) VALUES (?, '', ?, ?, '', '', '', '', 'default', ?, ?, ?, 1, 100, 'neutral', ?, ?) ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, icon=excluded.icon, avatar_preset=excluded.avatar_preset, avatar_color=excluded.avatar_color, sort_order=excluded.sort_order, updated_at=excluded.updated_at"
         )
         .bind(&id)
-        .bind(name)
-        .bind(nickname)
-        .bind(icon)
-        .bind(desc)
-        .bind(resp)
-        .bind(soul)
-        .bind(preset)
-        .bind(color)
+        .bind(&role.nickname)
+        .bind(&role.icon)
+        .bind(&role.avatar_preset)
+        .bind(&role.avatar_color)
         .bind(i as i64)
         .bind(now)
         .bind(now)
@@ -335,68 +296,34 @@ pub(crate) async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), Stri
         .map_err(|e| e.to_string())?;
     }
 
-    let template_workflows: Vec<(&str, &str, Option<&str>, &str, &str, &str, &str)> = vec![
-        // 软件开发流程
-        ("software_dev_wf0", "software_dev", Some("start"), "builtin_software_dev_pm", "需求文档", "auto_push", ""),
-        ("software_dev_wf1", "software_dev", Some("builtin_software_dev_pm"), "builtin_software_dev_dev", "需求规格", "need_confirm", ""),
-        ("software_dev_wf2", "software_dev", Some("builtin_software_dev_dev"), "builtin_software_dev_qa", "代码实现", "auto_push", ""),
-        ("software_dev_wf3", "software_dev", Some("builtin_software_dev_qa"), "builtin_software_dev_reviewer", "测试报告", "need_confirm", "builtin_software_dev_dev"),
-        ("software_dev_wf4", "software_dev", Some("builtin_software_dev_reviewer"), "end", "结束", "auto_push", ""),
-       
-        // 内容创作流程
-        ("content_creation_wf0", "content_creation", Some("start"), "builtin_content_creation_planner", "选题方向", "auto_push", ""),
-        ("content_creation_wf1", "content_creation", Some("builtin_content_creation_planner"), "builtin_content_creation_writer", "内容大纲", "need_confirm", ""),
-        ("content_creation_wf2", "content_creation", Some("builtin_content_creation_writer"), "builtin_content_creation_editor", "初稿", "auto_push", ""),
-        ("content_creation_wf3", "content_creation", Some("builtin_content_creation_editor"), "builtin_content_creation_auditor", "修改稿", "auto_push", ""),
-        ("content_creation_wf4", "content_creation", Some("builtin_content_creation_auditor"), "end", "结束", "need_confirm", "builtin_content_creation_planner"),
+    for tmpl in &templates_data.templates {
+        for wf in &tmpl.workflows {
+            let id = format!("builtin_{}", wf.id);
+            let template_id = format!("builtin_{}", tmpl.id);
+            let sort_order: i64 = wf.id.rsplit('_').next()
+                .map(|s| s.trim_start_matches("wf").parse().unwrap_or(0))
+                .unwrap_or(0);
+            let from_role_id = match &wf.from_role_id {
+                Some(r) => format!("builtin_{}", r),
+                None => "start".to_string(),
+            };
+            let to_role_id = if wf.to_role_id == "end" { "end".to_string() } else { format!("builtin_{}", wf.to_role_id) };
+            let reject_to_role_id = wf.reject_to_role_id.as_ref().map(|r| format!("builtin_{}", r));
 
-        // 数据分析流程
-        ("data_analysis_wf0", "data_analysis", Some("start"), "builtin_data_analysis_ba", "分析需求", "auto_push", ""),
-        ("data_analysis_wf1", "data_analysis", Some("builtin_data_analysis_ba"), "builtin_data_analysis_de", "数据需求", "auto_push", ""),
-        ("data_analysis_wf2", "data_analysis", Some("builtin_data_analysis_de"), "builtin_data_analysis_ds", "数据集", "need_confirm", ""),
-        ("data_analysis_wf3", "data_analysis", Some("builtin_data_analysis_ds"), "builtin_data_analysis_ba", "分析报告", "auto_push", ""),
-        ("data_analysis_wf4", "data_analysis", Some("builtin_data_analysis_ba"), "end", "结束", "auto_push", ""),
-        // 营销流程
-        ("marketing_wf0", "marketing_campaign", Some("start"), "builtin_marketing_strategist", "营销需求", "auto_push", ""),
-        ("marketing_wf1", "marketing_campaign", Some("builtin_marketing_strategist"), "builtin_marketing_creative", "策略方案", "need_confirm", ""),
-        ("marketing_wf2", "marketing_campaign", Some("builtin_marketing_creative"), "builtin_marketing_executor", "创意素材", "auto_push", ""),
-        ("marketing_wf3", "marketing_campaign", Some("builtin_marketing_executor"), "builtin_marketing_analyst", "执行数据", "auto_push", ""),
-        ("marketing_wf4", "marketing_campaign", Some("builtin_marketing_analyst"), "end", "结束", "need_confirm", ""),
-     
-        // 游戏开发流程
-        ("game_dev_wf0", "game_dev", Some("start"), "builtin_game_dev_designer", "游戏概念", "auto_push", ""),
-        ("game_dev_wf1", "game_dev", Some("builtin_game_dev_designer"), "builtin_game_dev_artist", "设计文档", "need_confirm", ""),
-        ("game_dev_wf2", "game_dev", Some("builtin_game_dev_artist"), "builtin_game_dev_coder", "美术资源", "auto_push", ""),
-        ("game_dev_wf3", "game_dev", Some("builtin_game_dev_coder"), "builtin_game_dev_tester", "可玩版本", "auto_push", ""),
-        ("game_dev_wf4", "game_dev", Some("builtin_game_dev_tester"), "end", "结束", "need_confirm", "builtin_game_dev_coder"),
-        // 研究流程
-        ("research_wf0", "research_project", Some("start"), "builtin_research_pi", "研究计划", "auto_push", ""),
-        ("research_wf1", "research_project", Some("builtin_research_pi"), "builtin_research_lr", "文献综述", "need_confirm", ""),
-        ("research_wf2", "research_project", Some("builtin_research_lr"), "builtin_research_er", "实验报告", "auto_push", ""),
-        ("research_wf3", "research_project", Some("builtin_research_er"), "end", "结束", "need_confirm", ""),
-    ];
-
-    for (wf_id, tmpl_id, from_role, to_role, artifact, transition, reject_to) in &template_workflows {
-        let id = format!("builtin_{}", wf_id);
-        let template_id = format!("builtin_{}", tmpl_id);
-        let sort_order: i64 = wf_id.rsplit('_').next()
-            .map(|s| s.trim_start_matches("wf").parse().unwrap_or(0))
-            .unwrap_or(0);
-
-        sqlx::query(
-            "INSERT INTO template_workflows (id, template_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET from_role_id=excluded.from_role_id, to_role_id=excluded.to_role_id, artifact_type=excluded.artifact_type, transition_type=excluded.transition_type, reject_to_role_id=excluded.reject_to_role_id, sort_order=excluded.sort_order"
-        )
-        .bind(&id)
-        .bind(&template_id)
-        .bind(*from_role)
-        .bind(to_role)
-        .bind(artifact)
-        .bind(transition)
-        .bind(*reject_to)
-        .bind(sort_order)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+            sqlx::query(
+                "INSERT INTO template_workflows (id, template_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, sort_order) VALUES (?, ?, ?, ?, '', ?, ?, ?) ON CONFLICT(id) DO UPDATE SET from_role_id=excluded.from_role_id, to_role_id=excluded.to_role_id, transition_type=excluded.transition_type, reject_to_role_id=excluded.reject_to_role_id, sort_order=excluded.sort_order"
+            )
+            .bind(&id)
+            .bind(&template_id)
+            .bind(&from_role_id)
+            .bind(&to_role_id)
+            .bind(&wf.transition_type)
+            .bind(&reject_to_role_id)
+            .bind(sort_order)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
     }
 
     sqlx::query("DELETE FROM ai_roles WHERE id = 'user'")
@@ -408,27 +335,52 @@ pub(crate) async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub async fn list_project_templates(app: AppHandle) -> Result<Vec<db::ProjectTemplateDetail>, String> {
+pub async fn list_project_templates(app: AppHandle, locale: Option<String>) -> Result<Vec<db::ProjectTemplateDetail>, String> {
     let pool = get_pool(&app)?;
 
     let _ = seed_builtin_templates(&pool).await;
 
-    let templates = sqlx::query_as::<_, db::ProjectTemplate>(
+    let loc = locale.as_deref().unwrap_or("zh-CN");
+    let seeds_data = crate::database::seeds::load_project_templates();
+
+    let mut templates = sqlx::query_as::<_, db::ProjectTemplate>(
         "SELECT id, name, icon, description, project_rule, project_guidelines, is_builtin, sort_order, created_at, updated_at FROM project_templates ORDER BY sort_order ASC"
     )
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
+    for tmpl in &mut templates {
+        if tmpl.is_builtin {
+            let seed_id = tmpl.id.strip_prefix("builtin_").unwrap_or(&tmpl.id);
+            if let Some(seed) = seeds_data.templates.iter().find(|s| s.id == seed_id) {
+                tmpl.name = crate::database::seeds::resolve_localized(&seed.name, loc).to_string();
+                tmpl.description = crate::database::seeds::resolve_localized(&seed.description, loc).to_string();
+                tmpl.project_rule = crate::database::seeds::resolve_localized(&seed.project_rule, loc).to_string();
+                tmpl.project_guidelines = crate::database::seeds::resolve_localized(&seed.project_guidelines, loc).to_string();
+            }
+        }
+    }
+
     let mut result = Vec::new();
     for tmpl in templates {
-        let workflows = sqlx::query_as::<_, db::TemplateWorkflow>(
+        let mut workflows = sqlx::query_as::<_, db::TemplateWorkflow>(
             "SELECT id, template_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, sort_order FROM template_workflows WHERE template_id = ? ORDER BY sort_order ASC"
         )
         .bind(&tmpl.id)
         .fetch_all(&pool)
         .await
         .map_err(|e| e.to_string())?;
+
+        for wf in &mut workflows {
+            let wf_seed_id = wf.id.strip_prefix("builtin_").unwrap_or(&wf.id);
+            for seed_tmpl in &seeds_data.templates {
+                if let Some(seed_wf) = seed_tmpl.workflows.iter().find(|w| w.id == wf_seed_id) {
+                    wf.artifact_type = crate::database::seeds::resolve_localized(&seed_wf.artifact_type, loc).to_string();
+                    break;
+                }
+            }
+        }
 
         let mut role_ids: Vec<String> = Vec::new();
         for w in &workflows {
@@ -442,7 +394,7 @@ pub async fn list_project_templates(app: AppHandle) -> Result<Vec<db::ProjectTem
 
         let mut roles = Vec::new();
         for rid in &role_ids {
-            if let Some(role) = sqlx::query_as::<_, db::AiRole>(
+            if let Some(mut role) = sqlx::query_as::<_, db::AiRole>(
                 "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
             )
             .bind(rid)
@@ -450,6 +402,18 @@ pub async fn list_project_templates(app: AppHandle) -> Result<Vec<db::ProjectTem
             .await
             .map_err(|e| e.to_string())?
             {
+                if role.is_builtin {
+                    let seed_id = role.id.strip_prefix("builtin_").unwrap_or(&role.id);
+                    for seed_tmpl in &seeds_data.templates {
+                        if let Some(seed) = seed_tmpl.roles.iter().find(|r| r.id == seed_id) {
+                            role.name = crate::database::seeds::resolve_localized(&seed.name, loc).to_string();
+                            role.description = crate::database::seeds::resolve_localized(&seed.description, loc).to_string();
+                            role.responsibilities = crate::database::seeds::resolve_localized(&seed.responsibilities, loc).to_string();
+                            role.soul_content = crate::database::seeds::resolve_localized(&seed.soul_content, loc).to_string();
+                            break;
+                        }
+                    }
+                }
                 roles.push(role);
             }
         }
@@ -465,10 +429,13 @@ pub async fn list_project_templates(app: AppHandle) -> Result<Vec<db::ProjectTem
 }
 
 #[tauri::command]
-pub async fn create_project_from_template(app: AppHandle, req: db::CreateProjectFromTemplateRequest) -> Result<db::Project, String> {
+pub async fn create_project_from_template(app: AppHandle, req: db::CreateProjectFromTemplateRequest, locale: Option<String>) -> Result<db::Project, String> {
     let pool = get_pool(&app)?;
 
     let _ = seed_builtin_templates(&pool).await;
+
+    let loc = locale.as_deref().unwrap_or("zh-CN");
+    let seeds_data = crate::database::seeds::load_project_templates();
 
     log::info!("create_project_from_template: template_id={}", req.template_id);
 
@@ -480,6 +447,21 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
     .await
     .map_err(|e| e.to_string())?
     .ok_or("Template not found")?;
+
+    let (description, project_rule, project_guidelines) = if tmpl.is_builtin {
+        let seed_id = tmpl.id.strip_prefix("builtin_").unwrap_or(&tmpl.id);
+        if let Some(seed) = seeds_data.templates.iter().find(|s| s.id == seed_id) {
+            (
+                crate::database::seeds::resolve_localized(&seed.description, loc).to_string(),
+                crate::database::seeds::resolve_localized(&seed.project_rule, loc).to_string(),
+                crate::database::seeds::resolve_localized(&seed.project_guidelines, loc).to_string(),
+            )
+        } else {
+            (tmpl.description.clone(), tmpl.project_rule.clone(), tmpl.project_guidelines.clone())
+        }
+    } else {
+        (tmpl.description.clone(), tmpl.project_rule.clone(), tmpl.project_guidelines.clone())
+    };
 
     let template_workflows = sqlx::query_as::<_, db::TemplateWorkflow>(
         "SELECT id, template_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, sort_order FROM template_workflows WHERE template_id = ? ORDER BY sort_order ASC"
@@ -506,9 +488,7 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
     let now = chrono::Utc::now().timestamp_millis();
     let project_id = uuid::Uuid::new_v4().to_string();
     let icon = req.icon.unwrap_or_else(|| tmpl.icon.clone());
-    let description = req.description.unwrap_or_else(|| tmpl.description.clone());
-    let project_rule = tmpl.project_rule.clone();
-    let project_guidelines = tmpl.project_guidelines.clone();
+    let description = req.description.unwrap_or(description);
     let office_theme = req.office_theme.unwrap_or_else(|| "cozy".to_string());
 
     let workspace_root = sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'workspace_root'")
@@ -526,7 +506,7 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join("-");
-    let workspace_path = format!("{}/{}", workspace_root.trim_end_matches('/'), slug);
+    let workspace_path = std::path::PathBuf::from(workspace_root.trim_end_matches(|c| c == '/' || c == '\\')).join(&slug).to_string_lossy().to_string();
     let _ = std::fs::create_dir_all(&workspace_path);
 
     sqlx::query(
@@ -585,6 +565,17 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
         let wf_id = uuid::Uuid::new_v4().to_string();
         let from_role_id_for_insert = twf.from_role_id.as_ref().filter(|s| !s.is_empty());
 
+        let artifact_type = if twf.artifact_type.is_empty() {
+            let wf_seed_id = twf.id.strip_prefix("builtin_").unwrap_or(&twf.id);
+            seeds_data.templates.iter()
+                .flat_map(|t| &t.workflows)
+                .find(|w| w.id == wf_seed_id)
+                .map(|w| crate::database::seeds::resolve_localized(&w.artifact_type, loc).to_string())
+                .unwrap_or_default()
+        } else {
+            twf.artifact_type.clone()
+        };
+
         sqlx::query(
             "INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', '', '', '', 1, ?, ?, ?)"
         )
@@ -592,7 +583,7 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
         .bind(&project_id)
         .bind(from_role_id_for_insert)
         .bind(&twf.to_role_id)
-        .bind(&twf.artifact_type)
+        .bind(&artifact_type)
         .bind(&twf.transition_type)
         .bind(&twf.reject_to_role_id)
         .bind(&primary_group_id)
@@ -852,14 +843,28 @@ pub(crate) async fn do_dispatch_task(app: &AppHandle, pool: &sqlx::SqlitePool, t
     }
 
     let msg_id = uuid::Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO project_messages (id, project_id, role_id, content, message_type, created_at) VALUES (?, ?, 'builtin_user', ?, 'task_dispatch', ?)")
-        .bind(&msg_id)
-        .bind(project_id)
-        .bind(&task_message)
-        .bind(now)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let sp: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_config WHERE key = 'conversation_storage_path'"
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .filter(|v: &String| !v.is_empty());
+
+    if key_manager::get_cached_key().is_none() {
+        let _ = key_manager::init_or_load_key(sp.as_deref());
+    }
+
+    let _ = file_storage::append_message_to_project(sp.as_deref(), project_id, file_storage::EncryptedProjectMessage {
+        id: msg_id.clone(),
+        role_id: "builtin_user".to_string(),
+        content: task_message.clone(),
+        message_type: "task_dispatch".to_string(),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        created_at: now,
+    });
 
     let event_id = format!("task_dispatch_{}_{}", task_id, now);
 
@@ -934,7 +939,7 @@ pub async fn create_empty_project(app: AppHandle, req: db::CreateEmptyProjectReq
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join("-");
-    let workspace_path = format!("{}/{}", workspace_root.trim_end_matches('/'), slug);
+    let workspace_path = std::path::PathBuf::from(workspace_root.trim_end_matches(|c| c == '/' || c == '\\')).join(&slug).to_string_lossy().to_string();
     let _ = std::fs::create_dir_all(&workspace_path);
 
     let description = req.description.unwrap_or_default();
@@ -1008,7 +1013,7 @@ pub async fn create_project(app: AppHandle, req: db::CreateProjectRequest) -> Re
         .collect::<Vec<_>>()
         .join("-");
 
-    let workspace_path = format!("{}/{}", workspace_root.trim_end_matches('/'), slug);
+    let workspace_path = std::path::PathBuf::from(workspace_root.trim_end_matches(|c| c == '/' || c == '\\')).join(&slug).to_string_lossy().to_string();
 
     let _ = std::fs::create_dir_all(&workspace_path);
 
@@ -1091,6 +1096,22 @@ pub async fn update_project(app: AppHandle, req: db::UpdateProjectRequest) -> Re
 #[tauri::command]
 pub async fn delete_project(app: AppHandle, id: String) -> Result<(), String> {
     let pool = get_pool(&app)?;
+
+    let sp: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_config WHERE key = 'conversation_storage_path'"
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .filter(|v: &String| !v.is_empty());
+
+    if key_manager::get_cached_key().is_none() {
+        let _ = key_manager::init_or_load_key(sp.as_deref());
+    }
+
+    let _ = file_storage::delete_project_messages_file(sp.as_deref(), &id);
+
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     sqlx::query("DELETE FROM project_tasks WHERE project_id = ?")
@@ -1251,6 +1272,21 @@ pub async fn remove_project_member(app: AppHandle, id: String) -> Result<(), Str
         .await
         .map_err(|e| e.to_string())?;
 
+    let sp: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_config WHERE key = 'conversation_storage_path'"
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .filter(|v: &String| !v.is_empty());
+
+    if key_manager::get_cached_key().is_none() {
+        let _ = key_manager::init_or_load_key(sp.as_deref());
+    }
+
+    let _ = file_storage::delete_role_messages_from_project(sp.as_deref(), &project_id, &role_id);
+
     sqlx::query("DELETE FROM project_members WHERE id = ?")
         .bind(&member_id)
         .execute(&mut *tx)
@@ -1371,7 +1407,10 @@ pub async fn import_project(app: AppHandle, data: serde_json::Value) -> Result<d
         .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else if c == ' ' || c == '-' { '-' } else { '-' })
         .collect::<String>()
         .split('-').filter(|s| !s.is_empty()).collect::<Vec<_>>().join("-");
-    let workspace_path = format!("{}/{}", dirs::home_dir().map(|h| h.join("hermes-workspace").to_string_lossy().to_string()).unwrap_or_else(|| "./hermes-workspace".to_string()).trim_end_matches('/'), slug);
+    let workspace_base = dirs::home_dir()
+        .map(|h| h.join("hermes-workspace"))
+        .unwrap_or_else(|| std::path::PathBuf::from("./hermes-workspace"));
+    let workspace_path = workspace_base.join(&slug).to_string_lossy().to_string();
     let _ = std::fs::create_dir_all(&workspace_path);
 
     sqlx::query("INSERT INTO projects (id, name, description, workspace_path, status, tag, icon, is_favorite, cover_image, project_rule, project_guidelines, office_theme, office_layout, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?, ?)")

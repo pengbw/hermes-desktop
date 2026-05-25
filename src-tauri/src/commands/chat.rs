@@ -1,3 +1,5 @@
+use crate::crypto::file_storage;
+use crate::crypto::key_manager;
 use crate::database::models as db;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
@@ -5,6 +7,28 @@ use tauri::{AppHandle, Manager};
 fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
     let state = app.state::<crate::commands::helpers::AppState>();
     Ok(state.db_pool.clone())
+}
+
+async fn get_conversation_storage_path(pool: &SqlitePool) -> Option<String> {
+    sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'conversation_storage_path'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .filter(|v| !v.is_empty())
+}
+
+async fn ensure_key_initialized(pool: &SqlitePool) -> Result<(), String> {
+    if key_manager::get_cached_key().is_some() {
+        return Ok(());
+    }
+    let storage_path = get_conversation_storage_path(pool).await;
+    key_manager::init_or_load_key(storage_path.as_deref())?;
+    Ok(())
+}
+
+async fn get_storage_path(pool: &SqlitePool) -> Option<String> {
+    get_conversation_storage_path(pool).await
 }
 
 #[tauri::command]
@@ -26,6 +50,10 @@ pub async fn create_conversation(
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
+
+    ensure_key_initialized(&pool).await?;
+    let sp = get_storage_path(&pool).await;
+    file_storage::write_conversation_file(sp.as_deref(), &id, vec![])?;
 
     Ok(db::Conversation {
         id,
@@ -98,25 +126,60 @@ pub struct ReadAudioFileResult {
 }
 
 #[tauri::command]
-pub async fn read_audio_file(path: String) -> Result<ReadAudioFileResult, String> {
+pub async fn read_audio_file(app: AppHandle, path: String) -> Result<ReadAudioFileResult, String> {
     let file_path = std::path::Path::new(&path);
-    if !file_path.exists() {
+
+    let canonical = std::fs::canonicalize(file_path).map_err(|_| "文件不存在".to_string())?;
+
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_default();
+    let home_canonical = std::fs::canonicalize(&home).unwrap_or_else(|_| std::path::PathBuf::from(&home));
+    let temp = std::env::temp_dir();
+    let temp_canonical = std::fs::canonicalize(&temp).unwrap_or_else(|_| temp);
+    let data_dir = dirs::data_local_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let data_canonical = std::fs::canonicalize(&data_dir).unwrap_or_else(|_| data_dir.clone());
+
+    let pool = get_pool(&app)?;
+    let ws: Option<String> = sqlx::query_scalar("SELECT value FROM app_config WHERE key = 'workspace_root'")
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .flatten();
+    let ws_canonical = ws.as_ref().and_then(|w| std::fs::canonicalize(w).ok());
+
+    let allowed = canonical.starts_with(&temp_canonical)
+        || canonical.starts_with(&home_canonical)
+        || canonical.starts_with(&data_canonical)
+        || ws_canonical.as_ref().map_or(false, |w| canonical.starts_with(w));
+
+    if !allowed {
         return Ok(ReadAudioFileResult {
             success: false,
             data: String::new(),
             mime: String::new(),
-            error: Some(format!("File not found: {}", path)),
+            error: Some("无权访问该路径".to_string()),
         });
     }
 
-    let bytes = std::fs::read(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
-    let data = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
-
-    let ext = file_path
+    let ext = canonical
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
+    let allowed_exts = ["mp3", "wav", "ogg", "flac", "m4a", "webm"];
+    if !allowed_exts.contains(&ext.as_str()) {
+        return Ok(ReadAudioFileResult {
+            success: false,
+            data: String::new(),
+            mime: String::new(),
+            error: Some("不支持的音频格式".to_string()),
+        });
+    }
+
+    let bytes = std::fs::read(&canonical).map_err(|e| format!("Failed to read file: {}", e))?;
+    let data = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+
     let mime = match ext.as_str() {
         "mp3" => "audio/mpeg",
         "wav" => "audio/wav",
@@ -208,6 +271,11 @@ pub async fn delete_conversation(
     id: String,
 ) -> Result<(), String> {
     let pool = get_pool(&app)?;
+
+    ensure_key_initialized(&pool).await?;
+    let sp = get_storage_path(&pool).await;
+    file_storage::delete_conversation_file(sp.as_deref(), &id)?;
+
     sqlx::query("DELETE FROM conversations WHERE id = ?")
         .bind(&id)
         .execute(&pool)
@@ -225,24 +293,22 @@ pub async fn create_message(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
-    let audio_path_val = req.audio_path.as_deref().unwrap_or("");
-    let audio_duration_val = req.audio_duration.unwrap_or(0.0);
-    let message_type_val = req.message_type.as_deref().unwrap_or("text");
+    ensure_key_initialized(&pool).await?;
+    let sp = get_storage_path(&pool).await;
 
-    sqlx::query("INSERT INTO messages (id, conversation_id, role, content, thinking, files, timestamp, audio_path, audio_duration, message_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(&id)
-        .bind(&req.conversation_id)
-        .bind(&req.role)
-        .bind(&req.content)
-        .bind(req.thinking.as_deref().unwrap_or(""))
-        .bind(req.files.as_deref().unwrap_or(""))
-        .bind(now)
-        .bind(audio_path_val)
-        .bind(audio_duration_val)
-        .bind(message_type_val)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let encrypted_msg = file_storage::EncryptedMessage {
+        id: id.clone(),
+        role: req.role.clone(),
+        content: req.content.clone(),
+        thinking: req.thinking.clone(),
+        files: req.files.clone(),
+        timestamp: now,
+        audio_path: req.audio_path.clone(),
+        audio_duration: req.audio_duration,
+        message_type: req.message_type.clone(),
+    };
+
+    file_storage::append_message_to_conversation(sp.as_deref(), &req.conversation_id, encrypted_msg)?;
 
     sqlx::query("UPDATE conversations SET updated_at = ?, last_active_at = ?, status = 'active' WHERE id = ?")
         .bind(now)
@@ -271,26 +337,24 @@ pub async fn list_messages(
     conversation_id: String,
 ) -> Result<Vec<db::Message>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, i64, Option<String>, Option<f64>, Option<String>)>(
-        "SELECT id, role, content, thinking, files, timestamp, audio_path, audio_duration, message_type FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC"
-    )
-    .bind(&conversation_id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
 
-    let messages = rows
+    ensure_key_initialized(&pool).await?;
+    let sp = get_storage_path(&pool).await;
+
+    let encrypted_messages = file_storage::read_conversation_file(sp.as_deref(), &conversation_id)?;
+
+    let messages = encrypted_messages
         .into_iter()
-        .map(|(id, role, content, thinking, files, timestamp, audio_path, audio_duration, message_type)| db::Message {
-            id,
-            role,
-            content,
-            thinking: thinking.filter(|s| !s.is_empty()),
-            files: files.filter(|s| !s.is_empty()),
-            timestamp,
-            audio_path: audio_path.filter(|s| !s.is_empty()),
-            audio_duration: audio_duration.filter(|d| *d >= 0.0),
-            message_type: message_type.filter(|s| !s.is_empty()),
+        .map(|em| db::Message {
+            id: em.id,
+            role: em.role,
+            content: em.content,
+            thinking: em.thinking.filter(|s| !s.is_empty()),
+            files: em.files.filter(|s| !s.is_empty()),
+            timestamp: em.timestamp,
+            audio_path: em.audio_path.filter(|s| !s.is_empty()),
+            audio_duration: em.audio_duration.filter(|d| *d >= 0.0),
+            message_type: em.message_type.filter(|s| !s.is_empty()),
         })
         .collect();
 
@@ -303,15 +367,66 @@ pub async fn update_message(
     req: db::UpdateMessageRequest,
 ) -> Result<(), String> {
     let pool = get_pool(&app)?;
-    sqlx::query("UPDATE messages SET content = ?, audio_path = ?, audio_duration = ?, message_type = ? WHERE id = ?")
-        .bind(&req.content)
-        .bind(req.audio_path.as_deref().unwrap_or(""))
-        .bind(req.audio_duration.unwrap_or(0.0))
-        .bind(req.message_type.as_deref().unwrap_or("text"))
-        .bind(&req.id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+
+    ensure_key_initialized(&pool).await?;
+    let sp = get_storage_path(&pool).await;
+
+    if let Some(ref conv_id) = req.conversation_id {
+        let req_id = req.id.clone();
+        let req_content = req.content.clone();
+        let req_audio_path = req.audio_path.clone();
+        let req_audio_duration = req.audio_duration;
+        let req_message_type = req.message_type.clone();
+        file_storage::update_message_in_conversation(
+            sp.as_deref(),
+            conv_id,
+            &req_id,
+            move |msg| {
+                msg.content = req_content;
+                msg.audio_path = req_audio_path;
+                msg.audio_duration = req_audio_duration;
+                msg.message_type = req_message_type;
+            },
+        )?;
+        return Ok(());
+    }
+
+    let conversation_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM conversations"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut found = false;
+    for conv_id in &conversation_ids {
+        let messages = file_storage::read_conversation_file(sp.as_deref(), conv_id)?;
+        if messages.iter().any(|m| m.id == req.id) {
+            let req_id = req.id.clone();
+            let req_content = req.content.clone();
+            let req_audio_path = req.audio_path.clone();
+            let req_audio_duration = req.audio_duration;
+            let req_message_type = req.message_type.clone();
+            file_storage::update_message_in_conversation(
+                sp.as_deref(),
+                conv_id,
+                &req_id,
+                move |msg| {
+                    msg.content = req_content;
+                    msg.audio_path = req_audio_path;
+                    msg.audio_duration = req_audio_duration;
+                    msg.message_type = req_message_type;
+                },
+            )?;
+            found = true;
+            break;
+        }
+    }
+
+    if !found {
+        return Err(format!("Message {} not found in any conversation", req.id));
+    }
+
     Ok(())
 }
 
@@ -319,12 +434,38 @@ pub async fn update_message(
 pub async fn delete_message(
     app: AppHandle,
     id: String,
+    conversation_id: Option<String>,
 ) -> Result<(), String> {
     let pool = get_pool(&app)?;
-    sqlx::query("DELETE FROM messages WHERE id = ?")
-        .bind(&id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+
+    ensure_key_initialized(&pool).await?;
+    let sp = get_storage_path(&pool).await;
+
+    if let Some(conv_id) = conversation_id {
+        file_storage::delete_message_from_conversation(sp.as_deref(), &conv_id, &id)?;
+        return Ok(());
+    }
+
+    let conversation_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM conversations"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut found = false;
+    for conv_id in &conversation_ids {
+        let messages = file_storage::read_conversation_file(sp.as_deref(), conv_id)?;
+        if messages.iter().any(|m| m.id == id) {
+            file_storage::delete_message_from_conversation(sp.as_deref(), conv_id, &id)?;
+            found = true;
+            break;
+        }
+    }
+
+    if !found {
+        return Err(format!("Message {} not found in any conversation", id));
+    }
+
     Ok(())
 }

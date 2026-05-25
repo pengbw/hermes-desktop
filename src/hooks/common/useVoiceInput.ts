@@ -48,6 +48,8 @@ interface SttProgress {
   line: string;
   done: boolean;
   success: boolean;
+  progress?: number;
+  step?: string;
 }
 
 export function useVoiceInput({

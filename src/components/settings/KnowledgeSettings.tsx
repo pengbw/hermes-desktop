@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useI18n } from "@contexts/I18nContext";
 
 function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
+  const { locale } = useI18n();
   const [kbConfig, setKbConfig] = useState({
     defaultEmbeddingModel: "local",
     defaultRetrievalMode: "off",
@@ -56,10 +58,9 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
     })();
     (async () => {
       try {
-        const list =
-          await invoke<
-            { id: string; name: string; value: string; baseUrl: string; apiKey: string }[]
-          >("list_providers");
+        const list = await invoke<
+          { id: string; name: string; value: string; baseUrl: string; apiKey: string }[]
+        >("list_providers", { locale });
         setProviders(list || []);
       } catch {
         // console.error("Failed to load providers:", e);
@@ -205,9 +206,9 @@ function KnowledgeSettingsSection({ t }: { t: (key: string) => string }) {
           }
         }
       );
-      await invoke("install_local_embedding_model");
+      const result = await invoke<string>("install_local_embedding_model");
       setDownloadProgress(100);
-      setLocalModelStatus("ready");
+      setLocalModelStatus(result === "onnx_ready" ? "onnx_ready" : "ready");
       unlisten();
     } catch {
       // console.error("Failed to install local model:", e);

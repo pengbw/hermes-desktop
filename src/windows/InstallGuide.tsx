@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import styles from "./InstallGuide.module.css";
@@ -7,14 +7,30 @@ interface InstallProgress {
   line: string;
   done: boolean;
   success: boolean;
+  progress?: number;
+  step?: string;
 }
+
+const STEP_LABELS: Record<string, string> = {
+  detect: "Detecting environment",
+  extract: "Extracting source code",
+  python: "Configuring Python",
+  uv: "Installing package manager",
+  venv: "Creating virtual environment",
+  pip: "Installing dependencies",
+  deps: "Installing gateway dependencies",
+  verify: "Verifying installation",
+  config: "Configuring gateway",
+  done: "Complete",
+};
 
 export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => void }) {
   const [installing, setInstalling] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
+  const [progress, setProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState("");
+  const [currentLine, setCurrentLine] = useState("");
   const [installSuccess, setInstallSuccess] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
-  const logEndRef = useRef<HTMLDivElement>(null);
   const [isWindows, setIsWindows] = useState(false);
 
   useEffect(() => {
@@ -23,14 +39,22 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
 
     const unlisten = listen<InstallProgress>("install-progress", (event) => {
       const payload = event.payload;
-      setLogs((prev) => [...prev, payload.line]);
+
+      if (payload.progress != null) {
+        setProgress(payload.progress);
+      }
+      if (payload.step) {
+        setCurrentStep(payload.step);
+      }
+      setCurrentLine(payload.line);
 
       if (payload.done) {
         setInstalling(false);
         if (payload.success) {
+          setProgress(100);
           setInstallSuccess(true);
         } else {
-          setInstallError("Installation failed, please check logs or try another method");
+          setInstallError(payload.line || "Installation failed, please try again");
         }
       }
     });
@@ -40,13 +64,11 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
     };
   }, []);
 
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs]);
-
   const handleInstall = async (selectedMethod: string) => {
     setInstalling(true);
-    setLogs([]);
+    setProgress(0);
+    setCurrentStep("");
+    setCurrentLine("");
     setInstallSuccess(false);
     setInstallError(null);
 
@@ -67,10 +89,14 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
 
   const handleRetry = () => {
     setInstalling(false);
-    setLogs([]);
+    setProgress(0);
+    setCurrentStep("");
+    setCurrentLine("");
     setInstallSuccess(false);
     setInstallError(null);
   };
+
+  const stepLabel = currentStep ? STEP_LABELS[currentStep] || currentStep : "";
 
   return (
     <div className={styles.ig}>
@@ -133,18 +159,6 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </button>
-
-            {/*
-            {isWindows && (
-              <div className={styles.igNotice}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 16v-4M12 8h.01" />
-                </svg>
-                <span>一键安装需要 WSL2，未安装请先在 PowerShell 运行 <code>wsl --install</code></span>
-              </div>
-            )}
-            */}
           </div>
         )}
 
@@ -154,14 +168,14 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
               <div className={styles.igSpinner} />
               <span>Installing...</span>
             </div>
-            <div className={styles.igTerminal}>
-              {logs.map((log, i) => (
-                <div key={i} className={styles.igTerminalLine}>
-                  {log}
-                </div>
-              ))}
-              <div ref={logEndRef} />
+            <div className={styles.igProgressBarWrap}>
+              <div className={styles.igProgressBarFill} style={{ width: `${progress}%` }} />
             </div>
+            <div className={styles.igProgressInfo}>
+              <span className={styles.igProgressPercent}>{progress}%</span>
+              {stepLabel && <span className={styles.igProgressStep}>{stepLabel}</span>}
+            </div>
+            {currentLine && <div className={styles.igProgressLine}>{currentLine}</div>}
           </div>
         )}
 
@@ -204,13 +218,6 @@ export default function InstallGuidePanel({ onInstalled }: { onInstalled: () => 
             </div>
             <h3>Installation Failed</h3>
             <p>{installError}</p>
-            <div className={styles.igTerminal + " " + styles.igTerminalError}>
-              {logs.map((log, i) => (
-                <div key={i} className={styles.igTerminalLine}>
-                  {log}
-                </div>
-              ))}
-            </div>
             <button className={styles.igRetry} onClick={handleRetry}>
               Retry
             </button>

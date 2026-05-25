@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useI18n } from "@contexts/I18nContext";
 
 interface Provider {
   id: string;
@@ -16,19 +17,20 @@ interface Provider {
 }
 
 export function useProviders() {
+  const { locale } = useI18n();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadProviders = useCallback(async () => {
     try {
-      const result = await invoke<Provider[]>("list_providers");
+      const result = await invoke<Provider[]>("list_providers", { locale });
       setProviders(result);
     } catch {
       // console.error("Failed to load providers:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [locale]);
 
   const createProvider = useCallback(
     async (req: { name: string; value: string; baseUrl: string; apiKey: string }) => {

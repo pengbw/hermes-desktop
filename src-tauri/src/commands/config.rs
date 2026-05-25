@@ -10,6 +10,13 @@ fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
 }
 
 #[tauri::command]
+pub fn get_default_conversation_storage_path() -> String {
+    crate::crypto::file_storage::default_conversation_storage_dir()
+        .to_string_lossy()
+        .to_string()
+}
+
+#[tauri::command]
 pub async fn get_config(
     app: AppHandle,
     key: String,
@@ -31,6 +38,17 @@ pub async fn set_config(
     value: String,
 ) -> Result<(), String> {
     let pool = get_pool(&app)?;
+
+    let old_value: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_config WHERE key = ?"
+    )
+    .bind(&key)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .flatten()
+    .filter(|v: &String| !v.is_empty());
+
     sqlx::query("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)")
         .bind(&key)
         .bind(&value)
@@ -39,36 +57,76 @@ pub async fn set_config(
         .map_err(|e| e.to_string())?;
 
     if key == "hermes_api_key" {
-        // 直接写入 .env，避免通过 hermes config set 落入 config.yaml
         let _ = crate::commands::helpers::write_env_value("API_SERVER_KEY", &value);
     }
+
+    if key == "conversation_storage_path" {
+        let new_value = if value.is_empty() { None } else { Some(value.as_str()) };
+        let old_val = old_value.as_deref();
+
+        if old_val != new_value {
+            migrate_storage_files(&pool, old_val, new_value).await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn migrate_storage_files(
+    pool: &SqlitePool,
+    old_path: Option<&str>,
+    new_path: Option<&str>,
+) -> Result<(), String> {
+    let conversation_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM conversations"
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if !conversation_ids.is_empty() {
+        crate::crypto::file_storage::move_conversation_files(old_path, new_path, &conversation_ids)?;
+    }
+
+    let project_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT project_id FROM project_members"
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if !project_ids.is_empty() {
+        crate::crypto::file_storage::move_project_files(old_path, new_path, &project_ids)?;
+    }
+
+    crate::crypto::key_manager::migrate_key_to_new_dir(old_path, new_path)?;
 
     Ok(())
 }
 
 #[tauri::command]
 pub async fn read_text_file(app: AppHandle, path: String) -> Result<String, String> {
-    validate_read_path(&app, &path).await.map_err(|e| e)?;
-    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+    let canonical = validate_read_path(&app, &path).await.map_err(|e| e)?;
+    std::fs::read_to_string(&canonical).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn read_binary_file(app: AppHandle, path: String) -> Result<Vec<u8>, String> {
-    validate_read_path(&app, &path).await.map_err(|e| e)?;
-    std::fs::read(&path).map_err(|e| e.to_string())
+    let canonical = validate_read_path(&app, &path).await.map_err(|e| e)?;
+    std::fs::read(&canonical).map_err(|e| e.to_string())
 }
 
-async fn validate_read_path(app: &AppHandle, path: &str) -> Result<(), String> {
+async fn validate_read_path(app: &AppHandle, path: &str) -> Result<std::path::PathBuf, String> {
     let canonical = std::fs::canonicalize(path).map_err(|_| "文件不存在".to_string())?;
 
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_default();
-    let home_path = std::path::Path::new(&home);
+    let home_canonical = std::fs::canonicalize(&home).unwrap_or_else(|_| std::path::PathBuf::from(&home));
 
     let temp = std::env::temp_dir();
+    let temp_canonical = std::fs::canonicalize(&temp).unwrap_or_else(|_| temp);
 
-    // 获取工作空间根目录
     let pool = get_pool(app)?;
     let ws: Option<String> = sqlx::query_scalar("SELECT value FROM app_config WHERE key = 'workspace_root'")
         .fetch_optional(&pool)
@@ -76,14 +134,16 @@ async fn validate_read_path(app: &AppHandle, path: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .flatten();
 
-    let allowed = canonical.starts_with(&temp)
-        || (canonical.starts_with(home_path))
-        || (ws.as_ref().map_or(false, |w| canonical.starts_with(std::path::Path::new(w))));
+    let ws_canonical = ws.as_ref().and_then(|w| std::fs::canonicalize(w).ok());
+
+    let allowed = canonical.starts_with(&temp_canonical)
+        || canonical.starts_with(&home_canonical)
+        || ws_canonical.as_ref().map_or(false, |w| canonical.starts_with(w));
 
     if !allowed {
         return Err("无权访问该路径".to_string());
     }
-    Ok(())
+    Ok(canonical)
 }
 
 #[tauri::command]

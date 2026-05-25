@@ -1,4 +1,5 @@
 use crate::commands::project::{get_pool, record_activity};
+use crate::crypto::{file_storage, key_manager};
 use crate::database::models as db;
 use sqlx::Row;
 use tauri::{AppHandle, Emitter};
@@ -349,16 +350,23 @@ pub async fn archive_project_task(app: AppHandle, id: String) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub async fn update_message_tokens(app: AppHandle, message_id: String, prompt_tokens: i64, completion_tokens: i64) -> Result<(), String> {
+pub async fn update_message_tokens(app: AppHandle, message_id: String, project_id: String, prompt_tokens: i64, completion_tokens: i64) -> Result<(), String> {
     let pool = get_pool(&app)?;
 
-    sqlx::query("UPDATE project_messages SET prompt_tokens = ?, completion_tokens = ? WHERE id = ?")
-        .bind(prompt_tokens)
-        .bind(completion_tokens)
-        .bind(&message_id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let sp: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_config WHERE key = 'conversation_storage_path'"
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .filter(|v: &String| !v.is_empty());
+
+    if key_manager::get_cached_key().is_none() {
+        let _ = key_manager::init_or_load_key(sp.as_deref());
+    }
+
+    file_storage::update_project_message_tokens(sp.as_deref(), &project_id, &message_id, prompt_tokens, completion_tokens)?;
 
     Ok(())
 }

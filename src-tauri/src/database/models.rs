@@ -8,9 +8,9 @@ fn load_gesture_json(name: &str) -> &'static str {
     let cache = GESTURE_CACHE.get_or_init(|| {
         let mut map = HashMap::new();
         for (n, raw) in [
-            ("silent", include_str!("../../../public/silent.json")),
-            ("greeting", include_str!("../../../public/greeting.json")),
-            ("think", include_str!("../../../public/think.json")),
+            ("silent", include_str!("../../resources/silent.json")),
+            ("greeting", include_str!("../../resources/greeting.json")),
+            ("think", include_str!("../../resources/think.json")),
         ] {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
                 if let Some(pose) = v.get("pose") {
@@ -155,37 +155,24 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    let builtin_providers = [
-        ("nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY", "nvidia"),
-        ("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY", "openrouter"),
-        ("openai", "OpenAI", "https://api.openai.com/v1", "OPENAI_API_KEY", "openai"),
-        ("anthropic", "Anthropic", "https://api.anthropic.com/v1", "ANTHROPIC_API_KEY", "anthropic"),
-        ("nous", "Nous", "", "NOUS_API_KEY", "nous"),
-        ("deepseek", "DeepSeek", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY", "deepseek"),
-        ("ollama", "Ollama (Local)", "http://localhost:11434/v1", "", "ollama"),
-        ("minimax", "MiniMax", "", "MINIMAX_API_KEY", "minimax"),
-        ("minimax-cn", "MiniMax (China)", "", "MINIMAX_API_KEY", "minimax"),
-        ("zai", "Z.AI / GLM", "", "ZAI_API_KEY", "zai"),
-        ("kimi", "Kimi", "https://api.moonshot.cn/v1", "KIMI_API_KEY", "kimi"),
-    ];
+    let providers_data = crate::database::seeds::load_providers();
 
     sqlx::query("ALTER TABLE providers ADD COLUMN icon TEXT NOT NULL DEFAULT ''")
         .execute(pool)
         .await
         .ok();
 
-    for (i, (value, name, base_url, api_key_env, icon)) in builtin_providers.iter().enumerate() {
-        let id = format!("builtin_{}", value);
+    for (i, provider) in providers_data.providers.iter().enumerate() {
+        let id = format!("builtin_{}", provider.value);
         let now = chrono::Utc::now().timestamp_millis();
         sqlx::query(
-            "INSERT OR IGNORE INTO providers (id, name, value, base_url, api_key_env, icon, is_builtin, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)"
+            "INSERT OR IGNORE INTO providers (id, name, value, base_url, api_key_env, icon, is_builtin, sort_order, created_at, updated_at) VALUES (?, '', ?, ?, ?, ?, 1, ?, ?, ?)"
         )
         .bind(&id)
-        .bind(name)
-        .bind(value)
-        .bind(base_url)
-        .bind(api_key_env)
-        .bind(icon)
+        .bind(&provider.value)
+        .bind(&provider.base_url)
+        .bind(&provider.api_key_env)
+        .bind(&provider.icon)
         .bind(i as i64)
         .bind(now)
         .bind(now)
@@ -194,8 +181,8 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         .map_err(|e| e.to_string()).ok();
 
         sqlx::query("UPDATE providers SET icon = ? WHERE value = ? AND icon = ''")
-            .bind(icon)
-            .bind(value)
+            .bind(&provider.icon)
+            .bind(&provider.value)
             .execute(pool)
             .await
             .ok();
@@ -469,28 +456,25 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await?;
 
-    let builtin_gestures = [
-        ("silent", 0_i64, 0.0_f64, 0.0_f64, 0.0_f64, load_gesture_json("silent")),
-        ("greeting", 8000_i64, 0.0_f64, 0.0_f64, 0.0_f64, load_gesture_json("greeting")),
-        ("think", 5000_i64, 0.3_f64, -0.3_f64, -0.08_f64, load_gesture_json("think")),
-    ];
+    let gestures_data = crate::database::seeds::load_gestures();
 
-    for (name, duration, look_at_x, look_at_y, tilt, target_json) in builtin_gestures.iter() {
-        let id = format!("gesture_{}", name);
+    for gesture in &gestures_data.gestures {
+        let id = format!("gesture_{}", gesture.name);
         let now = chrono::Utc::now().timestamp_millis();
         let exists: bool = sqlx::query_scalar("SELECT COUNT(*) FROM avatar_gestures WHERE name = ?")
-            .bind(name)
+            .bind(&gesture.name)
             .fetch_one(pool)
             .await
             .map(|count: i64| count > 0)
             .unwrap_or(false);
         if exists {
             sqlx::query("UPDATE avatar_gestures SET source = 'system' WHERE name = ?")
-                .bind(name)
+                .bind(&gesture.name)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string()).ok();
-            if *name == "silent" {
+            if gesture.name == "silent" {
+                let target_json = load_gesture_json("silent");
                 sqlx::query("UPDATE avatar_gestures SET target_json = ?, duration = 0 WHERE name = 'silent'")
                     .bind(target_json)
                     .execute(pool)
@@ -499,15 +483,17 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             }
             continue;
         }
+        let pose_name = gesture.pose_file.strip_suffix(".json").unwrap_or(&gesture.pose_file);
+        let target_json = load_gesture_json(pose_name);
         sqlx::query(
             "INSERT INTO avatar_gestures (id, name, duration, look_at_x, look_at_y, tilt, target_json, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'system', ?, ?)"
         )
         .bind(&id)
-        .bind(name)
-        .bind(duration)
-        .bind(look_at_x)
-        .bind(look_at_y)
-        .bind(tilt)
+        .bind(&gesture.name)
+        .bind(gesture.duration)
+        .bind(gesture.look_at_x)
+        .bind(gesture.look_at_y)
+        .bind(gesture.tilt)
         .bind(target_json)
         .bind(now)
         .bind(now)
@@ -1014,6 +1000,8 @@ pub struct CreateMessageRequest {
 pub struct UpdateMessageRequest {
     pub id: String,
     pub content: String,
+    #[serde(default)]
+    pub conversation_id: Option<String>,
     #[serde(default)]
     pub audio_path: Option<String>,
     #[serde(default)]

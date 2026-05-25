@@ -1,7 +1,8 @@
 use crate::commands::helpers::{
-    command, default_shell, hermes_api_base_from_pool, hermes_api_key_from_pool, hermes_bin, path_with_local_bin, tool_label,
+    command, hermes_api_base_from_pool, hermes_api_key_from_pool, hermes_bin, path_with_local_bin, tool_label,
     ChatStreamEvent, call_hermes_api_streaming,
 };
+use crate::crypto::{file_storage, key_manager};
 use tauri::{AppHandle, Emitter, Manager};
 
 #[tauri::command]
@@ -17,37 +18,30 @@ pub async fn chat_with_hermes_stream(
     log::info!("[chat_stream] start conversation_id={}, message={}, model={:?}, provider={:?}, image={:?}", conversation_id, message, model, provider, image);
 
     let bin = hermes_bin();
-    let model_arg = match &model {
-        Some(m) => format!(" -m '{}'", m.replace('\'', "'\"'\"'")),
-        None => String::new(),
-    };
-    let provider_arg = match &provider {
-        Some(p) => format!(" --provider '{}'", p.replace('\'', "'\"'\"'")),
-        None => String::new(),
-    };
-    let image_arg = match &image {
-        Some(img) => format!(" --image '{}'", img.replace('\'', "'\"'\"'")),
-        None => String::new(),
-    };
-    let shell_cmd = format!(
-        "{} chat -q '{}' -Q{}{}{}",
-        bin,
-        message.replace('\\', "\\\\").replace('\'', "'\"'\"'"),
-        model_arg,
-        provider_arg,
-        image_arg
-    );
-    let shell = default_shell();
-    log::info!("[chat_stream] executing command: {} -lc {}", shell, shell_cmd);
+    log::info!("[chat_stream] executing command: {} chat -q ... -Q", bin);
 
     let new_path = path_with_local_bin();
 
-    let mut child = match tokio::process::Command::from(command(shell))
-        .args(["-lc", &shell_cmd])
+    let mut cmd = tokio::process::Command::from(command(&bin));
+    cmd.arg("chat")
+        .arg("-q")
+        .arg(&message)
+        .arg("-Q")
         .env("PATH", &new_path)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+        .stderr(std::process::Stdio::piped());
+
+    if let Some(ref m) = model {
+        cmd.arg("-m").arg(m);
+    }
+    if let Some(ref p) = provider {
+        cmd.arg("--provider").arg(p);
+    }
+    if let Some(ref img) = image {
+        cmd.arg("--image").arg(img);
+    }
+
+    let mut child = match cmd.spawn()
     {
         Ok(c) => c,
         Err(e) => {
@@ -319,22 +313,33 @@ pub async fn chat_with_hermes_api(
         }
 
         history_messages = if let Some(ref conv_id) = conversation_id {
-            let rows: Vec<(String, String)> = sqlx::query_as(
-                "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC LIMIT 40"
+            let sp: Option<String> = sqlx::query_scalar(
+                "SELECT value FROM app_config WHERE key = 'conversation_storage_path'"
             )
-            .bind(conv_id)
-            .fetch_all(&pool)
+            .fetch_optional(&pool)
             .await
-            .unwrap_or_default();
-            if rows.len() > 1 {
-                rows[..rows.len() - 1]
-                    .iter()
-                    .map(|(role, content)| {
-                        serde_json::json!({"role": role, "content": content})
-                    })
-                    .collect()
-            } else {
-                Vec::new()
+            .ok()
+            .flatten()
+            .filter(|v: &String| !v.is_empty());
+
+            if key_manager::get_cached_key().is_none() {
+                let _ = key_manager::init_or_load_key(sp.as_deref());
+            }
+
+            match file_storage::read_conversation_file(sp.as_deref(), conv_id) {
+                Ok(msgs) => {
+                    if msgs.len() > 1 {
+                        msgs[..msgs.len() - 1]
+                            .iter()
+                            .map(|m| {
+                                serde_json::json!({"role": m.role, "content": m.content})
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    }
+                }
+                Err(_) => Vec::new(),
             }
         } else {
             Vec::new()

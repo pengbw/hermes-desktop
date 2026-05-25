@@ -1,4 +1,5 @@
 use crate::commands::helpers::{command, hermes_bin};
+use crate::crypto::{encryption, key_manager};
 use crate::database::models as db;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
@@ -8,8 +9,41 @@ fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
     Ok(state.db_pool.clone())
 }
 
+fn ensure_key() -> Result<[u8; 32], String> {
+    if key_manager::get_cached_key().is_some() {
+        return key_manager::get_cached_key().ok_or("Encryption key not available".to_string());
+    }
+    key_manager::init_or_load_key(None)
+}
+
+fn encrypt_api_key(plain: &str) -> String {
+    if plain.is_empty() {
+        return String::new();
+    }
+    match ensure_key().and_then(|k| encryption::encrypt_string(plain, &k)) {
+        Ok(enc) => enc,
+        Err(e) => {
+            log::warn!("Failed to encrypt API key, storing as plaintext: {}", e);
+            plain.to_string()
+        }
+    }
+}
+
+fn decrypt_api_key(stored: &str) -> String {
+    if stored.is_empty() || !encryption::is_encrypted(stored) {
+        return stored.to_string();
+    }
+    match ensure_key().and_then(|k| encryption::decrypt_string(stored, &k)) {
+        Ok(plain) => plain,
+        Err(e) => {
+            log::warn!("Failed to decrypt API key: {}", e);
+            stored.to_string()
+        }
+    }
+}
+
 #[tauri::command]
-pub async fn list_providers(app: AppHandle) -> Result<Vec<db::Provider>, String> {
+pub async fn list_providers(app: AppHandle, locale: Option<String>) -> Result<Vec<db::Provider>, String> {
     let pool = get_pool(&app)?;
     let rows = sqlx::query_as::<_, (String, String, String, String, String, String, String, i64, i64, i64, i64)>(
         "SELECT id, name, value, base_url, api_key_env, api_key, icon, is_builtin, sort_order, created_at, updated_at FROM providers ORDER BY sort_order ASC, created_at ASC"
@@ -18,8 +52,24 @@ pub async fn list_providers(app: AppHandle) -> Result<Vec<db::Provider>, String>
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, name, value, base_url, api_key_env, api_key, icon, is_builtin, sort_order, created_at, updated_at)| db::Provider {
-        id, name, value, base_url, api_key_env, api_key, icon, is_builtin: is_builtin != 0, sort_order, created_at, updated_at,
+    let loc = locale.as_deref().unwrap_or("zh-CN");
+    let providers_data = crate::database::seeds::load_providers();
+
+    Ok(rows.into_iter().map(|(id, name, value, base_url, api_key_env, api_key, icon, is_builtin, sort_order, created_at, updated_at)| {
+        let is_builtin_flag = is_builtin != 0;
+        let resolved_name = if is_builtin_flag {
+            let seed_id = id.strip_prefix("builtin_").unwrap_or(&id);
+            providers_data.providers.iter()
+                .find(|p| p.value == seed_id)
+                .map(|p| crate::database::seeds::resolve_localized(&p.name, loc).to_string())
+                .unwrap_or(name)
+        } else {
+            name
+        };
+        let decrypted_key = decrypt_api_key(&api_key);
+        db::Provider {
+            id, name: resolved_name, value, base_url, api_key_env, api_key: decrypted_key, icon, is_builtin: is_builtin_flag, sort_order, created_at, updated_at,
+        }
     }).collect())
 }
 
@@ -40,6 +90,7 @@ pub async fn create_provider(
 
     let api_key_env = req.api_key_env.as_deref().unwrap_or("").to_string();
     let api_key = req.api_key.as_deref().unwrap_or("").to_string();
+    let encrypted_key = encrypt_api_key(&api_key);
 
     sqlx::query("INSERT INTO providers (id, name, value, base_url, api_key_env, api_key, icon, is_builtin, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, '', 0, ?, ?, ?)")
         .bind(&id)
@@ -47,7 +98,7 @@ pub async fn create_provider(
         .bind(&req.value)
         .bind(req.base_url.as_deref().unwrap_or(""))
         .bind(&api_key_env)
-        .bind(&api_key)
+        .bind(&encrypted_key)
         .bind(sort_order)
         .bind(now)
         .bind(now)
@@ -86,7 +137,7 @@ pub async fn update_provider(
     .fetch_one(&pool)
     .await
     .map(|(id, name, value, base_url, api_key_env, api_key, icon, is_builtin, sort_order, created_at, updated_at)| db::Provider {
-        id, name, value, base_url, api_key_env, api_key, icon, is_builtin: is_builtin != 0, sort_order, created_at, updated_at,
+        id, name, value, base_url, api_key_env, api_key: decrypt_api_key(&api_key), icon, is_builtin: is_builtin != 0, sort_order, created_at, updated_at,
     })
     .map_err(|e| e.to_string())?;
 
@@ -94,12 +145,13 @@ pub async fn update_provider(
     let base_url = req.base_url.unwrap_or(provider.base_url);
     let api_key_env = req.api_key_env.unwrap_or_else(|| provider.api_key_env.clone());
     let api_key = req.api_key.unwrap_or_else(|| provider.api_key.clone());
+    let encrypted_key = encrypt_api_key(&api_key);
 
     sqlx::query("UPDATE providers SET name = ?, base_url = ?, api_key_env = ?, api_key = ?, updated_at = ? WHERE id = ?")
         .bind(&name)
         .bind(&base_url)
         .bind(&api_key_env)
-        .bind(&api_key)
+        .bind(&encrypted_key)
         .bind(now)
         .bind(&req.id)
         .execute(&pool)
@@ -185,11 +237,13 @@ pub async fn sync_provider_keys(app: AppHandle) -> Result<i64, String> {
 
     let mut synced: i64 = 0;
     for (id, api_key_env, current_key) in &providers {
+        let decrypted_current = decrypt_api_key(current_key);
         if !api_key_env.is_empty() {
             if let Some(key_value) = env_map.get(api_key_env) {
-                if current_key.is_empty() && !key_value.is_empty() {
+                if decrypted_current.is_empty() && !key_value.is_empty() {
+                    let encrypted_new = encrypt_api_key(key_value);
                     sqlx::query("UPDATE providers SET api_key = ? WHERE id = ?")
-                        .bind(key_value)
+                        .bind(&encrypted_new)
                         .bind(id)
                         .execute(&pool)
                         .await

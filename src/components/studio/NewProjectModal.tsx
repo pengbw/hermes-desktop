@@ -3,6 +3,7 @@ import styles from "@pages/studio/StudioPanel.module.css";
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { projectIcons } from "../../constants/projectTemplates";
+import { useI18n } from "@contexts/I18nContext";
 
 interface NewProjectModalProps {
   visible: boolean;
@@ -19,6 +20,7 @@ const TRANSITION_TYPE_LABELS: Record<string, { label: string; color: string }> =
 };
 
 export default function NewProjectModal({ visible, onClose, onCreated, t }: NewProjectModalProps) {
+  const { locale } = useI18n();
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
   const [newProjectIcon, setNewProjectIcon] = useState("💼");
@@ -41,7 +43,7 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
 
   useEffect(() => {
     if (visible) {
-      invoke<ProjectTemplateDetail[]>("list_project_templates")
+      invoke<ProjectTemplateDetail[]>("list_project_templates", { locale })
         .then((list) => {
           setTemplates(list);
           if (list.length > 0 && !newProjectTemplate) {
@@ -52,7 +54,7 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
         })
         .catch((e) => console.error("Failed to load templates:", e));
     }
-  }, [visible]);
+  }, [visible, locale]);
 
   const selectedTmpl = templates.find((tmpl) => tmpl.id === newProjectTemplate) || null;
 
@@ -89,6 +91,7 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
             templateId: selectedTmpl.id,
             officeTheme: newProjectTheme,
           },
+          locale,
         });
       } else {
         await invoke("create_project", {

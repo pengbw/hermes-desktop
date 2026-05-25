@@ -1,0 +1,966 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-05-24",
+  "groups": {
+    "domestic": {
+      "zh-CN": "国内平台",
+      "zh-XG": "國內平台",
+      "en": "Domestic Platforms"
+    },
+    "international": {
+      "zh-CN": "国际平台",
+      "zh-XG": "國際平台",
+      "en": "International Platforms"
+    },
+    "other": {
+      "zh-CN": "其他通道",
+      "zh-XG": "其他通道",
+      "en": "Other Channels"
+    }
+  },
+  "channels": [
+    {
+      "id": "weixin",
+      "name": "微信",
+      "nameXG": "微信",
+      "nameEn": "WeChat",
+      "icon": "💬",
+      "group": "domestic",
+      "setupMode": "qr",
+      "capability": {
+        "voice": true,
+        "image": true,
+        "file": true,
+        "groupChat": false,
+        "streamOutput": true,
+        "topic": false,
+        "reaction": false,
+        "typingIndicator": true
+      },
+      "configFields": [],
+      "setupGuide": "1. 点击「扫码接入」生成二维码\n2. 使用微信扫描二维码\n3. 在手机上确认授权\n4. 连接成功后即可在微信中与 Agent 对话",
+      "setupGuideXG": "1. 點擊「掃碼接入」生成二維碼\n2. 使用微信掃描二維碼\n3. 在手機上確認授權\n4. 連接成功後即可在微信中與 Agent 對話",
+      "setupGuideEn": "1. Click 'Scan to Connect' to generate QR code\n2. Scan with WeChat\n3. Confirm authorization on phone\n4. Start chatting with Agent in WeChat",
+      "envPrefix": "WEIXIN",
+      "sortOrder": 1
+    },
+    {
+      "id": "qqbot",
+      "name": "QQ Bot",
+      "nameXG": "QQ Bot",
+      "nameEn": "QQ Bot",
+      "icon": "🐧",
+      "group": "domestic",
+      "setupMode": "both",
+      "capability": {
+        "voice": true,
+        "image": true,
+        "file": true,
+        "groupChat": true,
+        "streamOutput": false,
+        "topic": false,
+        "reaction": false,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "app_id",
+          "label": "App ID",
+          "labelXG": "App ID",
+          "labelEn": "App ID",
+          "type": "text",
+          "required": true,
+          "placeholder": "QQ机器人AppID",
+          "helpText": "在 QQ 开放平台创建机器人后获取",
+          "helpTextXG": "在 QQ 開放平台建立機器人後取得",
+          "helpTextEn": "Get from QQ Open Platform after creating a bot"
+        },
+        {
+          "key": "client_secret",
+          "label": "Client Secret",
+          "labelXG": "Client Secret",
+          "labelEn": "Client Secret",
+          "type": "password",
+          "required": true,
+          "placeholder": "QQ机器人ClientSecret",
+          "helpText": "在 QQ 开放平台创建机器人后获取",
+          "helpTextXG": "在 QQ 開放平台建立機器人後取得",
+          "helpTextEn": "Get from QQ Open Platform after creating a bot"
+        }
+      ],
+      "setupGuide": "1. 前往 QQ 开放平台 (q.qq.com) 创建机器人\n2. 获取 AppID 和 AppSecret\n3. 点击「配置接入」填入凭证\n4. 在 QQ 中 @机器人 即可对话",
+      "setupGuideXG": "1. 前往 QQ 開放平台 (q.qq.com) 建立機器人\n2. 取得 AppID 和 AppSecret\n3. 點擊「配置接入」填入憑證\n4. 在 QQ 中 @機器人 即可對話",
+      "setupGuideEn": "1. Go to QQ Open Platform (q.qq.com) to create a bot\n2. Get AppID and AppSecret\n3. Click 'Configure' and fill in credentials\n4. @bot in QQ to chat",
+      "envPrefix": "QQ",
+      "sortOrder": 2
+    },
+    {
+      "id": "wecom",
+      "name": "企业微信",
+      "nameXG": "企業微信",
+      "nameEn": "WeCom",
+      "icon": "🏢",
+      "group": "domestic",
+      "setupMode": "both",
+      "capability": {
+        "voice": true,
+        "image": true,
+        "file": true,
+        "groupChat": true,
+        "streamOutput": true,
+        "topic": false,
+        "reaction": false,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "bot_id",
+          "label": "Bot ID",
+          "labelXG": "Bot ID",
+          "labelEn": "Bot ID",
+          "type": "text",
+          "required": true,
+          "placeholder": "wwxxxxxxxx",
+          "helpText": "在企业微信管理后台创建智能机器人后获取",
+          "helpTextXG": "在企業微信管理後台建立智慧機器人後取得",
+          "helpTextEn": "Get from WeCom Admin Console after creating a bot"
+        },
+        {
+          "key": "secret",
+          "label": "Bot Secret",
+          "labelXG": "Bot Secret",
+          "labelEn": "Bot Secret",
+          "type": "password",
+          "required": true,
+          "placeholder": "机器人密钥",
+          "helpText": "在企业微信管理后台创建智能机器人后获取",
+          "helpTextXG": "在企業微信管理後台建立智慧機器人後取得",
+          "helpTextEn": "Get from WeCom Admin Console after creating a bot"
+        }
+      ],
+      "setupGuide": "1. 登录企业微信管理后台\n2. 进入「管理工具」→「智能机器人」→「创建机器人」\n3. 选择 API 模式创建，获取 Bot ID 和 Bot Secret\n4. 点击「配置接入」填入凭证",
+      "setupGuideXG": "1. 登入企業微信管理後台\n2. 進入「管理工具」→「智慧機器人」→「建立機器人」\n3. 選擇 API 模式建立，取得 Bot ID 和 Bot Secret\n4. 點擊「配置接入」填入憑證",
+      "setupGuideEn": "1. Login to WeCom Admin Console\n2. Go to 'Manage Tools' → 'Smart Bot' → 'Create Bot'\n3. Select API mode, get Bot ID and Bot Secret\n4. Click 'Configure' and fill in credentials",
+      "envPrefix": "WECOM",
+      "sortOrder": 3
+    },
+    {
+      "id": "dingtalk",
+      "name": "钉钉",
+      "nameXG": "釘釘",
+      "nameEn": "DingTalk",
+      "icon": "🔵",
+      "group": "domestic",
+      "setupMode": "token",
+      "capability": {
+        "voice": false,
+        "image": true,
+        "file": true,
+        "groupChat": true,
+        "streamOutput": true,
+        "topic": false,
+        "reaction": true,
+        "typingIndicator": false
+      },
+      "configFields": [
+        {
+          "key": "client_id",
+          "label": "Client ID (AppKey)",
+          "labelXG": "Client ID (AppKey)",
+          "labelEn": "Client ID (AppKey)",
+          "type": "text",
+          "required": true,
+          "placeholder": "dingxxxxxxxxxx",
+          "helpText": "在钉钉开放平台创建应用后获取",
+          "helpTextXG": "在釘釘開放平台建立應用後取得",
+          "helpTextEn": "Get from DingTalk Open Platform after creating an app"
+        },
+        {
+          "key": "client_secret",
+          "label": "Client Secret (AppSecret)",
+          "labelXG": "Client Secret (AppSecret)",
+          "labelEn": "Client Secret (AppSecret)",
+          "type": "password",
+          "required": true,
+          "placeholder": "钉钉应用密钥",
+          "helpText": "在钉钉开放平台创建应用后获取",
+          "helpTextXG": "在釘釘開放平台建立應用後取得",
+          "helpTextEn": "Get from DingTalk Open Platform after creating an app"
+        }
+      ],
+      "setupGuide": "1. 前往钉钉开放平台 (open.dingtalk.com) 创建应用\n2. 添加机器人能力并发布\n3. 获取 AppKey 和 AppSecret\n4. 点击「配置接入」填入凭证",
+      "setupGuideXG": "1. 前往釘釘開放平台 (open.dingtalk.com) 建立應用\n2. 新增機器人能力並發布\n3. 取得 AppKey 和 AppSecret\n4. 點擊「配置接入」填入憑證",
+      "setupGuideEn": "1. Go to DingTalk Open Platform to create an app\n2. Add bot capability and publish\n3. Get AppKey and AppSecret\n4. Click 'Configure' and fill in credentials",
+      "envPrefix": "DINGTALK",
+      "sortOrder": 4
+    },
+    {
+      "id": "feishu",
+      "name": "飞书",
+      "nameXG": "飛書",
+      "nameEn": "Feishu / Lark",
+      "icon": "🐦",
+      "group": "domestic",
+      "setupMode": "both",
+      "capability": {
+        "voice": true,
+        "image": true,
+        "file": true,
+        "groupChat": true,
+        "streamOutput": true,
+        "topic": true,
+        "reaction": true,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "app_id",
+          "label": "App ID",
+          "labelXG": "App ID",
+          "labelEn": "App ID",
+          "type": "text",
+          "required": true,
+          "placeholder": "cli_xxxxxxxxxx",
+          "helpText": "在飞书开放平台创建应用后获取",
+          "helpTextXG": "在飛書開放平台建立應用後取得",
+          "helpTextEn": "Get from Feishu Open Platform after creating an app"
+        },
+        {
+          "key": "app_secret",
+          "label": "App Secret",
+          "labelXG": "App Secret",
+          "labelEn": "App Secret",
+          "type": "password",
+          "required": true,
+          "placeholder": "应用密钥",
+          "helpText": "在飞书开放平台创建应用后获取",
+          "helpTextXG": "在飛書開放平台建立應用後取得",
+          "helpTextEn": "Get from Feishu Open Platform after creating an app"
+        },
+        {
+          "key": "proxy",
+          "label": "代理地址",
+          "labelXG": "代理地址",
+          "labelEn": "Proxy URL",
+          "type": "url",
+          "required": false,
+          "placeholder": "http://proxy.company.com:8080",
+          "helpText": "公司网络环境下可填写代理地址，解决飞书连接不上的问题",
+          "helpTextXG": "公司網路環境下可填寫代理地址，解決飛書連接不上的問題",
+          "helpTextEn": "Fill in corporate proxy URL if Feishu cannot connect in company network"
+        }
+      ],
+      "setupGuide": "1. 前往飞书开放平台创建企业自建应用\n2. 添加「机器人」能力\n3. 获取 App ID 和 App Secret\n4. 点击「配置接入」填入凭证，如处于公司网络请填写代理地址\n5. 在飞书中搜索机器人发消息测试",
+      "setupGuideXG": "1. 前往飛書開放平台建立企業自建應用\n2. 新增「機器人」能力\n3. 取得 App ID 和 App Secret\n4. 點擊「配置接入」填入憑證，如處於公司網路請填寫代理地址\n5. 在飛書中搜尋機器人發送訊息測試",
+      "setupGuideEn": "1. Go to Feishu Open Platform to create an app\n2. Add 'Bot' capability\n3. Get App ID and App Secret\n4. Click 'Configure' and fill in credentials\n5. Search bot in Feishu and send a test message",
+      "envPrefix": "FEISHU",
+      "sortOrder": 5
+    },
+    {
+      "id": "yuanbao",
+      "name": "元宝",
+      "nameXG": "元寶",
+      "nameEn": "Yuanbao",
+      "icon": "💎",
+      "group": "domestic",
+      "setupMode": "token",
+      "capability": {
+        "voice": true,
+        "image": true,
+        "file": true,
+        "groupChat": false,
+        "streamOutput": true,
+        "topic": false,
+        "reaction": false,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "app_id",
+          "label": "App ID",
+          "labelXG": "App ID",
+          "labelEn": "App ID",
+          "type": "text",
+          "required": true,
+          "placeholder": "元宝 App ID",
+          "helpText": "在元宝开放平台获取",
+          "helpTextXG": "在元寶開放平台取得",
+          "helpTextEn": "Get from Yuanbao Open Platform"
+        },
+        {
+          "key": "app_secret",
+          "label": "App Secret",
+          "labelXG": "App Secret",
+          "labelEn": "App Secret",
+          "type": "password",
+          "required": true,
+          "placeholder": "元宝 App Secret",
+          "helpText": "在元宝开放平台获取",
+          "helpTextXG": "在元寶開放平台取得",
+          "helpTextEn": "Get from Yuanbao Open Platform"
+        }
+      ],
+      "setupGuide": "1. 前往元宝开放平台创建应用\n2. 获取 App ID 和 App Secret\n3. 点击「配置接入」填入凭证",
+      "setupGuideXG": "1. 前往元寶開放平台建立應用\n2. 取得 App ID 和 App Secret\n3. 點擊「配置接入」填入憑證",
+      "setupGuideEn": "1. Go to Yuanbao Open Platform to create an app\n2. Get App ID and App Secret\n3. Click 'Configure' and fill in credentials",
+      "envPrefix": "YUANBAO",
+      "sortOrder": 6
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram",
+      "nameXG": "Telegram",
+      "nameEn": "Telegram",
+      "icon": "✈️",
+      "group": "international",
+      "setupMode": "token",
+      "capability": {
+        "voice": true,
+        "image": true,
+        "file": true,
+        "groupChat": true,
+        "streamOutput": true,
+        "topic": true,
+        "reaction": false,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "bot_token",
+          "label": "Bot Token",
+          "labelXG": "Bot Token",
+          "labelEn": "Bot Token",
+          "type": "password",
+          "required": true,
+          "placeholder": "123456789:ABCdefGHI...",
+          "helpText": "在 Telegram 中通过 @BotFather 创建 Bot 后获取",
+          "helpTextXG": "在 Telegram 中透過 @BotFather 建立 Bot 後取得",
+          "helpTextEn": "Get from @BotFather in Telegram after creating a bot"
+        },
+        {
+          "key": "allowed_users",
+          "label": "允许的用户 ID",
+          "labelXG": "允許的使用者 ID",
+          "labelEn": "Allowed User IDs",
+          "type": "text",
+          "required": false,
+          "placeholder": "user_id_1, user_id_2",
+          "helpText": "逗号分隔的 Telegram 用户 ID，留空则允许所有人",
+          "helpTextXG": "逗號分隔的 Telegram 使用者 ID，留空則允許所有人",
+          "helpTextEn": "Comma-separated Telegram user IDs, leave empty to allow all"
+        }
+      ],
+      "setupGuide": "1. 在 Telegram 中搜索 @BotFather\n2. 发送 /newbot 创建新 Bot\n3. 按提示操作获取 Bot Token\n4. 点击「配置接入」填入 Token",
+      "setupGuideXG": "1. 在 Telegram 中搜尋 @BotFather\n2. 發送 /newbot 建立新 Bot\n3. 按提示操作取得 Bot Token\n4. 點擊「配置接入」填入 Token",
+      "setupGuideEn": "1. Search @BotFather in Telegram\n2. Send /newbot to create a new bot\n3. Follow instructions to get Bot Token\n4. Click 'Configure' and fill in Token",
+      "envPrefix": "TELEGRAM",
+      "sortOrder": 10
+    },
+    {
+      "id": "discord",
+      "name": "Discord",
+      "nameXG": "Discord",
+      "nameEn": "Discord",
+      "icon": "🎮",
+      "group": "international",
+      "setupMode": "token",
+      "capability": {
+        "voice": true,
+        "image": true,
+        "file": true,
+        "groupChat": true,
+        "streamOutput": true,
+        "topic": true,
+        "reaction": true,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "bot_token",
+          "label": "Bot Token",
+          "labelXG": "Bot Token",
+          "labelEn": "Bot Token",
+          "type": "password",
+          "required": true,
+          "placeholder": "Discord Bot Token",
+          "helpText": "在 Discord Developer Portal 创建 Bot 后获取",
+          "helpTextXG": "在 Discord Developer Portal 建立 Bot 後取得",
+          "helpTextEn": "Get from Discord Developer Portal after creating a bot"
+        },
+        {
+          "key": "allowed_guilds",
+          "label": "允许的服务器 ID",
+          "labelXG": "允許的伺服器 ID",
+          "labelEn": "Allowed Guild IDs",
+          "type": "text",
+          "required": false,
+          "placeholder": "guild_id_1, guild_id_2",
+          "helpText": "逗号分隔的 Discord 服务器 ID",
+          "helpTextXG": "逗號分隔的 Discord 伺服器 ID",
+          "helpTextEn": "Comma-separated Discord guild IDs"
+        }
+      ],
+      "setupGuide": "1. 前往 Discord Developer Portal 创建应用\n2. 在 Bot 页面获取 Token\n3. 开启 MESSAGE CONTENT INTENT\n4. 点击「配置接入」填入 Token",
+      "setupGuideXG": "1. 前往 Discord Developer Portal 建立應用\n2. 在 Bot 頁面取得 Token\n3. 開啟 MESSAGE CONTENT INTENT\n4. 點擊「配置接入」填入 Token",
+      "setupGuideEn": "1. Go to Discord Developer Portal to create an app\n2. Get Token from Bot page\n3. Enable MESSAGE CONTENT INTENT\n4. Click 'Configure' and fill in Token",
+      "envPrefix": "DISCORD",
+      "sortOrder": 11
+    },
+    {
+      "id": "slack",
+      "name": "Slack",
+      "nameXG": "Slack",
+      "nameEn": "Slack",
+      "icon": "📱",
+      "group": "international",
+      "setupMode": "token",
+      "capability": {
+        "voice": true,
+        "image": true,
+        "file": true,
+        "groupChat": true,
+        "streamOutput": true,
+        "topic": true,
+        "reaction": true,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "bot_token",
+          "label": "Bot Token",
+          "labelXG": "Bot Token",
+          "labelEn": "Bot Token (xoxb-)",
+          "type": "password",
+          "required": true,
+          "placeholder": "xoxb-xxxxxxxxxx-...",
+          "helpText": "在 Slack API 创建 Bot 后获取",
+          "helpTextXG": "在 Slack API 建立 Bot 後取得",
+          "helpTextEn": "Get from Slack API after creating a bot"
+        },
+        {
+          "key": "app_token",
+          "label": "App Token",
+          "labelXG": "App Token",
+          "labelEn": "App Token (xapp-)",
+          "type": "password",
+          "required": true,
+          "placeholder": "xapp-xxxxxxxxxx-...",
+          "helpText": "Socket Mode 需要的 App-Level Token",
+          "helpTextXG": "Socket Mode 需要的 App-Level Token",
+          "helpTextEn": "App-Level Token for Socket Mode"
+        }
+      ],
+      "setupGuide": "1. 前往 Slack API 创建应用\n2. 启用 Socket Mode\n3. 获取 Bot Token (xoxb-) 和 App Token (xapp-)\n4. 点击「配置接入」填入凭证",
+      "setupGuideXG": "1. 前往 Slack API 建立應用\n2. 啟用 Socket Mode\n3. 取得 Bot Token (xoxb-) 和 App Token (xapp-)\n4. 點擊「配置接入」填入憑證",
+      "setupGuideEn": "1. Go to Slack API to create an app\n2. Enable Socket Mode\n3. Get Bot Token (xoxb-) and App Token (xapp-)\n4. Click 'Configure' and fill in credentials",
+      "envPrefix": "SLACK",
+      "sortOrder": 12
+    },
+    {
+      "id": "whatsapp",
+      "name": "WhatsApp",
+      "nameXG": "WhatsApp",
+      "nameEn": "WhatsApp",
+      "icon": "📲",
+      "group": "international",
+      "setupMode": "both",
+      "capability": {
+        "voice": false,
+        "image": true,
+        "file": true,
+        "groupChat": false,
+        "streamOutput": true,
+        "topic": false,
+        "reaction": false,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "enabled",
+          "label": "已连接确认",
+          "labelXG": "已連線確認",
+          "labelEn": "Connection Confirmed",
+          "type": "text",
+          "required": true,
+          "placeholder": "输入 yes 确认已通过命令行完成连接",
+          "helpText": "先在终端运行 hermes whatsapp 完成扫码连接，然后在此输入 yes 确认",
+          "helpTextXG": "先在終端執行 hermes whatsapp 完成掃碼連線，然後在此輸入 yes 確認",
+          "helpTextEn": "Run 'hermes whatsapp' in terminal first to scan QR, then type yes here"
+        }
+      ],
+      "setupGuide": "1. 在终端中运行: hermes whatsapp\n2. 扫描终端中显示的二维码\n3. 扫码成功后，点击「配置接入」输入 yes 确认",
+      "setupGuideXG": "1. 在終端中執行: hermes whatsapp\n2. 掃描終端中顯示的二維碼\n3. 掃碼成功後，點擊「配置接入」輸入 yes 確認",
+      "setupGuideEn": "1. Run in terminal: hermes whatsapp\n2. Scan the QR code shown in terminal\n3. After successful scan, click 'Configure' and type yes to confirm",
+      "envPrefix": "WHATSAPP",
+      "sortOrder": 13
+    },
+    {
+      "id": "signal",
+      "name": "Signal",
+      "nameXG": "Signal",
+      "nameEn": "Signal",
+      "icon": "🔒",
+      "group": "international",
+      "setupMode": "token",
+      "capability": {
+        "voice": false,
+        "image": true,
+        "file": true,
+        "groupChat": false,
+        "streamOutput": true,
+        "topic": false,
+        "reaction": false,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "account",
+          "label": "Signal 号码",
+          "labelXG": "Signal 號碼",
+          "labelEn": "Signal Phone Number",
+          "type": "text",
+          "required": true,
+          "placeholder": "+1234567890",
+          "helpText": "关联的 Signal 电话号码",
+          "helpTextXG": "關聯的 Signal 電話號碼",
+          "helpTextEn": "Linked Signal phone number"
+        },
+        {
+          "key": "http_url",
+          "label": "signal-cli HTTP URL",
+          "labelXG": "signal-cli HTTP URL",
+          "labelEn": "signal-cli HTTP URL",
+          "type": "url",
+          "required": true,
+          "placeholder": "http://localhost:8080",
+          "helpText": "signal-cli HTTP 模式 URL",
+          "helpTextXG": "signal-cli HTTP 模式 URL",
+          "helpTextEn": "signal-cli HTTP mode URL"
+        }
+      ],
+      "setupGuide": "1. 安装 signal-cli\n2. 注册或关联 Signal 号码\n3. 点击「配置接入」填入号码",
+      "setupGuideXG": "1. 安裝 signal-cli\n2. 註冊或關聯 Signal 號碼\n3. 點擊「配置接入」填入號碼",
+      "setupGuideEn": "1. Install signal-cli\n2. Register or link a Signal number\n3. Click 'Configure' and fill in number",
+      "envPrefix": "SIGNAL",
+      "sortOrder": 14
+    },
+    {
+      "id": "email",
+      "name": "电子邮件",
+      "nameXG": "電子郵件",
+      "nameEn": "Email",
+      "icon": "📧",
+      "group": "other",
+      "setupMode": "server",
+      "capability": {
+        "voice": false,
+        "image": true,
+        "file": true,
+        "groupChat": false,
+        "streamOutput": false,
+        "topic": true,
+        "reaction": false,
+        "typingIndicator": false
+      },
+      "configFields": [
+        {
+          "key": "smtp_host",
+          "label": "SMTP 服务器",
+          "labelXG": "SMTP 伺服器",
+          "labelEn": "SMTP Host",
+          "type": "text",
+          "required": true,
+          "placeholder": "smtp.gmail.com"
+        },
+        {
+          "key": "smtp_port",
+          "label": "SMTP 端口",
+          "labelXG": "SMTP 連接埠",
+          "labelEn": "SMTP Port",
+          "type": "number",
+          "required": true,
+          "placeholder": "587"
+        },
+        {
+          "key": "imap_host",
+          "label": "IMAP 服务器",
+          "labelXG": "IMAP 伺服器",
+          "labelEn": "IMAP Host",
+          "type": "text",
+          "required": true,
+          "placeholder": "imap.gmail.com"
+        },
+        {
+          "key": "imap_port",
+          "label": "IMAP 端口",
+          "labelXG": "IMAP 連接埠",
+          "labelEn": "IMAP Port",
+          "type": "number",
+          "required": true,
+          "placeholder": "993"
+        },
+        {
+          "key": "address",
+          "label": "邮箱地址",
+          "labelXG": "郵箱地址",
+          "labelEn": "Email Address",
+          "type": "text",
+          "required": true,
+          "placeholder": "your@gmail.com"
+        },
+        {
+          "key": "password",
+          "label": "密码 / App Password",
+          "labelXG": "密碼 / App Password",
+          "labelEn": "Password / App Password",
+          "type": "password",
+          "required": true,
+          "placeholder": "应用专用密码"
+        }
+      ],
+      "setupGuide": "1. 准备支持 SMTP/IMAP 的邮箱\n2. 如使用 Gmail，需生成应用专用密码\n3. 点击「配置接入」填入服务器信息",
+      "setupGuideXG": "1. 準備支援 SMTP/IMAP 的郵箱\n2. 如使用 Gmail，需產生應用專用密碼\n3. 點擊「配置接入」填入伺服器資訊",
+      "setupGuideEn": "1. Prepare an email with SMTP/IMAP support\n2. For Gmail, generate an App Password\n3. Click 'Configure' and fill in server info",
+      "envPrefix": "EMAIL",
+      "sortOrder": 20
+    },
+    {
+      "id": "sms",
+      "name": "SMS (Twilio)",
+      "nameXG": "SMS (Twilio)",
+      "nameEn": "SMS (Twilio)",
+      "icon": "📩",
+      "group": "other",
+      "setupMode": "token",
+      "capability": {
+        "voice": false,
+        "image": false,
+        "file": false,
+        "groupChat": false,
+        "streamOutput": false,
+        "topic": false,
+        "reaction": false,
+        "typingIndicator": false
+      },
+      "configFields": [
+        {
+          "key": "account_sid",
+          "label": "Account SID",
+          "labelXG": "Account SID",
+          "labelEn": "Account SID",
+          "type": "text",
+          "required": true,
+          "placeholder": "ACxxxxxxxxxx",
+          "helpText": "在 Twilio 控制台获取",
+          "helpTextXG": "在 Twilio 控制台取得",
+          "helpTextEn": "Get from Twilio Console"
+        },
+        {
+          "key": "auth_token",
+          "label": "Auth Token",
+          "labelXG": "Auth Token",
+          "labelEn": "Auth Token",
+          "type": "password",
+          "required": true,
+          "placeholder": "Twilio Auth Token",
+          "helpText": "在 Twilio 控制台获取",
+          "helpTextXG": "在 Twilio 控制台取得",
+          "helpTextEn": "Get from Twilio Console"
+        },
+        {
+          "key": "phone_number",
+          "label": "发送号码",
+          "labelXG": "發送號碼",
+          "labelEn": "From Number",
+          "type": "text",
+          "required": true,
+          "placeholder": "+1234567890",
+          "helpText": "Twilio 提供的电话号码",
+          "helpTextXG": "Twilio 提供的電話號碼",
+          "helpTextEn": "Phone number provided by Twilio"
+        }
+      ],
+      "setupGuide": "1. 注册 Twilio 账号\n2. 获取 Account SID、Auth Token 和电话号码\n3. 点击「配置接入」填入凭证",
+      "setupGuideXG": "1. 註冊 Twilio 帳號\n2. 取得 Account SID、Auth Token 和電話號碼\n3. 點擊「配置接入」填入憑證",
+      "setupGuideEn": "1. Register a Twilio account\n2. Get Account SID, Auth Token and phone number\n3. Click 'Configure' and fill in credentials",
+      "envPrefix": "TWILIO",
+      "sortOrder": 21
+    },
+    {
+      "id": "matrix",
+      "name": "Matrix",
+      "nameXG": "Matrix",
+      "nameEn": "Matrix",
+      "icon": "🟢",
+      "group": "other",
+      "setupMode": "token",
+      "capability": {
+        "voice": true,
+        "image": true,
+        "file": true,
+        "groupChat": true,
+        "streamOutput": true,
+        "topic": true,
+        "reaction": true,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "homeserver",
+          "label": "Homeserver URL",
+          "labelXG": "Homeserver URL",
+          "labelEn": "Homeserver URL",
+          "type": "url",
+          "required": true,
+          "placeholder": "https://matrix.org"
+        },
+        {
+          "key": "access_token",
+          "label": "Access Token",
+          "labelXG": "Access Token",
+          "labelEn": "Access Token",
+          "type": "password",
+          "required": true,
+          "placeholder": "Matrix Access Token"
+        },
+        {
+          "key": "allowed_users",
+          "label": "允许的用户",
+          "labelXG": "允許的使用者",
+          "labelEn": "Allowed Users",
+          "type": "text",
+          "required": false,
+          "placeholder": "@user:matrix.org",
+          "helpText": "逗号分隔的 Matrix 用户 ID",
+          "helpTextXG": "逗號分隔的 Matrix 使用者 ID",
+          "helpTextEn": "Comma-separated Matrix user IDs"
+        }
+      ],
+      "setupGuide": "1. 在 Matrix 服务器上创建账号\n2. 获取 Access Token\n3. 点击「配置接入」填入凭证",
+      "setupGuideXG": "1. 在 Matrix 伺服器上建立帳號\n2. 取得 Access Token\n3. 點擊「配置接入」填入憑證",
+      "setupGuideEn": "1. Create an account on a Matrix server\n2. Get Access Token\n3. Click 'Configure' and fill in credentials",
+      "envPrefix": "MATRIX",
+      "sortOrder": 22
+    },
+    {
+      "id": "mattermost",
+      "name": "Mattermost",
+      "nameXG": "Mattermost",
+      "nameEn": "Mattermost",
+      "icon": "🔷",
+      "group": "other",
+      "setupMode": "token",
+      "capability": {
+        "voice": true,
+        "image": true,
+        "file": true,
+        "groupChat": true,
+        "streamOutput": true,
+        "topic": true,
+        "reaction": false,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "url",
+          "label": "服务器 URL",
+          "labelXG": "伺服器 URL",
+          "labelEn": "Server URL",
+          "type": "url",
+          "required": true,
+          "placeholder": "https://mattermost.example.com"
+        },
+        {
+          "key": "token",
+          "label": "Access Token",
+          "labelXG": "Access Token",
+          "labelEn": "Access Token",
+          "type": "password",
+          "required": true,
+          "placeholder": "Mattermost Bot Token"
+        }
+      ],
+      "setupGuide": "1. 在 Mattermost 中创建 Bot 账号\n2. 获取 Access Token\n3. 点击「配置接入」填入凭证",
+      "setupGuideXG": "1. 在 Mattermost 中建立 Bot 帳號\n2. 取得 Access Token\n3. 點擊「配置接入」填入憑證",
+      "setupGuideEn": "1. Create a Bot account in Mattermost\n2. Get Access Token\n3. Click 'Configure' and fill in credentials",
+      "envPrefix": "MATTERMOST",
+      "sortOrder": 23
+    },
+    {
+      "id": "homeassistant",
+      "name": "Home Assistant",
+      "nameXG": "Home Assistant",
+      "nameEn": "Home Assistant",
+      "icon": "🏠",
+      "group": "other",
+      "setupMode": "token",
+      "capability": {
+        "voice": false,
+        "image": false,
+        "file": false,
+        "groupChat": false,
+        "streamOutput": false,
+        "topic": false,
+        "reaction": false,
+        "typingIndicator": false
+      },
+      "configFields": [
+        {
+          "key": "url",
+          "label": "HA URL",
+          "labelXG": "HA URL",
+          "labelEn": "HA URL",
+          "type": "url",
+          "required": true,
+          "placeholder": "http://homeassistant.local:8123"
+        },
+        {
+          "key": "token",
+          "label": "Long-Lived Access Token",
+          "labelXG": "Long-Lived Access Token",
+          "labelEn": "Long-Lived Access Token",
+          "type": "password",
+          "required": true,
+          "placeholder": "HA Access Token"
+        }
+      ],
+      "setupGuide": "1. 在 Home Assistant 中生成 Long-Lived Access Token\n2. 点击「配置接入」填入 URL 和 Token",
+      "setupGuideXG": "1. 在 Home Assistant 中產生 Long-Lived Access Token\n2. 點擊「配置接入」填入 URL 和 Token",
+      "setupGuideEn": "1. Generate a Long-Lived Access Token in Home Assistant\n2. Click 'Configure' and fill in URL and Token",
+      "envPrefix": "HASS",
+      "sortOrder": 24
+    },
+    {
+      "id": "bluebubbles",
+      "name": "iMessage (BlueBubbles)",
+      "nameXG": "iMessage (BlueBubbles)",
+      "nameEn": "iMessage (BlueBubbles)",
+      "icon": "🍎",
+      "group": "other",
+      "setupMode": "token",
+      "capability": {
+        "voice": false,
+        "image": true,
+        "file": true,
+        "groupChat": false,
+        "streamOutput": false,
+        "topic": false,
+        "reaction": true,
+        "typingIndicator": true
+      },
+      "configFields": [
+        {
+          "key": "server_url",
+          "label": "BlueBubbles 服务器 URL",
+          "labelXG": "BlueBubbles 伺服器 URL",
+          "labelEn": "BlueBubbles Server URL",
+          "type": "url",
+          "required": true,
+          "placeholder": "http://localhost:1234"
+        },
+        {
+          "key": "password",
+          "label": "密码",
+          "labelXG": "密碼",
+          "labelEn": "Password",
+          "type": "password",
+          "required": true,
+          "placeholder": "BlueBubbles Password"
+        }
+      ],
+      "setupGuide": "1. 安装 BlueBubbles 服务器 (macOS)\n2. 设置密码并启动服务器\n3. 点击「配置接入」填入 URL 和密码",
+      "setupGuideXG": "1. 安裝 BlueBubbles 伺服器 (macOS)\n2. 設定密碼並啟動伺服器\n3. 點擊「配置接入」填入 URL 和密碼",
+      "setupGuideEn": "1. Install BlueBubbles server (macOS)\n2. Set password and start server\n3. Click 'Configure' and fill in URL and password",
+      "envPrefix": "BLUEBUBBLES",
+      "sortOrder": 25
+    },
+    {
+      "id": "open-webui",
+      "name": "Open WebUI",
+      "nameXG": "Open WebUI",
+      "nameEn": "Open WebUI",
+      "icon": "🌐",
+      "group": "other",
+      "setupMode": "token",
+      "capability": {
+        "voice": false,
+        "image": false,
+        "file": false,
+        "groupChat": false,
+        "streamOutput": false,
+        "topic": false,
+        "reaction": false,
+        "typingIndicator": false
+      },
+      "configFields": [
+        {
+          "key": "server_url",
+          "label": "服务器 URL",
+          "labelXG": "伺服器 URL",
+          "labelEn": "Server URL",
+          "type": "url",
+          "required": true,
+          "placeholder": "http://localhost:3000"
+        },
+        {
+          "key": "api_key",
+          "label": "API Key",
+          "labelXG": "API Key",
+          "labelEn": "API Key",
+          "type": "password",
+          "required": true,
+          "placeholder": "Open WebUI API Key"
+        }
+      ],
+      "setupGuide": "1. 部署 Open WebUI 实例\n2. 获取 API Key\n3. 点击「配置接入」填入凭证",
+      "setupGuideXG": "1. 部署 Open WebUI 實例\n2. 取得 API Key\n3. 點擊「配置接入」填入憑證",
+      "setupGuideEn": "1. Deploy Open WebUI instance\n2. Get API Key\n3. Click 'Configure' and fill in credentials",
+      "envPrefix": "OPENWEBUI",
+      "sortOrder": 26
+    },
+    {
+      "id": "webhooks",
+      "name": "Webhooks",
+      "nameXG": "Webhooks",
+      "nameEn": "Webhooks",
+      "icon": "🪝",
+      "group": "other",
+      "setupMode": "server",
+      "capability": {
+        "voice": false,
+        "image": false,
+        "file": false,
+        "groupChat": false,
+        "streamOutput": false,
+        "topic": false,
+        "reaction": false,
+        "typingIndicator": false
+      },
+      "configFields": [
+        {
+          "key": "url",
+          "label": "Webhook URL",
+          "labelXG": "Webhook URL",
+          "labelEn": "Webhook URL",
+          "type": "url",
+          "required": true,
+          "placeholder": "https://your-server.com/webhook"
+        },
+        {
+          "key": "secret",
+          "label": "签名密钥",
+          "labelXG": "簽章密鑰",
+          "labelEn": "Signing Secret",
+          "type": "password",
+          "required": false,
+          "placeholder": "可选的签名密钥"
+        }
+      ],
+      "setupGuide": "1. 准备一个可接收 HTTP POST 的 Webhook 端点\n2. 点击「配置接入」填入 URL",
+      "setupGuideXG": "1. 準備一個可接收 HTTP POST 的 Webhook 端點\n2. 點擊「配置接入」填入 URL",
+      "setupGuideEn": "1. Prepare an HTTP POST webhook endpoint\n2. Click 'Configure' and fill in URL",
+      "envPrefix": "WEBHOOK",
+      "sortOrder": 27
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 mod commands;
+mod crypto;
 mod database;
 mod services;
 
@@ -93,6 +94,14 @@ pub fn run() {
                         if let Err(e) = database::models::init_db(&pool).await {
                             log::error!("Failed to initialize database: {}", e);
                         }
+                        match crypto::file_storage::migrate_messages_from_db(&pool).await {
+                            Ok(result) => {
+                                if result.conversations > 0 || result.project_messages > 0 {
+                                    log::info!("Messages migrated: {} conversations, {} projects", result.conversations, result.project_messages);
+                                }
+                            }
+                            Err(e) => log::error!("Message migration failed: {}", e),
+                        }
                         app_handle.manage(AppState { db_pool: pool, local_embedding: services::local_embedding::LocalEmbeddingState::new(), file_watcher: services::file_watcher::FileWatcherState::new() });
                     }
                     Err(e) => {
@@ -107,6 +116,14 @@ pub fn run() {
                                 log::info!("Database rebuilt successfully");
                                 if let Err(e) = database::models::init_db(&pool).await {
                                     log::error!("Failed to initialize database: {}", e);
+                                }
+                                match crypto::file_storage::migrate_messages_from_db(&pool).await {
+                                    Ok(result) => {
+                                        if result.conversations > 0 || result.project_messages > 0 {
+                                            log::info!("Messages migrated: {} conversations, {} projects", result.conversations, result.project_messages);
+                                        }
+                                    }
+                                    Err(e) => log::error!("Message migration failed: {}", e),
                                 }
                                 app_handle.manage(AppState { db_pool: pool, local_embedding: services::local_embedding::LocalEmbeddingState::new(), file_watcher: services::file_watcher::FileWatcherState::new() });
                             }
@@ -319,6 +336,7 @@ pub fn run() {
             commands::chat::read_audio_file,
             commands::config::get_config,
             commands::config::set_config,
+            commands::config::get_default_conversation_storage_path,
             commands::config::list_models,
             commands::config::save_temp_file,
             commands::config::read_text_file,

@@ -23,7 +23,7 @@ import NewProjectModal from "../../components/studio/NewProjectModal";
 import EditProjectModal from "../../components/studio/EditProjectModal";
 import ProjectSettingsModal from "../../components/studio/ProjectSettingsModal";
 function StudioPanel() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewProject, setShowNewProject] = useState(false);
@@ -113,7 +113,7 @@ function StudioPanel() {
 
   const loadAllRoles = async () => {
     try {
-      const list = await invoke<AiRoleItem[]>("list_ai_roles");
+      const list = await invoke<AiRoleItem[]>("list_ai_roles", { locale });
       setAllRoles(list);
     } catch {
       // console.error("Failed to load roles:", err);
@@ -223,8 +223,10 @@ function StudioPanel() {
   };
 
   const getTagClass = (tag: string) => {
-    if (tag === "key_project") return "px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-white bg-gradient-to-br from-red-500 to-red-700";
-    if (tag === "normal") return "px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-white bg-gradient-to-br from-blue-500 to-blue-700";
+    if (tag === "key_project")
+      return "px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-white bg-gradient-to-br from-red-500 to-red-700";
+    if (tag === "normal")
+      return "px-2.5 py-0.5 rounded-full text-[11px] font-semibold text-white bg-gradient-to-br from-blue-500 to-blue-700";
     return "";
   };
 

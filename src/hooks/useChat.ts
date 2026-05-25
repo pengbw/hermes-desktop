@@ -298,6 +298,7 @@ export function useChat(t: (key: string, params?: Record<string, string | number
         req: {
           id: userMsgId,
           content: sttText,
+          conversationId,
           audioPath,
           audioDuration: audioDuration ?? null,
           messageType: "voice",

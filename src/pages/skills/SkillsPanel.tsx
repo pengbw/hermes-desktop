@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { SkillCatalogResult, CatalogSkill } from "@core/types";
 import skillStyles from "./SkillsPanel.module.css";
+import { useI18n } from "@contexts/I18nContext";
 
 function SkillsPanel({
   t,
 }: {
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
+  const { locale } = useI18n();
   const [catalogResult, setCatalogResult] = useState<SkillCatalogResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -44,6 +46,7 @@ function SkillsPanel({
         installedFilter: filterInstalled !== "all" ? filterInstalled : undefined,
         page,
         pageSize: skillPageSize,
+        locale,
       });
       setCatalogResult(result);
       setSkillPage(page);
@@ -65,7 +68,7 @@ function SkillsPanel({
 
   useEffect(() => {
     loadCatalog(1);
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

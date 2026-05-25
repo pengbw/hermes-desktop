@@ -130,6 +130,8 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
         line: "正在安装语音识别组件 (faster-whisper + ctranslate2)...\n首次安装需下载约 140MB，请耐心等待".to_string(),
         done: false,
         success: false,
+        progress: Some(10),
+        step: Some("stt-pip".to_string()),
     });
 
     log::info!("[stt] Installing faster-whisper via pip...");
@@ -166,6 +168,8 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
                             line: trimmed,
                             done: false,
                             success: false,
+                            progress: None,
+                            step: None,
                         });
                     }
                 }
@@ -183,6 +187,8 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
             line: "安装失败".to_string(),
             done: true,
             success: false,
+            progress: None,
+            step: None,
         });
         return Err(format!("pip install failed: {}", stderr_output.trim()));
     }
@@ -191,6 +197,8 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
         line: "正在验证安装...".to_string(),
         done: false,
         success: false,
+        progress: Some(60),
+        step: Some("stt-verify".to_string()),
     });
 
     let installed = check_faster_whisper_installed(&python);
@@ -199,6 +207,8 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
             line: "安装验证失败".to_string(),
             done: true,
             success: false,
+            progress: None,
+            step: None,
         });
         return Err("faster-whisper installation verification failed".to_string());
     }
@@ -209,6 +219,8 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
         line: "正在下载语音识别模型（约 140MB）...".to_string(),
         done: false,
         success: false,
+        progress: Some(70),
+        step: Some("stt-model".to_string()),
     });
 
     let model_download = command(&python)
@@ -227,6 +239,8 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
                     line: "语音识别安装完成".to_string(),
                     done: true,
                     success: true,
+                    progress: Some(100),
+                    step: Some("stt-done".to_string()),
                 });
                 Ok(serde_json::json!({ "success": true }))
             } else {
@@ -235,6 +249,8 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
                     line: "语音识别安装完成（模型将在首次使用时下载）".to_string(),
                     done: true,
                     success: true,
+                    progress: Some(100),
+                    step: Some("stt-done".to_string()),
                 });
                 Ok(serde_json::json!({ "success": true }))
             }
@@ -245,6 +261,8 @@ pub async fn install_stt(app: tauri::AppHandle) -> Result<serde_json::Value, Str
                 line: "语音识别安装完成（模型将在首次使用时下载）".to_string(),
                 done: true,
                 success: true,
+                progress: Some(100),
+                step: Some("stt-done".to_string()),
             });
             Ok(serde_json::json!({ "success": true }))
         }
@@ -373,6 +391,8 @@ pub async fn transcribe_audio(
                                     line: label.to_string(),
                                     done: progress == "done",
                                     success: json.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
+                                    progress: None,
+                                    step: None,
                                 });
                             }
                         }

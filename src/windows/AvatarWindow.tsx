@@ -7,7 +7,6 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRM } from "@pixiv/three-vrm";
 import {
-  lerp,
   easeInOut,
   applyGestureSlerp as sharedApplyGestureSlerp,
   initBones,
@@ -82,6 +81,8 @@ export default function AvatarWindow() {
   const clockRef = useRef(new THREE.Clock());
   const animIdRef = useRef<number>(0);
   const mouseRef = useRef({ x: 0, y: 0 });
+  const mouseInWindowRef = useRef(false);
+  const smoothMouseRef = useRef({ x: 0, y: 0 });
 
   const bonesRef = useRef<Record<string, THREE.Object3D | null>>({});
 
@@ -259,13 +260,14 @@ export default function AvatarWindow() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || initDoneRef.current) return;
+    if (!canvas) return;
     initDoneRef.current = true;
     let destroyed = false;
     let renderer: THREE.WebGLRenderer | null = null;
 
     const init = async () => {
       try {
+        if (destroyed) return;
         try {
           const gestures = await invoke<
             Array<{
@@ -277,6 +279,7 @@ export default function AvatarWindow() {
               targetJson: string;
             }>
           >("get_avatar_gestures");
+          if (destroyed) return;
           if (gestures && gestures.length > 0) {
             GESTURES = parseGesturesFromDb(gestures);
             gesturesRef.current = GESTURES;
@@ -285,6 +288,7 @@ export default function AvatarWindow() {
           // Ignore gesture loading errors
         }
 
+        if (destroyed) return;
         renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         renderer.setSize(350, 500);
@@ -321,11 +325,23 @@ export default function AvatarWindow() {
         rim.position.set(0, 2, -3);
         scene.add(rim);
 
+        if (destroyed) return;
         const loader = new GLTFLoader();
         loader.register((parser) => new VRMLoaderPlugin(parser));
         const gltf = await loader.loadAsync(MODEL_PATH);
-        const vrm = gltf.userData.vrm;
-        if (destroyed || !vrm) throw new Error("No VRM");
+        if (destroyed) return;
+        const vrm = gltf.userData.vrm as
+          | (VRM & {
+              userData?: Record<string, unknown>;
+              blendShapeProxy?: {
+                getValue: (name: string) => number | null;
+                setValue: (name: string, value: number) => void;
+              };
+            })
+          | undefined;
+        if (!vrm) {
+          throw new Error("Failed to load VRM model");
+        }
 
         vrm.userData = vrm.userData || {};
 
@@ -390,8 +406,13 @@ export default function AvatarWindow() {
               vrm.scene.rotation.y = Math.PI + Math.sin(elapsed * 0.4) * 0.06;
             }
 
-            let targetRotX = -mouseRef.current.y * 0.2;
-            let targetRotY = mouseRef.current.x * 0.35;
+            const targetMouseX = mouseInWindowRef.current ? mouseRef.current.x : 0;
+            const targetMouseY = mouseInWindowRef.current ? mouseRef.current.y : 0;
+            smoothMouseRef.current.x += (targetMouseX - smoothMouseRef.current.x) * 0.08;
+            smoothMouseRef.current.y += (targetMouseY - smoothMouseRef.current.y) * 0.08;
+
+            let targetRotX = smoothMouseRef.current.y * 0.7;
+            let targetRotY = smoothMouseRef.current.x * 1.0;
             let targetRotZ = 0;
             const g = GESTURES[gestureRef.current.index];
             if (g?.lookAt && gestureRef.current.active) {
@@ -402,24 +423,6 @@ export default function AvatarWindow() {
             if (g?.name === "think" && isThinkingRef.current) {
               targetRotY += Math.sin(now * 0.0007) * 0.08;
               targetRotX += Math.sin(now * 0.0005 + 1.2) * 0.03;
-            }
-
-            if (bonesRef.current.head) {
-              bonesRef.current.head.rotation.x = lerp(
-                bonesRef.current.head.rotation.x,
-                targetRotX,
-                0.06
-              );
-              bonesRef.current.head.rotation.y = lerp(
-                bonesRef.current.head.rotation.y,
-                targetRotY,
-                0.06
-              );
-              bonesRef.current.head.rotation.z = lerp(
-                bonesRef.current.head.rotation.z,
-                targetRotZ,
-                0.06
-              );
             }
 
             if (vrm.update) vrm.update(delta);
@@ -550,6 +553,13 @@ export default function AvatarWindow() {
               }
             }
 
+            if (bonesRef.current.head) {
+              const headBone = bonesRef.current.head;
+              const mouseQ = new THREE.Quaternion();
+              mouseQ.setFromEuler(new THREE.Euler(targetRotX, targetRotY, targetRotZ, "YXZ"));
+              headBone.quaternion.multiply(mouseQ);
+            }
+
             // 眨眼动画
             const nowSec = elapsed;
             if (nowSec - lastBlink > 3.5 + Math.random() * 2) {
@@ -561,10 +571,8 @@ export default function AvatarWindow() {
               const bv = Math.max(0, Math.sin(blinkProgress * Math.PI));
               try {
                 if (hasVRM1 && vrm.expressionManager) {
-                  const bl = vrm.expressionManager.getExpression("blinkLeft");
-                  const br = vrm.expressionManager.getExpression("blinkRight");
-                  if (bl) bl.value = bv;
-                  if (br) br.value = bv;
+                  vrm.expressionManager.setValue("blinkLeft", bv);
+                  vrm.expressionManager.setValue("blinkRight", bv);
                 } else if (hasVRM0 && vrm.blendShapeProxy) {
                   try {
                     vrm.blendShapeProxy.setValue("Blink", bv);
@@ -584,17 +592,28 @@ export default function AvatarWindow() {
         animate();
         setIsLoaded(true);
       } catch (err) {
-        // console.error("[Avatar] VRM failed:", err);
         setLoadError(String(err));
       }
     };
 
+    const handleWindowEnter = () => {
+      mouseInWindowRef.current = true;
+    };
+    const handleWindowLeave = () => {
+      mouseInWindowRef.current = false;
+    };
+
     window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseenter", handleWindowEnter);
+    window.addEventListener("mouseleave", handleWindowLeave);
     init();
 
     return () => {
       destroyed = true;
+      initDoneRef.current = false;
       window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseenter", handleWindowEnter);
+      window.removeEventListener("mouseleave", handleWindowLeave);
       cancelAnimationFrame(animIdRef.current);
       if (rendererRef.current) {
         try {
@@ -603,7 +622,7 @@ export default function AvatarWindow() {
         rendererRef.current = null;
       }
     };
-  }, []); // Only init once - callbacks are stable refs
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(async () => {
@@ -645,8 +664,14 @@ export default function AvatarWindow() {
       <div
         className={styles["avatar-window"]}
         onMouseDown={handleMouseDown}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
+        onMouseEnter={() => {
+          setIsHovering(true);
+          mouseInWindowRef.current = true;
+        }}
+        onMouseLeave={() => {
+          setIsHovering(false);
+          mouseInWindowRef.current = false;
+        }}
       >
         <canvas ref={canvasRef} className={styles["vrm-canvas"]} />
 
@@ -867,6 +892,24 @@ export default function AvatarWindow() {
         {!isLoaded && !loadError && (
           <div className={styles["loading-indicator"]}>
             <div className={styles["loading-spinner-avatar"]} />
+          </div>
+        )}
+        {loadError && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 10,
+              left: 10,
+              right: 10,
+              color: "#ff6b6b",
+              fontSize: 11,
+              background: "rgba(0,0,0,0.7)",
+              padding: 8,
+              borderRadius: 6,
+              wordBreak: "break-word",
+            }}
+          >
+            {loadError}
           </div>
         )}
       </div>

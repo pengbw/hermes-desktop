@@ -24,19 +24,19 @@ pub fn start_watching(
     kb_id: &str,
     directories: &[String],
 ) -> Result<(), String> {
-    let mut watched = state.watched_dirs.lock().map_err(|e| format!("获取监控目录锁失败: {}", e))?;
-
     let dirs_set: HashSet<PathBuf> = directories.iter().map(PathBuf::from).collect();
-    watched.insert(kb_id.to_string(), dirs_set.clone());
+
+    let watched_snapshot = {
+        let mut watched = state.watched_dirs.lock().map_err(|e| format!("获取监控目录锁失败: {}", e))?;
+        watched.insert(kb_id.to_string(), dirs_set.clone());
+        watched.clone()
+    };
 
     let mut watcher_guard = state.watcher.lock().map_err(|e| format!("获取监控器锁失败: {}", e))?;
 
     if watcher_guard.is_none() {
         let app_clone = app.clone();
-        let watched_clone = {
-            let watched = state.watched_dirs.lock().map_err(|e| format!("{}", e))?;
-            watched.clone()
-        };
+        let watched_clone = watched_snapshot.clone();
 
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<Event, notify::Error>| {
@@ -74,7 +74,7 @@ pub fn start_watching(
             }
         }
 
-        for (_, other_dirs) in watched.iter() {
+        for (_, other_dirs) in watched_snapshot.iter() {
             for dir in other_dirs.iter() {
                 if !dirs_set.contains(dir) && dir.exists() {
                     watcher.watch(dir, RecursiveMode::Recursive)
@@ -85,7 +85,7 @@ pub fn start_watching(
 
         *watcher_guard = Some(watcher);
     } else {
-        let watcher = watcher_guard.as_mut().unwrap();
+        let watcher = watcher_guard.as_mut().ok_or("文件监控器未初始化")?;
         for dir in dirs_set.iter() {
             if dir.exists() {
                 watcher.watch(dir, RecursiveMode::Recursive)

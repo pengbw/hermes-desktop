@@ -61,12 +61,16 @@ async function bootstrap() {
       );
     }
   } catch (error) {
-    // console.error("[Hermes] Failed to bootstrap app:", error);
     const root = document.getElementById("root") as HTMLElement;
-    root.innerHTML = `<div style="padding: 20px; color: red; font-family: monospace;">
-      <h2>Hermes Desktop - Bootstrap Error</h2>
-      <pre>${error}</pre>
-    </div>`;
+    const container = document.createElement("div");
+    container.style.cssText = "padding: 20px; color: red; font-family: monospace;";
+    const heading = document.createElement("h2");
+    heading.textContent = "Hermes Desktop - Bootstrap Error";
+    container.appendChild(heading);
+    const pre = document.createElement("pre");
+    pre.textContent = String(error);
+    container.appendChild(pre);
+    root.appendChild(container);
   }
 }
 

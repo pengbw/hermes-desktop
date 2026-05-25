@@ -1,10 +1,30 @@
 use crate::commands::project::{get_pool, record_activity, repair_legacy_software_dev_workflow};
+use crate::crypto::file_storage;
+use crate::crypto::key_manager;
 use crate::database::models as db;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use tauri::{AppHandle, Emitter};
 
 use super::project_execution::{auto_delegate_chat, start_workflow_run, confirm_workflow_step};
+
+async fn get_conversation_storage_path_from_pool(pool: &sqlx::SqlitePool) -> Option<String> {
+    sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'conversation_storage_path'")
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .filter(|v| !v.is_empty())
+}
+
+async fn ensure_key_initialized_from_pool(pool: &sqlx::SqlitePool) -> Result<(), String> {
+    if key_manager::get_cached_key().is_some() {
+        return Ok(());
+    }
+    let storage_path = get_conversation_storage_path_from_pool(pool).await;
+    key_manager::init_or_load_key(storage_path.as_deref())?;
+    Ok(())
+}
 #[tauri::command]
 pub async fn list_project_workflows(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectWorkflow>, String> {
     let pool = get_pool(&app)?;
@@ -1670,17 +1690,27 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
 #[tauri::command]
 pub async fn list_project_messages(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectMessage>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, String, String, String, i64, i64, i64)>(
-        "SELECT id, project_id, role_id, content, message_type, prompt_tokens, completion_tokens, created_at FROM project_messages WHERE project_id = ? ORDER BY created_at ASC"
-    )
-    .bind(&project_id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, project_id, role_id, content, message_type, prompt_tokens, completion_tokens, created_at)| db::ProjectMessage {
-        id, project_id, role_id, content, message_type, prompt_tokens, completion_tokens, created_at,
-    }).collect())
+    ensure_key_initialized_from_pool(&pool).await?;
+    let sp = get_conversation_storage_path_from_pool(&pool).await;
+
+    let encrypted_messages = file_storage::read_project_messages_file(sp.as_deref(), &project_id)?;
+
+    let messages = encrypted_messages
+        .into_iter()
+        .map(|em| db::ProjectMessage {
+            id: em.id,
+            project_id: project_id.clone(),
+            role_id: em.role_id,
+            content: em.content,
+            message_type: em.message_type,
+            prompt_tokens: em.prompt_tokens,
+            completion_tokens: em.completion_tokens,
+            created_at: em.created_at,
+        })
+        .collect();
+
+    Ok(messages)
 }
 
 #[tauri::command]
@@ -1688,18 +1718,22 @@ pub async fn create_project_message(app: AppHandle, req: db::CreateProjectMessag
     let pool = get_pool(&app)?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
-    let message_type = req.message_type.unwrap_or_else(|| "text".to_string());
+    let message_type = req.message_type.clone().unwrap_or_else(|| "text".to_string());
 
-    sqlx::query("INSERT INTO project_messages (id, project_id, role_id, content, message_type, prompt_tokens, completion_tokens, created_at) VALUES (?, ?, ?, ?, ?, 0, 0, ?)")
-        .bind(&id)
-        .bind(&req.project_id)
-        .bind(&req.role_id)
-        .bind(&req.content)
-        .bind(&message_type)
-        .bind(now)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    ensure_key_initialized_from_pool(&pool).await?;
+    let sp = get_conversation_storage_path_from_pool(&pool).await;
+
+    let encrypted_msg = file_storage::EncryptedProjectMessage {
+        id: id.clone(),
+        role_id: req.role_id.clone(),
+        content: req.content.clone(),
+        message_type: message_type.clone(),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        created_at: now,
+    };
+
+    file_storage::append_message_to_project(sp.as_deref(), &req.project_id, encrypted_msg)?;
 
     let content_preview = if req.content.len() > 50 { req.content.chars().take(50).collect::<String>() } else { req.content.clone() };
     let _ = record_activity(&app, &req.project_id, Some(&req.role_id), "message_sent", Some("message"), Some(&id), &format!("发送了消息：{}...", content_preview)).await;

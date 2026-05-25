@@ -1,0 +1,83 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-05-24",
+  "providers": [
+    {
+      "value": "nvidia",
+      "name": { "zh-CN": "NVIDIA NIM", "zh-XG": "NVIDIA NIM", "en": "NVIDIA NIM" },
+      "baseUrl": "https://integrate.api.nvidia.com/v1",
+      "apiKeyEnv": "NVIDIA_API_KEY",
+      "icon": "nvidia"
+    },
+    {
+      "value": "openrouter",
+      "name": { "zh-CN": "OpenRouter", "zh-XG": "OpenRouter", "en": "OpenRouter" },
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "icon": "openrouter"
+    },
+    {
+      "value": "openai",
+      "name": { "zh-CN": "OpenAI", "zh-XG": "OpenAI", "en": "OpenAI" },
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "icon": "openai"
+    },
+    {
+      "value": "anthropic",
+      "name": { "zh-CN": "Anthropic", "zh-XG": "Anthropic", "en": "Anthropic" },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "icon": "anthropic"
+    },
+    {
+      "value": "nous",
+      "name": { "zh-CN": "Nous", "zh-XG": "Nous", "en": "Nous" },
+      "baseUrl": "",
+      "apiKeyEnv": "NOUS_API_KEY",
+      "icon": "nous"
+    },
+    {
+      "value": "deepseek",
+      "name": { "zh-CN": "DeepSeek", "zh-XG": "DeepSeek", "en": "DeepSeek" },
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKeyEnv": "DEEPSEEK_API_KEY",
+      "icon": "deepseek"
+    },
+    {
+      "value": "ollama",
+      "name": { "zh-CN": "Ollama (本地)", "zh-XG": "Ollama (本機)", "en": "Ollama (Local)" },
+      "baseUrl": "http://localhost:11434/v1",
+      "apiKeyEnv": "",
+      "icon": "ollama"
+    },
+    {
+      "value": "minimax",
+      "name": { "zh-CN": "MiniMax", "zh-XG": "MiniMax", "en": "MiniMax" },
+      "baseUrl": "",
+      "apiKeyEnv": "MINIMAX_API_KEY",
+      "icon": "minimax"
+    },
+    {
+      "value": "minimax-cn",
+      "name": { "zh-CN": "MiniMax (国内)", "zh-XG": "MiniMax (大陸)", "en": "MiniMax (China)" },
+      "baseUrl": "",
+      "apiKeyEnv": "MINIMAX_API_KEY",
+      "icon": "minimax"
+    },
+    {
+      "value": "zai",
+      "name": { "zh-CN": "Z.AI / GLM", "zh-XG": "Z.AI / GLM", "en": "Z.AI / GLM" },
+      "baseUrl": "",
+      "apiKeyEnv": "ZAI_API_KEY",
+      "icon": "zai"
+    },
+    {
+      "value": "kimi",
+      "name": { "zh-CN": "Kimi", "zh-XG": "Kimi", "en": "Kimi" },
+      "baseUrl": "https://api.moonshot.cn/v1",
+      "apiKeyEnv": "KIMI_API_KEY",
+      "icon": "kimi"
+    }
+  ]
+}

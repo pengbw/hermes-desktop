@@ -30,7 +30,7 @@ interface ProjectStore {
 
   loadProjects: () => Promise<void>;
   selectProject: (project: ProjectItem | null) => Promise<void>;
-  loadAllRoles: () => Promise<void>;
+  loadAllRoles: (locale?: string) => Promise<void>;
   setProjectMembers: (members: ProjectMember[]) => void;
   setProjectArtifacts: (artifacts: ProjectArtifact[]) => void;
   setProjectWorkflows: (workflows: ProjectWorkflow[]) => void;
@@ -132,9 +132,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     }
   },
 
-  loadAllRoles: async () => {
+  loadAllRoles: async (locale?: string) => {
     try {
-      const roles = await invoke<AiRoleItem[]>("list_ai_roles");
+      const roles = await invoke<AiRoleItem[]>("list_ai_roles", { locale: locale ?? "zh-CN" });
       set({ allRoles: roles });
     } catch {
       // console.error("Failed to load roles:", err);

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { SkillItem } from "@core/types";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useI18n } from "@contexts/I18nContext";
 
 interface RoleSkill {
   id: string;
@@ -57,6 +58,7 @@ const EMPTY_FORM = {
 };
 
 function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
+  const { locale } = useI18n();
   const [roles, setRoles] = useState<AiRoleItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingRole, setEditingRole] = useState<AiRoleItem | null>(null);
@@ -73,7 +75,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
 
   const loadRoles = async () => {
     try {
-      const list = await invoke<AiRoleItem[]>("list_ai_roles");
+      const list = await invoke<AiRoleItem[]>("list_ai_roles", { locale });
       setRoles(list);
     } catch {
       // console.error("Failed to load AI roles:", err);
@@ -98,7 +100,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
 
   useEffect(() => {
     loadRoles();
-  }, [loadRoles]);
+  }, [locale]);
 
   useEffect(() => {
     invoke<{ skills: SkillItem[] }>("list_hermes_skills")
