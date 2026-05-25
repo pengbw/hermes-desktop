@@ -29,6 +29,138 @@ async fn ensure_key_initialized(pool: &SqlitePool) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn import_role_from_file(app: AppHandle, file_path: String, locale: Option<String>) -> Result<db::AiRole, String> {
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+    let loc = locale.as_deref().unwrap_or("zh-CN");
+
+    let content = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("无法读取文件: {}", e))?;
+
+    let seed: crate::database::seeds::RoleSeed = serde_json::from_str(&content)
+        .map_err(|e| format!("JSON解析失败: {}", e))?;
+
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM ai_roles WHERE id = ?"
+    )
+    .bind(&seed.id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if existing.is_some() {
+        return Err(format!("角色ID「{}」已存在，无法重复导入", seed.id));
+    }
+
+    let max_sort: Option<i64> = sqlx::query_scalar("SELECT MAX(sort_order) FROM ai_roles")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let sort_order = max_sort.unwrap_or(0) + 1;
+
+    let name = crate::database::seeds::resolve_localized(&seed.name, loc).to_string();
+    let description = crate::database::seeds::resolve_localized(&seed.description, loc).to_string();
+    let responsibilities = crate::database::seeds::resolve_localized(&seed.responsibilities, loc).to_string();
+    let soul_content = crate::database::seeds::resolve_localized(&seed.soul_content, loc).to_string();
+
+    sqlx::query(
+        "INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', 'default', ?, ?, ?, 0, 100, 'neutral', ?, ?)"
+    )
+    .bind(&seed.id)
+    .bind(&name)
+    .bind(&seed.nickname)
+    .bind(&seed.icon)
+    .bind(&description)
+    .bind(&responsibilities)
+    .bind(&soul_content)
+    .bind(&seed.avatar_preset)
+    .bind(&seed.avatar_color)
+    .bind(sort_order)
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let role: db::AiRole = sqlx::query_as::<_, db::AiRole>(
+        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
+    )
+    .bind(&seed.id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(role)
+}
+
+#[tauri::command]
+pub async fn export_role_to_file(app: AppHandle, role_id: String, file_path: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+
+    let role: db::AiRole = sqlx::query_as::<_, db::AiRole>(
+        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
+    )
+    .bind(&role_id)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let seed = if role.is_builtin {
+        let seed_id = role.id.strip_prefix("builtin_").unwrap_or(&role.id);
+        if let Some(builtin) = crate::database::seeds::get_builtin_role(seed_id) {
+            crate::database::seeds::RoleSeed {
+                id: builtin.id.clone(),
+                template_id: builtin.template_id.clone(),
+                nickname: builtin.nickname.clone(),
+                icon: builtin.icon.clone(),
+                name: builtin.name.clone(),
+                description: builtin.description.clone(),
+                responsibilities: builtin.responsibilities.clone(),
+                soul_content: builtin.soul_content.clone(),
+                avatar_preset: builtin.avatar_preset.clone(),
+                avatar_color: builtin.avatar_color.clone(),
+            }
+        } else {
+            fallback_export_seed(&role)
+        }
+    } else {
+        fallback_export_seed(&role)
+    };
+
+    let json = serde_json::to_string_pretty(&seed)
+        .map_err(|e| format!("JSON序列化失败: {}", e))?;
+
+    std::fs::write(&file_path, json)
+        .map_err(|e| format!("无法写入文件: {}", e))?;
+
+    Ok(())
+}
+
+fn fallback_export_seed(role: &db::AiRole) -> crate::database::seeds::RoleSeed {
+    let mut name_map = std::collections::HashMap::new();
+    name_map.insert("zh-CN".to_string(), role.name.clone());
+    let mut desc_map = std::collections::HashMap::new();
+    desc_map.insert("zh-CN".to_string(), role.description.clone());
+    let mut resp_map = std::collections::HashMap::new();
+    resp_map.insert("zh-CN".to_string(), role.responsibilities.clone());
+    let mut soul_map = std::collections::HashMap::new();
+    soul_map.insert("zh-CN".to_string(), role.soul_content.clone());
+
+    crate::database::seeds::RoleSeed {
+        id: role.id.clone(),
+        template_id: String::new(),
+        nickname: role.nickname.clone(),
+        icon: role.icon.clone(),
+        name: name_map,
+        description: desc_map,
+        responsibilities: resp_map,
+        soul_content: soul_map,
+        avatar_preset: role.avatar_preset.clone(),
+        avatar_color: role.avatar_color.clone(),
+    }
+}
+
+#[tauri::command]
 pub async fn get_avatar_conversation(app: AppHandle) -> Result<Option<db::Conversation>, String> {
     let pool = get_pool(&app)?;
     let row = sqlx::query_as::<_, (String, String, Option<String>, String, Option<String>, Option<String>, i64, i64, i64)>(
@@ -244,7 +376,9 @@ pub async fn delete_avatar_gesture(app: AppHandle, id: String) -> Result<(), Str
 pub async fn list_ai_roles(app: AppHandle, locale: Option<String>) -> Result<Vec<db::AiRole>, String> {
     let pool = get_pool(&app)?;
 
-    let _ = seed_builtin_templates(&pool).await;
+    if let Err(e) = seed_builtin_templates(&pool).await {
+        log::error!("list_ai_roles: seed_builtin_templates failed: {}", e);
+    }
 
     let mut rows = sqlx::query_as::<_, db::AiRole>(
         "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles ORDER BY sort_order ASC, created_at ASC"
@@ -254,19 +388,15 @@ pub async fn list_ai_roles(app: AppHandle, locale: Option<String>) -> Result<Vec
     .map_err(|e| e.to_string())?;
 
     let loc = locale.as_deref().unwrap_or("zh-CN");
-    let templates_data = crate::database::seeds::load_project_templates();
 
     for role in &mut rows {
         if role.is_builtin {
             let seed_id = role.id.strip_prefix("builtin_").unwrap_or(&role.id);
-            for tmpl in &templates_data.templates {
-                if let Some(seed) = tmpl.roles.iter().find(|r| r.id == seed_id) {
-                    role.name = crate::database::seeds::resolve_localized(&seed.name, loc).to_string();
-                    role.description = crate::database::seeds::resolve_localized(&seed.description, loc).to_string();
-                    role.responsibilities = crate::database::seeds::resolve_localized(&seed.responsibilities, loc).to_string();
-                    role.soul_content = crate::database::seeds::resolve_localized(&seed.soul_content, loc).to_string();
-                    break;
-                }
+            if let Some(seed) = crate::database::seeds::get_builtin_role(seed_id) {
+                role.name = crate::database::seeds::resolve_localized(&seed.name, loc).to_string();
+                role.description = crate::database::seeds::resolve_localized(&seed.description, loc).to_string();
+                role.responsibilities = crate::database::seeds::resolve_localized(&seed.responsibilities, loc).to_string();
+                role.soul_content = crate::database::seeds::resolve_localized(&seed.soul_content, loc).to_string();
             }
         }
     }

@@ -160,6 +160,11 @@ function ProjectDetail({
     "overview" | "taskmgmt" | "kanban" | "members" | "workflows" | "chat"
   >("overview");
   const [chatInput, setChatInput] = useState("");
+  const chatInputRef = useRef("");
+  const projectChatEventIdRef = useRef("");
+  useEffect(() => {
+    chatInputRef.current = chatInput;
+  }, [chatInput]);
   const [chatTargetRole, setChatTargetRole] = useState<string>("");
   const [projectChatStreaming, setProjectChatStreaming] = useState(false);
   const [projectChatStreamed, setProjectChatStreamed] = useState("");
@@ -333,13 +338,16 @@ function ProjectDetail({
       // console.error("Failed to send message:", err);
     }
 
-    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g;
+    const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)(?=\s|$)/g;
     const mentionedRoleIds: string[] = [];
     let match;
     while ((match = mentionRegex.exec(content)) !== null) {
       mentionedRoleIds.push(match[1]);
     }
-    const cleanContent = content.replace(mentionRegex, (_m, _id, display) => `@${display}`);
+    const cleanContent = content.replace(
+      /@\[([^\]]+)\]\(([^)]+)\)/g,
+      (_m, _id, display) => `@${display}`
+    );
 
     if (mentionedRoleIds.length > 1) {
       setProjectChatStreaming(true);
@@ -372,6 +380,7 @@ function ProjectDetail({
           onMessagesUpdate(msgs);
           setProjectChatStreaming(false);
           setProjectChatStreamed("");
+          projectChatEventIdRef.current = "";
           loadFileRecords();
           unlisten();
         } else {
@@ -389,6 +398,7 @@ function ProjectDetail({
         // console.error("Failed to chat with roles:", err);
         setProjectChatStreaming(false);
         setProjectChatStreamed("");
+        projectChatEventIdRef.current = "";
         unlisten();
       }
       return;
@@ -401,37 +411,48 @@ function ProjectDetail({
     setProjectChatStreamed("");
 
     const eventId = `project_chat_${project.id}_${Date.now()}`;
+    projectChatEventIdRef.current = eventId;
 
-    const unlisten = await listen<{ chunk: string; done: boolean; fullContent?: string }>(
-      eventId,
-      async (event) => {
-        if (event.payload.done) {
-          const fullContent = event.payload.fullContent || "";
-          try {
-            await invoke("create_project_message", {
-              req: {
-                projectId: project.id,
-                roleId: targetRole,
-                content: fullContent,
-                messageType: "text",
-              },
-            });
-            const msgs = await invoke<ProjectMessage[]>("list_project_messages", {
-              projectId: project.id,
-            });
-            onMessagesUpdate(msgs);
-          } catch {
-            // console.error("Failed to save AI message:", err);
-          }
+    const unlisten = await listen<{
+      chunk: string;
+      done: boolean;
+      fullContent?: string;
+      cancelled?: boolean;
+    }>(eventId, async (event) => {
+      if (event.payload.done) {
+        if (event.payload.cancelled) {
           setProjectChatStreaming(false);
           setProjectChatStreamed("");
-          loadFileRecords();
+          projectChatEventIdRef.current = "";
           unlisten();
-        } else {
-          setProjectChatStreamed((prev) => prev + event.payload.chunk);
+          return;
         }
+        const fullContent = event.payload.fullContent || "";
+        try {
+          await invoke("create_project_message", {
+            req: {
+              projectId: project.id,
+              roleId: targetRole,
+              content: fullContent,
+              messageType: "text",
+            },
+          });
+          const msgs = await invoke<ProjectMessage[]>("list_project_messages", {
+            projectId: project.id,
+          });
+          onMessagesUpdate(msgs);
+        } catch {
+          // console.error("Failed to save AI message:", err);
+        }
+        setProjectChatStreaming(false);
+        setProjectChatStreamed("");
+        projectChatEventIdRef.current = "";
+        loadFileRecords();
+        unlisten();
+      } else {
+        setProjectChatStreamed((prev) => prev + event.payload.chunk);
       }
-    );
+    });
 
     try {
       await invoke("chat_with_project_role", {
@@ -444,6 +465,7 @@ function ProjectDetail({
       // console.error("Failed to chat with role:", err);
       setProjectChatStreaming(false);
       setProjectChatStreamed("");
+      projectChatEventIdRef.current = "";
       unlisten();
     }
   };
@@ -661,6 +683,11 @@ function ProjectDetail({
                                   label: t("studio.taskStatus.done"),
                                   color: "#00b894",
                                   icon: "✅",
+                                },
+                                failed: {
+                                  label: t("studio.taskStatus.failed"),
+                                  color: "#e17055",
+                                  icon: "❌",
                                 },
                                 blocked: {
                                   label: t("studio.taskStatus.blocked"),
@@ -982,122 +1009,167 @@ function ProjectDetail({
                     </div>
                   )}
                   <div className={styles.studioChatInputRow}>
-                    <MentionsInput
-                      className={`${styles.studioChatMentions} chatMentions`}
-                      value={chatInput}
-                      onChange={(_e, newValue: string) => setChatInput(newValue)}
-                      allowSuggestionsAboveCursor={true}
-                      placeholder={
-                        projectChatStreaming
-                          ? t("studio.chat.replying")
-                          : t("studio.chat.placeholder")
-                      }
-                      disabled={projectChatStreaming}
-                      onKeyDown={(e: React.KeyboardEvent) => {
-                        if (
-                          e.key === "Enter" &&
-                          !e.shiftKey &&
-                          chatInput.trim() &&
-                          !projectChatStreaming
-                        ) {
-                          e.preventDefault();
-                          handleProjectChatSend(chatInput.trim());
-                          setChatInput("");
+                    <div className={styles.studioChatInputBox}>
+                      <MentionsInput
+                        className={`${styles.studioChatMentions} chatMentions`}
+                        value={chatInput}
+                        onChange={(_e, newValue: string) => {
+                          setChatInput(newValue);
+                          chatInputRef.current = newValue;
+                        }}
+                        allowSuggestionsAboveCursor={true}
+                        placeholder={
+                          projectChatStreaming
+                            ? t("studio.chat.replying")
+                            : t("studio.chat.placeholder")
                         }
-                      }}
-                      style={{
-                        control: {
-                          backgroundColor: "var(--bg-secondary)",
-                          fontSize: 13,
-                          minHeight: 36,
-                          border: "1px solid var(--border-color)",
-                          borderRadius: 8,
-                          padding: "6px 10px",
-                          color: "var(--text-primary)",
-                        },
-                        highlighter: {
-                          padding: "6px 10px",
-                          border: "1px solid transparent",
-                        },
-                        input: {
-                          padding: "6px 10px",
-                          border: "1px solid transparent",
-                          outline: "none",
-                        },
-                        suggestions: {
-                          list: {
-                            backgroundColor: "var(--bg-primary)",
-                            border: "1px solid var(--border-color)",
-                            borderRadius: 6,
+                        disabled={projectChatStreaming}
+                        onKeyDown={(e: React.KeyboardEvent) => {
+                          const currentInput = chatInputRef.current;
+                          if (
+                            e.key === "Enter" &&
+                            !e.shiftKey &&
+                            currentInput.trim() &&
+                            !projectChatStreaming
+                          ) {
+                            e.preventDefault();
+                            handleProjectChatSend(currentInput.trim());
+                            setChatInput("");
+                            chatInputRef.current = "";
+                          }
+                        }}
+                        style={{
+                          control: {
                             fontSize: 13,
-                            zIndex: 9999,
+                            minHeight: 80,
+                            border: "none",
+                            borderRadius: 0,
+                            padding: "10px 12px",
+                            color: "var(--text-primary)",
+                            backgroundColor: "transparent",
                           },
-                          item: {
-                            padding: "6px 12px",
-                            borderBottom: "1px solid var(--border-color)",
-                            "&focused": {
-                              backgroundColor: "var(--bg-hover)",
+                          highlighter: {
+                            padding: "10px 12px",
+                            border: "1px solid transparent",
+                          },
+                          input: {
+                            padding: "10px 12px",
+                            border: "none",
+                            outline: "none",
+                          },
+                          suggestions: {
+                            list: {
+                              backgroundColor: "var(--bg-primary)",
+                              border: "1px solid var(--border-color)",
+                              borderRadius: 10,
+                              fontSize: 13,
+                              zIndex: 9999,
+                            },
+                            item: {
+                              padding: "6px 12px",
+                              borderBottom: "1px solid var(--border-color)",
+                              "&focused": {
+                                backgroundColor: "var(--bg-hover)",
+                              },
                             },
                           },
-                        },
-                      }}
-                    >
-                      <Mention
-                        trigger="@"
-                        data={mentionData}
-                        markup="@[__id__](__display__)"
-                        displayTransform={(_id: string, display: string) => `@${display}`}
-                        renderSuggestion={renderSuggestion}
-                      />
-                    </MentionsInput>
-                    <button
-                      className={styles.studioChatSendBtn}
-                      disabled={projectChatStreaming || !chatInput.trim()}
-                      onClick={() => {
-                        if (chatInput.trim() && !projectChatStreaming) {
-                          handleProjectChatSend(chatInput.trim());
-                          setChatInput("");
-                        }
-                      }}
-                    >
-                      {projectChatStreaming ? "..." : t("studio.chat.send")}
-                    </button>
+                        }}
+                      >
+                        <Mention
+                          trigger="@"
+                          data={mentionData}
+                          markup="@[__id__](__display__)"
+                          displayTransform={(_id: string, display: string) => `@${display}`}
+                          renderSuggestion={renderSuggestion}
+                        />
+                      </MentionsInput>
+
+                      <div className={styles.studioChatInputActions}>
+                        <div className={styles.studioChatInputActionsLeft}>
+                          {projectWorkflows.length > 0 && projectMembers.length > 1 && (
+                            <button
+                              className={styles.studioChatAutoBtn}
+                              disabled={autoDelegateRunning || projectChatStreaming}
+                              title={
+                                autoDelegateRunning
+                                  ? t("studio.chat.autoDelegating")
+                                  : t("studio.chat.autoDelegateDesc")
+                              }
+                              onClick={async () => {
+                                if (autoDelegateRunning) return;
+                                setAutoDelegateRunning(true);
+                                try {
+                                  const firstMember = projectMembers[0];
+                                  if (!firstMember) return;
+                                  const startRoleId = chatTargetRole || firstMember.roleId;
+                                  const message =
+                                    chatInput.trim() || t("studio.chat.defaultPrompt");
+                                  await invoke("run_workflow_auto_chat", {
+                                    projectId: project.id,
+                                    startRoleId,
+                                    initialMessage: message,
+                                    eventId: `auto-chat-${Date.now()}`,
+                                  });
+                                  const msgs = await invoke<ProjectMessage[]>(
+                                    "list_project_messages",
+                                    {
+                                      projectId: project.id,
+                                    }
+                                  );
+                                  onMessagesUpdate(msgs);
+                                  setChatInput("");
+                                } catch {
+                                  // console.error("Auto delegate failed:", err);
+                                } finally {
+                                  setAutoDelegateRunning(false);
+                                }
+                              }}
+                            >
+                              <span className={styles.studioChatAutoBtnIcon}>
+                                {autoDelegateRunning ? "⏳" : "⚡"}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          className={`${styles.studioChatSendBtn} ${projectChatStreaming ? styles.studioChatStopBtn : ""}`}
+                          disabled={!projectChatStreaming && !chatInput.trim()}
+                          onClick={() => {
+                            if (projectChatStreaming) {
+                              if (projectChatEventIdRef.current) {
+                                invoke("stop_chat_stream", {
+                                  eventId: projectChatEventIdRef.current,
+                                });
+                              }
+                            } else if (chatInput.trim()) {
+                              handleProjectChatSend(chatInput.trim());
+                              setChatInput("");
+                              chatInputRef.current = "";
+                            }
+                          }}
+                          title={
+                            projectChatStreaming ? t("studio.chat.stop") : t("studio.chat.send")
+                          }
+                        >
+                          {projectChatStreaming ? (
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                              <rect x="1" y="1" width="12" height="12" rx="2" />
+                            </svg>
+                          ) : (
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                              <path
+                                d="M1 8L15 2L12 15L8.5 9.5L1 8Z"
+                                fill="currentColor"
+                                stroke="currentColor"
+                                strokeWidth="0.8"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  {projectWorkflows.length > 0 && projectMembers.length > 1 && (
-                    <button
-                      className={styles.studioChatAutoBtn}
-                      disabled={autoDelegateRunning || projectChatStreaming}
-                      onClick={async () => {
-                        if (autoDelegateRunning) return;
-                        setAutoDelegateRunning(true);
-                        try {
-                          const firstMember = projectMembers[0];
-                          if (!firstMember) return;
-                          const startRoleId = chatTargetRole || firstMember.roleId;
-                          const message = chatInput.trim() || t("studio.chat.defaultPrompt");
-                          await invoke("run_workflow_auto_chat", {
-                            projectId: project.id,
-                            startRoleId,
-                            initialMessage: message,
-                            eventId: `auto-chat-${Date.now()}`,
-                          });
-                          const msgs = await invoke<ProjectMessage[]>("list_project_messages", {
-                            projectId: project.id,
-                          });
-                          onMessagesUpdate(msgs);
-                          setChatInput("");
-                        } catch {
-                          // console.error("Auto delegate failed:", err);
-                        } finally {
-                          setAutoDelegateRunning(false);
-                        }
-                      }}
-                    >
-                      {autoDelegateRunning
-                        ? t("studio.chat.autoDelegating")
-                        : t("studio.chat.autoDelegate")}
-                    </button>
-                  )}
                 </div>
               </div>
             </div>

@@ -91,8 +91,10 @@ pub struct UIStylesData {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct TemplateRoleSeed {
+pub struct RoleSeed {
     pub id: String,
+    #[serde(rename = "templateId")]
+    pub template_id: String,
     pub nickname: String,
     pub icon: String,
     pub name: LocalizedString,
@@ -131,7 +133,8 @@ pub struct ProjectTemplateSeed {
     pub project_rule: LocalizedString,
     #[serde(rename = "projectGuidelines")]
     pub project_guidelines: LocalizedString,
-    pub roles: Vec<TemplateRoleSeed>,
+    #[serde(rename = "roleIds")]
+    pub role_ids: Vec<String>,
     pub workflows: Vec<TemplateWorkflowSeed>,
 }
 
@@ -159,3 +162,33 @@ define_seed_loader!(load_quick_cards, QuickCardsData, "../../resources/quick-car
 define_seed_loader!(load_gestures, GesturesData, "../../resources/gestures.json");
 define_seed_loader!(load_ui_styles, UIStylesData, "../../resources/ui-styles.json");
 define_seed_loader!(load_project_templates, ProjectTemplatesData, "../../resources/project-templates.json");
+
+pub fn load_builtin_roles() -> Vec<RoleSeed> {
+    let files: &[&str] = &[
+        include_str!("../../resources/roles/software_dev/pm.json"),
+        include_str!("../../resources/roles/software_dev/dev.json"),
+        include_str!("../../resources/roles/software_dev/qa.json"),
+        include_str!("../../resources/roles/software_dev/reviewer.json"),
+        include_str!("../../resources/roles/content_creation/planner.json"),
+        include_str!("../../resources/roles/content_creation/writer.json"),
+        include_str!("../../resources/roles/content_creation/editor.json"),
+        include_str!("../../resources/roles/content_creation/auditor.json"),
+        include_str!("../../resources/roles/game_dev/designer.json"),
+        include_str!("../../resources/roles/game_dev/artist.json"),
+        include_str!("../../resources/roles/game_dev/coder.json"),
+        include_str!("../../resources/roles/game_dev/tester.json"),
+        include_str!("../../resources/roles/research_project/pi.json"),
+        include_str!("../../resources/roles/research_project/lr.json"),
+        include_str!("../../resources/roles/research_project/er.json"),
+        include_str!("../../resources/roles/research_project/de.json"),
+        include_str!("../../resources/roles/research_project/ba.json"),
+        include_str!("../../resources/roles/research_project/ds.json"),
+    ];
+    files.iter().map(|s| serde_json::from_str::<RoleSeed>(s).unwrap()).collect()
+}
+
+pub fn get_builtin_role(role_id: &str) -> Option<&'static RoleSeed> {
+    static CACHE: OnceLock<Vec<RoleSeed>> = OnceLock::new();
+    let roles = CACHE.get_or_init(load_builtin_roles);
+    roles.iter().find(|r| r.id == role_id)
+}

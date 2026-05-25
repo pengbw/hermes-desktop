@@ -1,5 +1,6 @@
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
+use crate::commands::provider::decrypt_api_key;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GITHUB_REPO: &str = "hermes-desktop/hermes-desktop";
@@ -180,6 +181,8 @@ pub async fn list_models(
     .fetch_one(&pool)
     .await
     .map_err(|e| format!("Provider not found: {}", e))?;
+
+    let api_key = decrypt_api_key(&api_key);
 
     if base_url.is_empty() {
         return Err("Provider has no API Base URL configured".to_string());

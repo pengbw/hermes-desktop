@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import type { KnowledgeSource, Message } from "@core/types";
@@ -29,6 +29,7 @@ export function useStreamingChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatStatesRef = useRef<Map<string, ChatSessionState>>(new Map());
   const activeConvIdRef = useRef<string | null>(null);
+  const currentEventIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -94,6 +95,7 @@ export function useStreamingChat() {
     });
 
     const { eventId } = invokeParams;
+    currentEventIdRef.current = eventId;
     const isVoiceMessage = invokeParams.isVoiceMessage || false;
     let fullContent = "";
     let pendingSources: KnowledgeSource[] = [];
@@ -117,11 +119,21 @@ export function useStreamingChat() {
         const assistantMsg: Message = {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: fullContent,
+          content:
+            fullContent || (event.payload as { cancelled?: boolean }).cancelled ? "" : fullContent,
           timestamp: Date.now(),
           knowledgeSources: pendingSources.length > 0 ? [...pendingSources] : undefined,
           messageType: isVoiceMessage ? "voice" : "text",
         };
+
+        if ((event.payload as { cancelled?: boolean }).cancelled) {
+          onMessage(assistantMsg);
+          updateChatState(convId, { isStreaming: false, isThinking: false, toolProgress: "" });
+          unlisten();
+          unlistenSources();
+          onDone();
+          return;
+        }
 
         if (isVoiceMessage) {
           updateChatState(convId, {
@@ -240,6 +252,13 @@ export function useStreamingChat() {
     }
   };
 
+  const stopStreaming = useCallback(async () => {
+    const eventId = currentEventIdRef.current;
+    if (eventId) {
+      await invoke("stop_chat_stream", { eventId });
+    }
+  }, []);
+
   return {
     isStreaming,
     isThinking,
@@ -250,5 +269,6 @@ export function useStreamingChat() {
     setActiveConversation,
     updateChatState,
     startStreaming,
+    stopStreaming,
   };
 }

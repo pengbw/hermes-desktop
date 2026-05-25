@@ -42,6 +42,7 @@ interface ChatPanelProps {
     audioPath: string,
     audioDuration?: number
   ) => Promise<void>;
+  stopStreaming?: () => void;
 }
 
 function ChatPanel({
@@ -62,6 +63,7 @@ function ChatPanel({
   toolProgress,
   messagesEndRef,
   streamVoiceResponse,
+  stopStreaming,
 }: ChatPanelProps) {
   const { t } = useI18n();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -258,6 +260,7 @@ function ChatPanel({
           input={input}
           setInput={setInput}
           onSend={handleSend}
+          onStop={stopStreaming}
           onSttComplete={handleSttComplete}
           isStreaming={isStreaming}
           voiceEnabled={voiceEnabled}

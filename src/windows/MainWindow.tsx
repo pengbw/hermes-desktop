@@ -158,6 +158,7 @@ export default function MainWindow() {
                   toolProgress={chat.toolProgress}
                   messagesEndRef={chat.messagesEndRef}
                   streamVoiceResponse={chat.streamVoiceResponse}
+                  stopStreaming={chat.stopStreaming}
                 />
               )}
               {activeTab === "settings" && (

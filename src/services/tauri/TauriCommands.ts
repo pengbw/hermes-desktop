@@ -94,6 +94,10 @@ export const TauriCommands = {
     return invoke<string>("chat_with_hermes_api", { ...params });
   },
 
+  async stopChatStream(eventId: string): Promise<void> {
+    return invoke("stop_chat_stream", { eventId });
+  },
+
   async listProviders(
     locale?: string
   ): Promise<{ id: string; name: string; value: string; baseUrl: string; apiKey: string }[]> {
@@ -142,6 +146,14 @@ export const TauriCommands = {
 
   async deleteAiRole(id: string): Promise<void> {
     return invoke("delete_ai_role", { id });
+  },
+
+  async importRoleFromFile(filePath: string, locale?: string): Promise<AiRoleItem> {
+    return invoke<AiRoleItem>("import_role_from_file", { filePath, locale });
+  },
+
+  async exportRoleToFile(roleId: string, filePath: string): Promise<void> {
+    return invoke("export_role_to_file", { roleId, filePath });
   },
 
   async listKnowledgeBases(): Promise<KnowledgeBase[]> {
@@ -270,6 +282,10 @@ export const TauriCommands = {
 
   async deleteProjectTask(id: string): Promise<void> {
     return invoke("delete_project_task", { id });
+  },
+
+  async retryProjectTask(taskId: string): Promise<void> {
+    return invoke("retry_project_task", { taskId });
   },
 
   async addProjectWorkflow(

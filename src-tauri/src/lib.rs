@@ -9,8 +9,9 @@ use commands::helpers::{
     AppState, AgentProcess, home_dir, hermes_home_dir, path_with_local_bin, get_ssl_cert_file,
 };
 use sqlx::SqlitePool;
+use std::collections::HashMap;
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri::Listener;
 
@@ -102,7 +103,7 @@ pub fn run() {
                             }
                             Err(e) => log::error!("Message migration failed: {}", e),
                         }
-                        app_handle.manage(AppState { db_pool: pool, local_embedding: services::local_embedding::LocalEmbeddingState::new(), file_watcher: services::file_watcher::FileWatcherState::new() });
+                        app_handle.manage(AppState { db_pool: pool, local_embedding: services::local_embedding::LocalEmbeddingState::new(), file_watcher: services::file_watcher::FileWatcherState::new(), cancel_map: Arc::new(Mutex::new(HashMap::new())) });
                     }
                     Err(e) => {
                         log::warn!("Database connection failed: {}, attempting recovery...", e);
@@ -125,7 +126,7 @@ pub fn run() {
                                     }
                                     Err(e) => log::error!("Message migration failed: {}", e),
                                 }
-                                app_handle.manage(AppState { db_pool: pool, local_embedding: services::local_embedding::LocalEmbeddingState::new(), file_watcher: services::file_watcher::FileWatcherState::new() });
+                                app_handle.manage(AppState { db_pool: pool, local_embedding: services::local_embedding::LocalEmbeddingState::new(), file_watcher: services::file_watcher::FileWatcherState::new(), cancel_map: Arc::new(Mutex::new(HashMap::new())) });
                             }
                             Err(e2) => {
                                 log::error!("Database recovery failed: {}", e2);
@@ -298,6 +299,7 @@ pub fn run() {
             commands::window::set_titlebar_theme,
             commands::hermes_chat::chat_with_hermes_stream,
             commands::hermes_chat::chat_with_hermes_api,
+            commands::hermes_chat::stop_chat_stream,
             commands::install::open_log_dir,
             commands::install::get_hermes_info,
             commands::install::check_hermes_installed,
@@ -358,6 +360,8 @@ pub fn run() {
             commands::avatar::delete_ai_role,
             commands::avatar::update_role_energy,
             commands::avatar::recover_role_energy,
+            commands::avatar::import_role_from_file,
+            commands::avatar::export_role_to_file,
             commands::provider::list_providers,
             commands::provider::create_provider,
             commands::provider::update_provider,
@@ -407,6 +411,7 @@ pub fn run() {
             commands::project_tasks::create_project_task,
             commands::project_tasks::update_project_task,
             commands::project_tasks::delete_project_task,
+            commands::project_tasks::retry_project_task,
             commands::project_execution::add_task_comment,
             commands::project_execution::list_task_comments,
             commands::project_execution::link_tasks,

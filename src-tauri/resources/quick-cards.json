@@ -1,15 +1,15 @@
 {
-  "version": "1.0.0",
-  "updatedAt": "2026-05-24",
+  "version": "2.0.0",
+  "updatedAt": "2026-05-25",
   "cards": [
     {
       "id": "mindmap",
       "name": { "zh-CN": "思维导图", "zh-XG": "思維導圖", "en": "Mind Map" },
       "icon": "🧠",
       "prompt": {
-        "zh-CN": "请帮我生成一个关于「主题」的思维导图，用markdown格式列出清晰的层级结构，包含中心主题、主要分支和细节要点。",
-        "zh-XG": "請幫我生成一個關於「主題」的思維導圖，用markdown格式列出清晰的層級結構，包含中心主題、主要分支和細節要點。",
-        "en": "Please help me generate a mind map about [topic], using markdown format with clear hierarchical structure, including central theme, main branches, and detail points."
+        "zh-CN": "请帮我为一个主题生成结构化思维导图。请先问我主题是什么，确认后以Markdown格式输出层级分明的思维导图：中心主题 → 3-5个一级分支 → 每个分支下2-3个二级要点，逻辑清晰、覆盖全面。",
+        "zh-XG": "請幫我為一個主題生成結構化思維導圖。請先問我主題是什麼，確認後以Markdown格式輸出層級分明的思維導圖：中心主題 → 3-5個一級分支 → 每個分支下2-3個二級要點，邏輯清晰、覆蓋全面。",
+        "en": "Please help me generate a structured mind map for a topic. First ask me what the topic is, then output a well-organized mind map in Markdown format: central theme → 3-5 main branches → 2-3 sub-points each, with clear logic and comprehensive coverage."
       },
       "source": "builtin"
     },
@@ -18,9 +18,9 @@
       "name": { "zh-CN": "周报生成", "zh-XG": "週報生成", "en": "Weekly Report" },
       "icon": "📊",
       "prompt": {
-        "zh-CN": "请根据以下工作内容，帮我生成一份结构清晰的专业周报，包含本周完成事项（分类列出）、下周工作计划、遇到的风险和解决方案三个部分。",
-        "zh-XG": "請根據以下工作內容，幫我生成一份結構清晰的專業週報，包含本週完成事項（分類列出）、下週工作計畫、遇到的風險和解決方案三個部分。",
-        "en": "Based on the following work content, please generate a well-structured professional weekly report with three sections: completed items this week (categorized), next week's work plan, and risks encountered with solutions."
+        "zh-CN": "请帮我将一周的工作内容整理成专业周报。先问我本周完成了哪些事项、下周计划做什么、有没有遇到问题和风险。收集完信息后，按以下格式输出：\n一、本周完成（按项目/模块分类，用精炼的要点描述）\n二、下周计划（列出优先级和目标）\n三、风险与解决方案（说明问题和应对措施）\n语言简洁专业，避免空洞套话。",
+        "zh-XG": "請幫我將一週的工作內容整理成專業週報。先問我本週完成了哪些事項、下週計畫做什麼、有沒有遇到問題和風險。收集完資訊後，按以下格式輸出：\n一、本週完成（按專案/模組分類，用精煉的要點描述）\n二、下週計畫（列出優先級和目標）\n三、風險與解決方案（說明問題和應對措施）\n語言簡潔專業，避免空洞套話。",
+        "en": "Please help me compile my weekly work into a professional report. First ask me what I completed this week, what I plan for next week, and any issues or risks encountered. Then format as:\n1. Completed this week (categorized by project, concise bullet points)\n2. Next week's plan (with priorities and goals)\n3. Risks & solutions (issues and mitigations)\nUse concise professional language, avoid fluff."
       },
       "source": "builtin"
     },
@@ -29,9 +29,9 @@
       "name": { "zh-CN": "代码审查", "zh-XG": "程式碼審查", "en": "Code Review" },
       "icon": "🔍",
       "prompt": {
-        "zh-CN": "请对以下代码进行详细审查，从以下几个方面分析：1.逻辑缺陷和潜在bug 2.性能瓶颈和优化建议 3.安全漏洞 4.代码可读性和维护性改进建议。",
-        "zh-XG": "請對以下程式碼進行詳細審查，從以下幾個方面分析：1.邏輯缺陷和潛在bug 2.效能瓶頸和優化建議 3.安全漏洞 4.程式碼可讀性和維護性改進建議。",
-        "en": "Please review the following code in detail, analyzing from these aspects: 1. Logic defects and potential bugs 2. Performance bottlenecks and optimization suggestions 3. Security vulnerabilities 4. Code readability and maintainability improvements."
+        "zh-CN": "请帮我审查代码。先请我提供代码，然后从以下维度系统分析：\n1. 逻辑缺陷和潜在Bug（严重程度：高/中/低）\n2. 性能瓶颈和优化建议\n3. 安全隐患（如SQL注入、XSS、信息泄露等）\n4. 代码可读性和可维护性改进\n每个问题点给出：问题描述 → 影响 → 具体修改建议。先关注严重问题，再提优化建议。",
+        "zh-XG": "請幫我審查程式碼。先請我提供程式碼，然後從以下維度系統分析：\n1. 邏輯缺陷和潛在Bug（嚴重程度：高/中/低）\n2. 效能瓶頸和最佳化建議\n3. 安全隱患（如SQL注入、XSS、資訊洩露等）\n4. 程式碼可讀性和可維護性改進\n每個問題點給出：問題描述 → 影響 → 具體修改建議。先關注嚴重問題，再提最佳化建議。",
+        "en": "Please help me review code. First ask me to provide the code, then systematically analyze from these dimensions:\n1. Logic defects and potential bugs (severity: high/medium/low)\n2. Performance bottlenecks with optimization suggestions\n3. Security vulnerabilities (SQL injection, XSS, data leaks, etc.)\n4. Readability and maintainability improvements\nFor each issue: describe the problem → explain the impact → provide specific fix suggestions. Prioritize critical issues before optimization tips."
       },
       "source": "builtin"
     },
@@ -40,9 +40,9 @@
       "name": { "zh-CN": "翻译助手", "zh-XG": "翻譯助手", "en": "Translation Assistant" },
       "icon": "🌐",
       "prompt": {
-        "zh-CN": "请将以下内容翻译成英文，要求：1.保持专业严谨的技术术语 2.语句流畅自然，符合英文表达习惯 3.完整保留原文信息不遗漏。",
-        "zh-XG": "請將以下內容翻譯成英文，要求：1.保持專業嚴謹的技術術語 2.語句流暢自然，符合英文表達習慣 3.完整保留原文資訊不遺漏。",
-        "en": "Please translate the following content into Chinese, ensuring: 1. Accurate technical terminology 2. Natural and fluent expression 3. Complete preservation of original information."
+        "zh-CN": "请作为我的专业翻译助手。我会发送需要翻译的内容和目标语言。翻译要求：\n1. 专业术语保持准确一致\n2. 语句自然流畅、符合目标语言表达习惯\n3. 保留原文格式和排版\n4. 遇到文化特定表达时，优先意译而非直译，确保读者理解\n请先确认你理解了要求，然后等待我发送内容。",
+        "zh-XG": "請作為我的專業翻譯助手。我會傳送需要翻譯的內容和目標語言。翻譯要求：\n1. 專業術語保持準確一致\n2. 語句自然流暢、符合目標語言表達習慣\n3. 保留原文格式和排版\n4. 遇到文化特定表達時，優先意譯而非直譯，確保讀者理解\n請先確認你理解了要求，然後等待我傳送內容。",
+        "en": "Please act as my professional translation assistant. I will send you content and the target language. Translation requirements:\n1. Keep technical terminology accurate and consistent\n2. Natural and fluent expression following target language conventions\n3. Preserve original formatting and layout\n4. For culturally specific expressions, prioritize meaning over literal translation\nPlease confirm you understand, then wait for my content."
       },
       "source": "builtin"
     },
@@ -51,9 +51,9 @@
       "name": { "zh-CN": "文章总结", "zh-XG": "文章總結", "en": "Article Summary" },
       "icon": "📝",
       "prompt": {
-        "zh-CN": "请用简洁精炼的语言总结以下文章的3-5个核心观点，每个观点用一句话概括，然后给出一个整体的摘要。请保留关键数据和结论。",
-        "zh-XG": "請用簡潔精煉的語言總結以下文章的3-5個核心觀點，每個觀點用一句話概括，然後給出一個整體的摘要。請保留關鍵資料和結論。",
-        "en": "Please summarize the following article in 3-5 core viewpoints concisely, each viewpoint in one sentence, then provide an overall summary. Preserve key data and conclusions."
+        "zh-CN": "请帮我总结文章内容。我会提供文章原文。请输出：\n1. 核心论点（用1-2句话概括文章主旨）\n2. 关键要点（提炼3-5个最重要的观点或发现，逐条说明）\n3. 总体摘要（200字以内，覆盖论证过程和核心结论）\n保留引用的关键数据和原文中的重要结论。请先等我发送文章。",
+        "zh-XG": "請幫我總結文章內容。我會提供文章原文。請輸出：\n1. 核心論點（用1-2句話概括文章主旨）\n2. 關鍵要點（提煉3-5個最重要的觀點或發現，逐條說明）\n3. 總體摘要（200字以內，覆蓋論證過程和核心結論）\n保留引用的關鍵資料和原文中的重要結論。請先等我傳送文章。",
+        "en": "Please help me summarize an article. I will provide the article text. Please output:\n1. Core thesis (1-2 sentences summarizing the main argument)\n2. Key points (3-5 most important insights or findings, explained point by point)\n3. Overall summary (under 200 words, covering the reasoning process and key conclusions)\nPreserve key data quoted and important conclusions from the original text. Please wait for me to send the article."
       },
       "source": "builtin"
     },
@@ -62,9 +62,9 @@
       "name": { "zh-CN": "头脑风暴", "zh-XG": "腦力激盪", "en": "Brainstorm" },
       "icon": "💡",
       "prompt": {
-        "zh-CN": "请针对「项目/想法」进行头脑风暴，提供10个创意方向或改进思路，每个方向附带简要说明和可行性评估（高/中/低）。",
-        "zh-XG": "請針對「專案/想法」進行腦力激盪，提供10個創意方向或改進思路，每個方向附帶簡要說明和可行性評估（高/中/低）。",
-        "en": "Please brainstorm about [project/idea], providing 10 creative directions or improvement ideas, each with a brief description and feasibility assessment (high/medium/low)."
+        "zh-CN": "请帮我对一个项目/想法进行头脑风暴。先问我：项目背景是什么？目标用户是谁？有什么约束条件？\n确认后请提供：\n- 10个创新方向或改进思路\n- 每个方向附50字左右的简要说明\n- 可行性评估：高/中/低\n- 对最有潜力的3个方向，展开具体实施建议\n鼓励跳出常规思维，不限制创意的大胆程度。",
+        "zh-XG": "請幫我對一個專案/想法進行腦力激盪。先問我：專案背景是什麼？目標使用者是誰？有什麼約束條件？\n確認後請提供：\n- 10個創新方向或改進思路\n- 每個方向附50字左右的簡要說明\n- 可行性評估：高/中/低\n- 對最有潛力的3個方向，展開具體實施建議\n鼓勵跳出常規思維，不限制創意的大膽程度。",
+        "en": "Please help me brainstorm a project/idea. First ask me: What's the project background? Who's the target audience? What are the constraints?\nOnce confirmed, provide:\n- 10 innovative directions or improvement ideas\n- Brief description (~50 words) for each\n- Feasibility assessment: high/medium/low\n- For the 3 most promising directions, expand with specific implementation suggestions\nEncourage out-of-the-box thinking with no limits on creativity."
       },
       "source": "builtin"
     },
@@ -73,9 +73,9 @@
       "name": { "zh-CN": "通俗解释", "zh-XG": "通俗解釋", "en": "Simple Explanation" },
       "icon": "🎓",
       "prompt": {
-        "zh-CN": "请用通俗易懂的方式向非专业人士解释以下概念。要求：1.使用生动的比喻 2.避免使用专业术语 3.分步骤说明 4.控制在500字以内。",
-        "zh-XG": "請用通俗易懂的方式向非專業人士解釋以下概念。要求：1.使用生動的比喻 2.避免使用專業術語 3.分步驟說明 4.控制在500字以內。",
-        "en": "Please explain the following concept in simple terms for non-professionals. Requirements: 1. Use vivid analogies 2. Avoid jargon 3. Explain step by step 4. Keep within 500 words."
+        "zh-CN": "请帮我用最通俗的方式解释一个专业概念。先问我想了解什么概念。解释时请：\n1. 用一句大白话概述这是什么（让完全不懂的人也能秒懂）\n2. 用一个生动的日常比喻加深理解\n3. 分步骤讲解它如何工作\n4. 举1-2个实际场景中的应用例子\n全程避免专业术语，如果必须用，要立即用通俗语言解释。目标是让我能转述给没有任何专业背景的人听。",
+        "zh-XG": "請幫我用最通俗的方式解釋一個專業概念。先問我想了解什麼概念。解釋時請：\n1. 用一句大白話概述這是什麼（讓完全不懂的人也能秒懂）\n2. 用一個生動的日常比喻加深理解\n3. 分步驟講解它如何運作\n4. 舉1-2個實際場景中的應用例子\n全程避免專業術語，如果必須用，要立即用通俗語言解釋。目標是讓我能轉述給沒有任何專業背景的人聽。",
+        "en": "Please help me explain a professional concept in the simplest terms. First ask me what concept I want to understand. When explaining:\n1. Summarize it in one plain-language sentence (a complete beginner should get it)\n2. Use a vivid everyday analogy to deepen understanding\n3. Break down step by step how it works\n4. Give 1-2 real-world application examples\nAvoid all jargon throughout; if a technical term is unavoidable, immediately explain it in simple language. The goal is for me to be able to explain it to someone with zero background."
       },
       "source": "builtin"
     },
@@ -84,9 +84,119 @@
       "name": { "zh-CN": "社交媒体", "zh-XG": "社群媒體", "en": "Social Media" },
       "icon": "📱",
       "prompt": {
-        "zh-CN": "请为以下内容生成适合发布在微博/小红书/朋友圈的社交媒体文案。要求：1.风格活泼有吸引力 2.添加合适的emoji 3.包含2-3个版本供选择 4.附带合适的#话题标签。",
-        "zh-XG": "請為以下內容生成適合發布在微博/小紅書/朋友圈的社群媒體文案。要求：1.風格活潑有吸引力 2.添加合適的emoji 3.包含2-3個版本供選擇 4.附帶合適的#話題標籤。",
-        "en": "Please generate social media copy for the following content suitable for Twitter/Instagram/Mastodon. Requirements: 1. Lively and attractive style 2. Add appropriate emojis 3. Include 2-3 versions to choose from 4. Include relevant #hashtags."
+        "zh-CN": "请帮我为内容生成社交媒体文案。先问我：要发布什么内容？发到哪个平台？想要什么风格调性（专业/活泼/文艺/搞笑）？\n确认后提供：\n- 3个不同风格的文案版本（每版控制在200字以内）\n- 每个版本搭配2-3个合适的emoji\n- 3-5个高匹配度的#话题标签\n- 一份发布建议（最佳发布时间、配图方向）\n文案要有网感和传播力，让人愿意点赞和分享。",
+        "zh-XG": "請幫我為內容生成社群媒體文案。先問我：要發布什麼內容？發到哪個平臺？想要什麼風格調性（專業/活潑/文藝/搞笑）？\n確認後提供：\n- 3個不同風格的文案版本（每版控制在200字以內）\n- 每個版本搭配2-3個合適的emoji\n- 3-5個高匹配度的#話題標籤\n- 一份發布建議（最佳發布時間、配圖方向）\n文案要有網感和傳播力，讓人願意按讚和分享。",
+        "en": "Please help me generate social media copy. First ask me: What content to publish? Which platform? What style (professional/lively/literary/humorous)?\nOnce confirmed, provide:\n- 3 versions in different styles (under 200 words each)\n- 2-3 fitting emojis per version\n- 3-5 highly relevant #hashtags\n- Publishing recommendations (best time to post, visual direction)\nCopy should feel native to the platform and be share-worthy."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "codegen",
+      "name": { "zh-CN": "代码生成", "zh-XG": "程式碼生成", "en": "Code Generator" },
+      "icon": "⚡",
+      "prompt": {
+        "zh-CN": "请帮我编写代码。请先问我以下信息：\n- 编程语言和框架\n- 要实现的完整功能描述\n- 输入/输出格式\n- 特殊约束（性能要求、兼容性等）\n编写时请遵循：命名清晰有意义、结构模块化、添加关键注释、处理边界条件和异常情况、优先考虑可读性。输出完整的可运行代码。",
+        "zh-XG": "請幫我撰寫程式碼。請先問我以下資訊：\n- 程式語言和框架\n- 要實作的完整功能描述\n- 輸入/輸出格式\n- 特殊約束（效能要求、相容性等）\n撰寫時請遵循：命名清晰有意義、結構模組化、添加關鍵註解、處理邊界條件和異常情況、優先考慮可讀性。輸出完整的可執行程式碼。",
+        "en": "Please help me write code. First ask me:\n- Programming language and framework\n- Complete feature description to implement\n- Input/output format\n- Special constraints (performance, compatibility, etc.)\nWhen writing: use clear meaningful names, modular structure, add key comments, handle edge cases and exceptions, prioritize readability. Output complete runnable code."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "debug",
+      "name": { "zh-CN": "Bug诊断", "zh-XG": "Bug診斷", "en": "Bug Diagnosis" },
+      "icon": "🐛",
+      "prompt": {
+        "zh-CN": "请帮我诊断一个Bug。先问我：\n- 问题现象是什么？（错误信息、异常行为截图描述）\n- 在什么环境下出现？（操作系统、版本、浏览器等）\n- 如何复现？（操作步骤）\n- 相关的代码片段\n诊断后请给出：最可能的根因（按概率排序）→ 排查验证步骤 → 具体修复方案 → 如何避免此类问题再次出现。先分析再给方案，不要急于修改。",
+        "zh-XG": "請幫我診斷一個Bug。先問我：\n- 問題現象是什麼？（錯誤資訊、異常行為截圖描述）\n- 在什麼環境下出現？（作業系統、版本、瀏覽器等）\n- 如何重現？（操作步驟）\n- 相關的程式碼片段\n診斷後請給出：最可能的根因（按機率排序）→ 排查驗證步驟 → 具體修復方案 → 如何避免此類問題再次出現。先分析再給方案，不要急於修改。",
+        "en": "Please help me diagnose a bug. First ask me:\n- What's the symptom? (error message, description of abnormal behavior)\n- What environment? (OS, version, browser, etc.)\n- How to reproduce? (step-by-step)\n- Relevant code snippets\nAfter diagnosis, provide: most likely root causes (ordered by probability) → verification steps → specific fix → how to prevent similar issues. Analyze before offering solutions, don't jump to fixes."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "email",
+      "name": { "zh-CN": "邮件撰写", "zh-XG": "郵件撰寫", "en": "Email Composer" },
+      "icon": "✉️",
+      "prompt": {
+        "zh-CN": "请帮我撰写一封专业邮件。先问我：收件人是谁（身份和关系）、邮件目的、核心要点有哪些、希望什么语气（正式/亲切/简洁）。\n撰写时注意：主题行简洁明确、开头礼貌得体、正文结构清晰、重点突出、结尾有明确的行动号召、签名完整。如果涉及敏感话题，给出措辞上的风险提示和替代表达。",
+        "zh-XG": "請幫我撰寫一封專業郵件。先問我：收件人是誰（身份和關係）、郵件目的、核心要點有哪些、希望什麼語氣（正式/親切/簡潔）。\n撰寫時注意：主旨行簡潔明確、開頭禮貌得體、正文結構清晰、重點突出、結尾有明確的行動號召、簽名完整。如果涉及敏感話題，給出措辭上的風險提示和替代表達。",
+        "en": "Please help me write a professional email. First ask me: who is the recipient (role and relationship), the purpose, key points, and desired tone (formal/friendly/concise).\nWhen writing: clear and concise subject line, polite opening, well-structured body with highlighted key points, clear call to action in closing, complete signature. For sensitive topics, flag phrasing risks and suggest alternative expressions."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "meeting",
+      "name": { "zh-CN": "会议纪要", "zh-XG": "會議紀錄", "en": "Meeting Minutes" },
+      "icon": "📋",
+      "prompt": {
+        "zh-CN": "请帮我把会议内容整理成正式纪要。先问我要整理的会议记录或讨论内容。\n输出格式：\n- 会议主题\n- 时间/地点/参会人\n- 讨论要点（按议题分类，每个议题下列出主要观点和讨论过程）\n- 决议事项（已达成共识的结论）\n- 待办任务（任务描述+负责人+截止时间）\n语言客观简洁，不添加个人观点，准确反映会议原意。",
+        "zh-XG": "請幫我把會議內容整理成正式紀錄。先問我要整理的會議記錄或討論內容。\n輸出格式：\n- 會議主題\n- 時間/地點/參會人\n- 討論要點（按議題分類，每個議題下列出主要觀點和討論過程）\n- 決議事項（已達成共識的結論）\n- 待辦任務（任務描述+負責人+截止時間）\n語言客觀簡潔，不添加個人觀點，準確反映會議原意。",
+        "en": "Please help me organize meeting content into formal minutes. First ask me for the meeting notes or discussion content.\nOutput format:\n- Meeting subject\n- Time/location/attendees\n- Discussion points (categorized by agenda item, with key viewpoints and discussion process)\n- Decisions (conclusions with consensus)\n- Action items (task description + owner + deadline)\nLanguage should be objective and concise, no personal opinions, faithfully reflecting the meeting's original intent."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "resume",
+      "name": { "zh-CN": "简历优化", "zh-XG": "履歷優化", "en": "Resume Optimizer" },
+      "icon": "📄",
+      "prompt": {
+        "zh-CN": "请帮我优化简历。先问我：求职意向和行业、当前简历内容或工作经历。\n优化时从以下维度给出建议：\n1. 结构优化：信息层次是否清晰，关键信息是否前置\n2. 亮点挖掘：用STAR法则（情境-任务-行动-结果）重写工作经历，用数据量化成果\n3. 语言精炼：删除冗余表达，动词开头，每句都有信息增量\n4. 匹配度：对标目标岗位的JD，突出相关经验和技能\n最后给出优化后的完整简历版本。",
+        "zh-XG": "請幫我優化履歷。先問我：求職意向和行業、當前履歷內容或工作經歷。\n優化時從以下維度給出建議：\n1. 結構優化：資訊層次是否清晰，關鍵資訊是否前置\n2. 亮點挖掘：用STAR法則（情境-任務-行動-結果）重寫工作經歷，用資料量化成果\n3. 語言精煉：刪除冗餘表達，動詞開頭，每句都有資訊增量\n4. 匹配度：對標目標崗位的JD，突出相關經驗和技能\n最後給出優化後的完整履歷版本。",
+        "en": "Please help me optimize my resume. First ask me: target position and industry, current resume content or work experience.\nWhen optimizing, provide suggestions from these dimensions:\n1. Structure: Is the information hierarchy clear? Are key points prominent?\n2. Highlights: Rewrite experience using the STAR method (Situation-Task-Action-Result), quantify achievements with data\n3. Language: Remove redundancy, use action verbs, ensure every sentence adds value\n4. Relevance: Align with the target job description, highlight relevant experience and skills\nFinally provide the complete optimized resume."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "sql",
+      "name": { "zh-CN": "SQL助手", "zh-XG": "SQL助手", "en": "SQL Assistant" },
+      "icon": "🗄️",
+      "prompt": {
+        "zh-CN": "请帮我编写SQL查询。先问我：\n- 数据库类型（MySQL/PostgreSQL/SQLite等）\n- 相关的表结构和字段\n- 查询需求（要获取什么数据、筛选条件、排序方式、是否需要聚合）\n编写时请：写出正确高效的SQL语句、解释关键逻辑和索引利用策略、考虑NULL值处理和边界情况、标注可能存在的性能风险。",
+        "zh-XG": "請幫我撰寫SQL查詢。先問我：\n- 資料庫類型（MySQL/PostgreSQL/SQLite等）\n- 相關的表結構和欄位\n- 查詢需求（要獲取什麼資料、篩選條件、排序方式、是否需要聚合）\n撰寫時請：寫出正確高效的SQL陳述式、解釋關鍵邏輯和索引利用策略、考慮NULL值處理和邊界情況、標註可能存在的效能風險。",
+        "en": "Please help me write SQL queries. First ask me:\n- Database type (MySQL/PostgreSQL/SQLite, etc.)\n- Relevant table structures and fields\n- Query requirements (what data, filter conditions, sorting, aggregation needs)\nWhen writing: produce correct and efficient SQL, explain key logic and index strategy, handle NULL values and edge cases, flag potential performance risks."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "interview",
+      "name": { "zh-CN": "面试准备", "zh-XG": "面試準備", "en": "Interview Prep" },
+      "icon": "🎯",
+      "prompt": {
+        "zh-CN": "请帮我做面试准备。先问我：面试什么岗位、公司类型、面试轮次、我目前的准备情况。\n然后帮我：\n1. 预测该岗位最可能问的10个技术问题和5个行为面试题\n2. 对每个问题给出回答框架和要点\n3. 分享该岗位面试官通常会关注的核心能力\n4. 给我3个可以反问面试官的好问题\n5. 临场技巧（如何应对不会的问题、如何展示思考过程等）",
+        "zh-XG": "請幫我做面試準備。先問我：面試什麼崗位、公司類型、面試輪次、我目前的準備情況。\n然後幫我：\n1. 預測該崗位最可能問的10個技術問題和5個行為面試題\n2. 對每個問題給出回答框架和要點\n3. 分享該崗位面試官通常會關注的核心能力\n4. 給我3個可以反問面試官的好問題\n5. 臨場技巧（如何應對不會的問題、如何展示思考過程等）",
+        "en": "Please help me prepare for an interview. First ask me: what position, company type, interview round, and my current preparation status.\nThen help me with:\n1. Predict the 10 most likely technical questions and 5 behavioral questions for this role\n2. Provide answer frameworks and key points for each question\n3. Share the core competencies interviewers typically focus on for this role\n4. Give me 3 good questions to ask the interviewer\n5. On-the-spot tips (how to handle unknown questions, how to demonstrate thinking process, etc.)"
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "learning",
+      "name": { "zh-CN": "学习路径", "zh-XG": "學習路徑", "en": "Learning Path" },
+      "icon": "📚",
+      "prompt": {
+        "zh-CN": "请帮我规划一个技能的学习路径。先问我：想学什么技能、当前基础水平、每周能投入多少时间、学习目标（入门/进阶/达到工作水平）。\n规划时请给出：\n1. 阶段性目标（分3-4个阶段，每阶段明确达成的能力）\n2. 学习资源（推荐书籍、课程、文档，标注适合的阶段）\n3. 每个阶段的实践项目（能检验学习成果的具体任务）\n4. 学习检验标准（如何判断自己真正掌握了）\n5. 常见误区和避坑建议",
+        "zh-XG": "請幫我規劃一個技能的學習路徑。先問我：想學什麼技能、當前基礎水準、每週能投入多少時間、學習目標（入門/進階/達到工作水準）。\n規劃時請給出：\n1. 階段性目標（分3-4個階段，每階段明確達成能力）\n2. 學習資源（推薦書籍、課程、文件，標註適合的階段）\n3. 每個階段的實踐項目（能檢驗學習成果的具體任務）\n4. 學習檢驗標準（如何判斷自己真正掌握了）\n5. 常見誤區和避坑建議",
+        "en": "Please help me plan a learning path for a skill. First ask me: what skill, current level, weekly study time available, learning goal (beginner/advanced/job-ready).\nWhen planning, provide:\n1. Phased goals (3-4 phases, each with clear competency targets)\n2. Learning resources (recommended books, courses, docs, marked for appropriate phases)\n3. Practice projects for each phase (specific tasks to verify learning outcomes)\n4. Assessment criteria (how to know if you've truly mastered it)\n5. Common pitfalls and avoidance tips"
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "api",
+      "name": { "zh-CN": "API设计", "zh-XG": "API設計", "en": "API Design" },
+      "icon": "🔌",
+      "prompt": {
+        "zh-CN": "请帮我设计RESTful API。先问我：业务场景和功能需求、数据模型、用户角色和权限要求。\n设计时请输出：\n1. 接口清单（方法 GET/POST/PUT/DELETE + 路径 + 一句话描述）\n2. 每个接口的请求参数和响应数据结构\n3. 错误码定义（业务错误码 + HTTP状态码的映射）\n4. 鉴权和限流方案建议\n5. 分页、排序、过滤等通用设计约定\n遵循RESTful最佳实践，资源命名用名词复数，版本化路径设计。",
+        "zh-XG": "請幫我設計RESTful API。先問我：業務場景和功能需求、資料模型、使用者角色和權限要求。\n設計時請輸出：\n1. 介面清單（方法 GET/POST/PUT/DELETE + 路徑 + 一句話描述）\n2. 每個介面的請求參數和回應資料結構\n3. 錯誤碼定義（業務錯誤碼 + HTTP狀態碼的對映）\n4. 鑑權和限流方案建議\n5. 分頁、排序、過濾等通用設計約定\n遵循RESTful最佳實踐，資源命名用名詞複數，版本化路徑設計。",
+        "en": "Please help me design RESTful APIs. First ask me: business scenario and functional requirements, data model, user roles and permission requirements.\nWhen designing, output:\n1. Endpoint list (method GET/POST/PUT/DELETE + path + one-line description)\n2. Request parameters and response data structure for each endpoint\n3. Error code definitions (business error codes mapped to HTTP status codes)\n4. Authentication and rate limiting recommendations\n5. Common design conventions for pagination, sorting, filtering\nFollow RESTful best practices: use plural nouns for resources, versioned paths."
+      },
+      "source": "builtin"
+    },
+    {
+      "id": "copywriting",
+      "name": { "zh-CN": "文案优化", "zh-XG": "文案最佳化", "en": "Copywriting Polish" },
+      "icon": "✨",
+      "prompt": {
+        "zh-CN": "请帮我优化文案。先问我：原文内容是什么、用在什么场景（广告/产品介绍/公众号/官网等）、目标受众是谁、希望达到什么效果。\n优化时：\n1. 指出原文的问题（注意力抓取不足、说服力弱、表达冗长等）\n2. 提供2-3个优化版本，每个版本采用不同的策略（情感共鸣型/数据说服型/痛点驱动型等）\n3. 标注每个版本适合的场景和优势\n4. 提炼可复用的文案技巧\n保留核心信息，让表达更精准、更有吸引力、更有转化率。",
+        "zh-XG": "請幫我最佳化文案。先問我：原文內容是什麼、用在什麼場景（廣告/產品介紹/公眾號/官網等）、目標受眾是誰、希望達到什麼效果。\n最佳化時：\n1. 指出原文的問題（注意力抓取不足、說服力弱、表達冗長等）\n2. 提供2-3個最佳化版本，每個版本採用不同的策略（情感共鳴型/資料說服型/痛點驅動型等）\n3. 標註每個版本適合的場景和優勢\n4. 提煉可複用的文案技巧\n保留核心資訊，讓表達更精準、更有吸引力、更有轉化率。",
+        "en": "Please help me polish copywriting. First ask me: what's the original text, what scenario (ad/product intro/official website/etc.), target audience, and desired outcome.\nWhen polishing:\n1. Identify issues with the original (weak attention grab, low persuasiveness, wordiness, etc.)\n2. Provide 2-3 optimized versions, each with a different strategy (emotional resonance/data-driven/pain-point-driven, etc.)\n3. Mark which scenario each version suits best and its advantages\n4. Extract reusable copywriting techniques\nPreserve core messaging while making expression more precise, engaging, and conversion-oriented."
       },
       "source": "builtin"
     }

@@ -1,9 +1,11 @@
 use crate::commands::project::{get_pool, record_activity, mark_auto_delegate_failure, repair_legacy_software_dev_workflow, clean_context_tags};
-use crate::commands::helpers::{self, build_role_constraint_rules, call_hermes_api_streaming, call_hermes_api_non_streaming};
+use crate::commands::helpers::{self, build_role_constraint_rules, start_hermes_run, RunHandleInner, AppState, call_hermes_api_non_streaming};
 use crate::crypto::{file_storage, key_manager};
 use crate::database::models as db;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
 use super::project_workflow::{get_project_role_context, trigger_workflow_execution};
@@ -326,39 +328,75 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
     let body = serde_json::json!({
         "model": "default",
         "messages": messages,
-        "stream": true,
     });
 
     log::info!("[chat_with_project_role] project={}, role={}, api_base={}", project_id, role_id, api_base);
-    log::info!("[chat_with_project_role] request body: {}", serde_json::to_string_pretty(&body).unwrap_or_default());
 
-    let response = call_hermes_api_streaming(&api_base, &api_key, &project_id, body)
-        .await
-        .map_err(|e| {
-            let err_msg = format!("Failed to connect to AI service: {}", e);
+    let run_id = match start_hermes_run(&api_base, &api_key, &project_id, body).await {
+        Ok(id) => id,
+        Err(e) => {
+            let err_msg = format!("Failed to start run: {}", e);
             let _ = mark_auto_delegate_failure(&app, &project_id, &role_id, Some(&event_id), &err_msg, None);
-            format!("Failed to connect to AI service: {}", e)
-        })?;
+            return Err(err_msg);
+        }
+    };
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let text = response.text().await.unwrap_or_default();
-        let err_msg = format!("AI service error: {} - {}", status, text);
-        let _ = mark_auto_delegate_failure(&app, &project_id, &role_id, Some(&event_id), &err_msg, None);
-        return Err(err_msg);
+    let run_handle = Arc::new(RunHandleInner {
+        run_id: run_id.clone(),
+        cancelled: AtomicBool::new(false),
+    });
+
+    {
+        let state = app.state::<AppState>();
+        let mut map = state.cancel_map.lock().map_err(|e| e.to_string())?;
+        map.insert(event_id.clone(), run_handle.clone());
     }
 
     let app_handle = app.clone();
     let event_id_clone = event_id.clone();
     let project_id_clone = project_id.clone();
     let role_id_clone = role_id.clone();
+    let run_id_clone = run_id.clone();
+    let handle_clone = run_handle.clone();
     tauri::async_runtime::spawn(async move {
+        let run_base = api_base.trim_end_matches("/v1");
+        let events_url = format!("{}/v1/runs/{}/events", run_base, run_id_clone);
+
+        let client = reqwest::Client::new();
+        let response = match client
+            .get(&events_url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = app_handle.emit(&event_id_clone, serde_json::json!({
+                    "chunk": format!("[Error: {}]", e),
+                    "done": true,
+                }));
+                let _ = mark_auto_delegate_failure(&app_handle, &project_id_clone, &role_id_clone, Some(&event_id_clone), &format!("Failed to connect to run events: {}", e), None);
+                drop_run_handle_for_project(&app_handle, &event_id_clone);
+                return;
+            }
+        };
+
         use futures_util::StreamExt;
         let mut stream = response.bytes_stream();
         let mut full_content = String::new();
         let mut buffer = String::new();
+        let mut current_event: Option<String> = None;
 
         while let Some(chunk_result) = stream.next().await {
+            if handle_clone.cancelled.load(Ordering::Relaxed) {
+                let _ = app_handle.emit(&event_id_clone, serde_json::json!({
+                    "chunk": "",
+                    "done": true,
+                    "cancelled": true,
+                }));
+                break;
+            }
+
             match chunk_result {
                 Ok(bytes) => {
                     buffer.push_str(&String::from_utf8_lossy(&bytes));
@@ -366,52 +404,80 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
                         let line = buffer[..pos].trim().to_string();
                         buffer = buffer[pos + 1..].to_string();
 
+                        if line.is_empty() {
+                            continue;
+                        }
+
+                        if line.starts_with("event: ") {
+                            current_event = Some(line[7..].trim().to_string());
+                            continue;
+                        }
+
                         if line.starts_with("data: ") {
                             let data = &line[6..];
-                            if data == "[DONE]" {
-                                let _ = app_handle.emit(&event_id_clone, serde_json::json!({
-                                    "chunk": "",
-                                    "done": true,
-                                    "fullContent": full_content,
-                                }));
-
-                                let energy_pool = get_pool(&app_handle);
-                                if let Ok(pool) = energy_pool {
-                                    let _ = sqlx::query("UPDATE ai_roles SET energy = MAX(0, energy - 8), updated_at = ? WHERE id = ?")
-                                        .bind(chrono::Utc::now().timestamp_millis())
-                                        .bind(&role_id)
-                                        .execute(&pool)
-                                        .await;
-                                    let _ = sqlx::query("UPDATE ai_roles SET mood = CASE WHEN energy >= 70 THEN 'energetic' WHEN energy >= 40 THEN 'neutral' WHEN energy >= 20 THEN 'tired' ELSE 'exhausted' END WHERE id = ?")
-                                        .bind(&role_id)
-                                        .execute(&pool)
-                                        .await;
-                                }
-
-                                {
-                                    let rec_app = app_handle.clone();
-                                    let rec_project = project_id.clone();
-                                    let rec_role = role_id.clone();
-                                    let rec_message = message.clone();
-                                    let rec_content = full_content.clone();
-                                    tauri::async_runtime::spawn(async move {
-                                        let _ = record_chat_files(rec_app.clone(), rec_project.clone(), rec_role.clone(), String::new()).await;
-                                        let _ = extract_and_save_memory(rec_app, rec_project, rec_role, rec_message, rec_content).await;
-                                    });
-                                }
-
-                                break;
+                            if data.trim() == "[DONE]" {
+                                continue;
                             }
+
+                            let evt_type = current_event.take();
+
                             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
-                                if let Some(content) = parsed["choices"][0]["delta"]["content"].as_str() {
-                                    full_content.push_str(content);
-                                    let cleaned = clean_context_tags(content);
-                                    if !cleaned.is_empty() {
-                                        let _ = app_handle.emit(&event_id_clone, serde_json::json!({
-                                            "chunk": cleaned,
-                                            "done": false,
-                                        }));
+                                let event_name = evt_type.as_deref().unwrap_or("");
+
+                                match event_name {
+                                    "message.delta" => {
+                                        if let Some(delta) = parsed["delta"].as_str() {
+                                            full_content.push_str(delta);
+                                            let cleaned = clean_context_tags(delta);
+                                            if !cleaned.is_empty() {
+                                                let _ = app_handle.emit(&event_id_clone, serde_json::json!({
+                                                    "chunk": cleaned,
+                                                    "done": false,
+                                                }));
+                                            }
+                                        }
                                     }
+                                    "run.completed" => {
+                                        let _ = app_handle.emit(&event_id_clone, serde_json::json!({
+                                            "chunk": "",
+                                            "done": true,
+                                            "fullContent": full_content,
+                                        }));
+
+                                        let energy_pool = get_pool(&app_handle);
+                                        if let Ok(pool) = energy_pool {
+                                            let _ = sqlx::query("UPDATE ai_roles SET energy = MAX(0, energy - 8), updated_at = ? WHERE id = ?")
+                                                .bind(chrono::Utc::now().timestamp_millis())
+                                                .bind(&role_id)
+                                                .execute(&pool)
+                                                .await;
+                                            let _ = sqlx::query("UPDATE ai_roles SET mood = CASE WHEN energy >= 70 THEN 'energetic' WHEN energy >= 40 THEN 'neutral' WHEN energy >= 20 THEN 'tired' ELSE 'exhausted' END WHERE id = ?")
+                                                .bind(&role_id)
+                                                .execute(&pool)
+                                                .await;
+                                        }
+
+                                        {
+                                            let rec_app = app_handle.clone();
+                                            let rec_project = project_id.clone();
+                                            let rec_role = role_id.clone();
+                                            let rec_message = message.clone();
+                                            let rec_content = full_content.clone();
+                                            tauri::async_runtime::spawn(async move {
+                                                let _ = record_chat_files(rec_app.clone(), rec_project.clone(), rec_role.clone(), String::new()).await;
+                                                let _ = extract_and_save_memory(rec_app, rec_project, rec_role, rec_message, rec_content).await;
+                                            });
+                                        }
+                                    }
+                                    "run.failed" => {
+                                        let error = parsed["error"].as_str().unwrap_or("Unknown error");
+                                        let _ = app_handle.emit(&event_id_clone, serde_json::json!({
+                                            "chunk": format!("[Error: {}]", error),
+                                            "done": true,
+                                        }));
+                                        let _ = mark_auto_delegate_failure(&app_handle, &project_id_clone, &role_id_clone, Some(&event_id_clone), &format!("Run failed: {}", error), None);
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
@@ -427,9 +493,26 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
                 }
             }
         }
+
+        drop_run_handle_for_project(&app_handle, &event_id_clone);
+
+        if !handle_clone.cancelled.load(Ordering::Relaxed) {
+            let _ = app_handle.emit(&event_id_clone, serde_json::json!({
+                "chunk": "",
+                "done": true,
+            }));
+        }
     });
 
     Ok(())
+}
+
+fn drop_run_handle_for_project(app: &AppHandle, event_id: &str) {
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut map) = state.cancel_map.lock() {
+            map.remove(event_id);
+        }
+    }
 }
 
 #[tauri::command]

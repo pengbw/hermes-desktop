@@ -108,6 +108,38 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       .catch(() => setAvailableSkills([]));
   }, []);
 
+  const handleImportRole = async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!selected) return;
+      const filePath = typeof selected === "string" ? selected : selected;
+      await invoke("import_role_from_file", { filePath, locale });
+      loadRoles();
+      showToast("✅ 角色导入成功");
+    } catch (err) {
+      showToast("❌ 导入失败：" + String(err));
+    }
+  };
+
+  const handleExportRole = async (roleId: string) => {
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const filePath = await save({
+        filters: [{ name: "JSON", extensions: ["json"] }],
+        defaultPath: "role.json",
+      });
+      if (!filePath) return;
+      await invoke("export_role_to_file", { roleId, filePath });
+      showToast("✅ 角色导出成功");
+    } catch (err) {
+      showToast("❌ 导出失败：" + String(err));
+    }
+  };
+
   const handleCreate = async () => {
     if (!editForm.name.trim()) return;
     try {
@@ -228,12 +260,20 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[15px] font-semibold text-foreground m-0">{t("aiRoles.title")}</h3>
-          <button
-            className="px-3 py-1.5 border border-primary rounded-md bg-transparent text-primary text-xs cursor-pointer transition-all hover:bg-primary/5"
-            onClick={() => setShowNewRole(true)}
-          >
-            + {t("aiRoles.addRole")}
-          </button>
+          <div className="flex gap-2">
+            <button
+              className="px-3 py-1.5 border border-border rounded-md bg-transparent text-foreground text-xs cursor-pointer transition-all hover:bg-muted"
+              onClick={handleImportRole}
+            >
+              📂 {t("aiRoles.importRole")}
+            </button>
+            <button
+              className="px-3 py-1.5 border border-primary rounded-md bg-transparent text-primary text-xs cursor-pointer transition-all hover:bg-primary/5"
+              onClick={() => setShowNewRole(true)}
+            >
+              + {t("aiRoles.addRole")}
+            </button>
+          </div>
         </div>
         <p className="text-[13px] text-muted-foreground mb-4 leading-relaxed">
           {t("aiRoles.desc")}
@@ -288,6 +328,13 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
                 className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={(e) => e.stopPropagation()}
               >
+                <button
+                  className="w-6 h-6 flex items-center justify-center rounded-md border-none bg-transparent text-muted-foreground cursor-pointer text-sm transition-colors hover:bg-muted hover:text-foreground"
+                  onClick={() => handleExportRole(role.id)}
+                  title={t("aiRoles.exportRole")}
+                >
+                  💾
+                </button>
                 <button
                   className="w-6 h-6 flex items-center justify-center rounded-md border-none bg-transparent text-muted-foreground cursor-pointer text-sm transition-colors hover:bg-muted hover:text-foreground"
                   onClick={() => startEdit(role)}

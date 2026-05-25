@@ -2,9 +2,12 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
 use std::process::{Command, Stdio};
-use std::sync::{Mutex};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+
+use crate::commands::provider::decrypt_api_key;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -526,7 +529,8 @@ pub(crate) async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
 
     let mut synced = 0u32;
     for (key_env, api_key) in &providers {
-        match hermes_config_set(key_env, api_key) {
+        let decrypted_key = decrypt_api_key(api_key);
+        match hermes_config_set(key_env, &decrypted_key) {
             Ok(_) => synced += 1,
             Err(e) => log::warn!("Failed to sync {} via hermes config set: {}", key_env, e),
         }
@@ -711,10 +715,19 @@ except Exception as e:
     log::info!("Synced {} Hermes providers to local database", providers.len());
 }
 
+pub struct RunHandleInner {
+    pub run_id: String,
+    pub cancelled: AtomicBool,
+}
+
+pub type RunHandle = Arc<RunHandleInner>;
+pub type CancelMap = Arc<Mutex<HashMap<String, RunHandle>>>;
+
 pub struct AppState {
     pub db_pool: SqlitePool,
     pub local_embedding: crate::services::local_embedding::LocalEmbeddingState,
     pub file_watcher: crate::services::file_watcher::FileWatcherState,
+    pub cancel_map: CancelMap,
 }
 
 pub(crate) struct AgentProcess(pub(crate) Mutex<Option<std::process::Child>>);
@@ -1663,4 +1676,113 @@ async fn call_hermes_api_inner(
     }
 
     Err(format!("call_hermes_api failed after {} retries: {}", max_retries, last_err))
+}
+
+pub(crate) async fn start_hermes_run(
+    api_base: &str,
+    api_key: &str,
+    project_id: &str,
+    body: serde_json::Value,
+) -> Result<String, String> {
+    let client = shared_hermes_client();
+    let run_base = api_base.trim_end_matches("/v1");
+
+    let messages = body["messages"].as_array().cloned().unwrap_or_default();
+    let mut system_prompt_parts: Vec<String> = Vec::new();
+    let mut conversation_history: Vec<serde_json::Value> = Vec::new();
+    let mut user_message = String::new();
+
+    for msg in &messages {
+        let role = msg["role"].as_str().unwrap_or("");
+        let content = msg["content"].as_str().unwrap_or("");
+        match role {
+            "system" => system_prompt_parts.push(content.to_string()),
+            "user" => {
+                if !content.is_empty() {
+                    user_message = content.to_string();
+                }
+                conversation_history.push(serde_json::json!({"role": "user", "content": content}));
+            }
+            "assistant" => {
+                conversation_history.push(serde_json::json!({"role": "assistant", "content": content}));
+            }
+            _ => {}
+        }
+    }
+    if !user_message.is_empty() && !conversation_history.is_empty() {
+        if let Some(last) = conversation_history.last() {
+            if last["role"].as_str() == Some("user") && last["content"].as_str() == Some(&user_message) {
+                conversation_history.pop();
+            }
+        }
+    }
+
+    let system_prompt = system_prompt_parts.join("\n\n");
+
+    let mut run_body = serde_json::json!({
+        "input": user_message,
+    });
+    if !system_prompt.is_empty() {
+        run_body["instructions"] = serde_json::json!(system_prompt);
+    }
+    if !conversation_history.is_empty() {
+        run_body["conversation_history"] = serde_json::json!(conversation_history);
+    }
+    if let Some(m) = body.get("hermes_model") {
+        run_body["hermes_model"] = m.clone();
+    }
+    if let Some(p) = body.get("hermes_provider") {
+        run_body["hermes_provider"] = p.clone();
+    }
+    if let Some(sid) = body.get("hermes_session_id") {
+        run_body["session_id"] = sid.clone();
+    }
+
+    let mut req = client
+        .post(format!("{}/v1/runs", run_base))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json");
+    if !project_id.is_empty() {
+        req = req.header("X-Hermes-Session-Key", format!("project-{}", project_id));
+    }
+
+    let response = req.json(&run_body).send().await
+        .map_err(|e| format!("Failed to start run: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("Run start failed ({}): {}", status, text));
+    }
+
+    let resp_json: serde_json::Value = response.json().await
+        .map_err(|e| format!("Failed to parse run response: {}", e))?;
+
+    resp_json["run_id"].as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| format!("No run_id in response: {:?}", resp_json))
+}
+
+pub(crate) async fn stop_hermes_run(
+    api_base: &str,
+    api_key: &str,
+    run_id: &str,
+) -> Result<(), String> {
+    let client = shared_hermes_client();
+    let run_base = api_base.trim_end_matches("/v1");
+
+    let response = client
+        .post(format!("{}/v1/runs/{}/stop", run_base, run_id))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to stop run: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        log::warn!("[stop_hermes_run] stop returned {}: {}", status, text);
+    }
+
+    Ok(())
 }

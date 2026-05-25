@@ -2582,7 +2582,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 10px 14px 12px;
   border-top: 1px solid var(--border-color, #e0e0e0);
   flex-shrink: 0;
   position: relative;
@@ -2620,37 +2620,39 @@
 
 .studioChatInputRow {
   display: flex;
-  gap: 8px;
-  align-items: flex-end;
+  gap: 0;
+  align-items: stretch;
+}
+
+.studioChatInputBox {
+  flex: 1;
+  position: relative;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 12px;
+  background: var(--bg-primary, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.studioChatInputBox:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 1px 6px rgba(108, 92, 231, 0.08);
 }
 
 .studioChatMentions {
   flex: 1;
+  display: flex;
 }
 
-.studioChatMentions .studioChatMentions__control {
-  background: var(--input-bg, #fff);
-  border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 8px;
-  font-size: 13px;
-  min-height: 36px;
+.studioChatMentions > div {
+  flex: 1;
+  display: flex;
 }
 
-.studioChatMentions .studioChatMentions__control:focus-within {
-  border-color: var(--color-primary);
-}
-
-.studioChatMentions .studioChatMentions__highlighter {
-  padding: 6px 10px;
-}
-
-.studioChatMentions .studioChatMentions__input {
-  padding: 6px 10px;
-  border: none;
-  outline: none;
-  color: var(--text-primary, #333);
-  font-size: 13px;
-  line-height: 1.5;
+.studioChatMentions textarea {
+  padding-bottom: 38px !important;
 }
 
 .studioChatMentions :global(.mentions__suggestions) {
@@ -2705,6 +2707,24 @@
   background: var(--bg-hover, #f0f0f0) !important;
 }
 
+.studioChatInputActions {
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.studioChatInputActionsLeft {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: auto;
+}
+
 .studioChatInput {
   flex: 1;
   padding: 8px 12px;
@@ -2722,19 +2742,74 @@
 }
 
 .studioChatSendBtn {
-  padding: 8px 16px;
-  background: var(--color-primary);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: var(--color-primary, #6c5ce7);
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+  pointer-events: auto;
 }
 
-.studioChatSendBtn:hover {
-  opacity: 0.9;
+.studioChatSendBtn:hover:not(:disabled) {
+  background: var(--color-primary-dark, #5649c0);
+}
+
+.studioChatSendBtn:disabled {
+  background: var(--bg-disabled, #e0e0e0);
+  color: var(--text-disabled, #999);
+  cursor: not-allowed;
+}
+
+.studioChatStopBtn {
+  background: #ef4444;
+}
+
+.studioChatStopBtn:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.studioChatSendSpinner {
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.studioChatAutoBtn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+  color: var(--text-secondary, #888);
+}
+
+.studioChatAutoBtn:hover:not(:disabled) {
+  background: var(--bg-hover, rgba(108, 92, 231, 0.08));
+  color: var(--color-primary, #6c5ce7);
+}
+
+.studioChatAutoBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.studioChatAutoBtnIcon {
+  font-size: 15px;
+  line-height: 1;
 }
 
 .studioMemberSidebar {
@@ -5132,7 +5207,8 @@
 
 .taskMgmtItemDispatch,
 .taskMgmtItemEdit,
-.taskMgmtItemDelete {
+.taskMgmtItemDelete,
+.taskMgmtItemRetry {
   width: 26px;
   height: 26px;
   border-radius: 6px;
@@ -5156,6 +5232,10 @@
 
 .taskMgmtItemDelete:hover {
   background: rgba(225, 112, 85, 0.1);
+}
+
+.taskMgmtItemRetry:hover {
+  background: rgba(9, 132, 227, 0.1);
 }
 
 .taskMgmtDispatchInfo {
@@ -5572,6 +5652,22 @@
 .studioTaskDeleteBtn:hover {
   color: #e74c3c;
   background: rgba(231, 76, 60, 0.1);
+}
+
+.studioTaskRetryBtn {
+  background: none;
+  border: none;
+  color: #0984e3;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.studioTaskRetryBtn:hover {
+  color: #0066cc;
+  background: rgba(9, 132, 227, 0.1);
 }
 
 /* ── AI角色卡片 ── */
@@ -7376,4 +7472,119 @@
   height: 8px;
   border-radius: 50%;
   border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.office3dMemberInfo {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.office3dMemberInfoCard {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 14px;
+  padding: 14px 16px;
+  min-width: 200px;
+  max-width: 240px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  cursor: default;
+}
+
+.office3dMemberInfoHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.office3dMemberInfoAvatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.office3dMemberInfoMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.office3dMemberInfoName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.office3dMemberInfoRole {
+  font-size: 11px;
+  color: #636e72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.office3dMemberInfoBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.office3dMemberInfoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.office3dMemberInfoLabel {
+  font-size: 12px;
+  color: #636e72;
+}
+
+.office3dMemberInfoValue {
+  font-size: 12px;
+  font-weight: 500;
+  color: #2d3436;
+}
+
+[data-theme="dark"] .office3dMemberInfoCard {
+  background: rgba(15, 15, 26, 0.92);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .office3dMemberInfoHeader {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .office3dMemberInfoName {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+[data-theme="dark"] .office3dMemberInfoRole {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+[data-theme="dark"] .office3dMemberInfoLabel {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+[data-theme="dark"] .office3dMemberInfoValue {
+  color: rgba(255, 255, 255, 0.8);
 }

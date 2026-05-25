@@ -18,14 +18,16 @@ const TASK_COLUMNS = [
   { key: "ready", label: "就绪", color: "#0984e3" },
   { key: "running", label: "进行中", color: "#fdcb6e" },
   { key: "done", label: "完成", color: "#00b894" },
-  { key: "blocked", label: "阻塞", color: "#e17055" },
+  { key: "failed", label: "失败", color: "#e17055" },
+  { key: "blocked", label: "阻塞", color: "#d63031" },
 ];
 
 const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
   triage: ["todo", "blocked"],
   todo: ["ready", "blocked"],
   ready: ["running", "blocked"],
-  running: ["done", "blocked"],
+  running: ["done", "blocked", "failed"],
+  failed: ["ready"],
   blocked: ["todo", "ready"],
   done: [],
 };
@@ -535,6 +537,23 @@ function TaskBoard({ tasks, projectId, projectMembers, allRoles, onTasksUpdate }
                             }}
                           >
                             📊
+                          </button>
+                        )}
+                        {task.status === "failed" && (
+                          <button
+                            className={styles.studioTaskRetryBtn}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await invoke("retry_project_task", { taskId: task.id });
+                              const updatedTasks = await invoke<ProjectTask[]>(
+                                "list_project_tasks",
+                                { projectId }
+                              );
+                              onTasksUpdate(updatedTasks);
+                            }}
+                            title="重试任务"
+                          >
+                            🔄
                           </button>
                         )}
                         <button

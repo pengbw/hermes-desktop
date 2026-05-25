@@ -50,7 +50,8 @@ function TaskManagement({
     { key: "ready", label: t("studio.taskStatus.ready"), color: "#0984e3", icon: "🟢" },
     { key: "running", label: t("studio.taskStatus.running"), color: "#fdcb6e", icon: "🔄" },
     { key: "done", label: t("studio.taskStatus.done"), color: "#00b894", icon: "✅" },
-    { key: "blocked", label: t("studio.taskStatus.blocked"), color: "#e17055", icon: "🚫" },
+    { key: "failed", label: t("studio.taskStatus.failed"), color: "#e17055", icon: "❌" },
+    { key: "blocked", label: t("studio.taskStatus.blocked"), color: "#d63031", icon: "🚫" },
   ];
 
   const PRIORITY_OPTIONS = [
@@ -431,6 +432,18 @@ function TaskManagement({
                           title="查看进度"
                         >
                           📊
+                        </button>
+                      )}
+                      {task.status === "failed" && (
+                        <button
+                          className={styles.taskMgmtItemRetry}
+                          onClick={async () => {
+                            await invoke("retry_project_task", { taskId: task.id });
+                            refreshTasks();
+                          }}
+                          title="重试任务"
+                        >
+                          🔄
                         </button>
                       )}
                       {task.status === "todo" && (

@@ -204,6 +204,164 @@ pub async fn update_project_task(app: AppHandle, id: String, req: db::UpdateProj
 }
 
 #[tauri::command]
+pub async fn retry_project_task(app: AppHandle, task_id: String) -> Result<(), String> {
+    use crate::commands::project::do_dispatch_task;
+
+    let pool = get_pool(&app)?;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let task: (String, String, String, String, String, i32, i32, i32, String) = sqlx::query_as(
+        "SELECT project_id, title, body, assignee, status, priority, retry_count, max_retries, result FROM project_tasks WHERE id = ?"
+    )
+    .bind(&task_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or("Task not found")?;
+
+    let (project_id, title, body, assignee, status, priority, retry_count, max_retries, _result) = task;
+
+    if status != "failed" && status != "done" {
+        return Err(format!("任务当前状态为「{}」，只有失败或已完成的任务才能重试", status));
+    }
+
+    if max_retries > 0 && retry_count >= max_retries {
+        return Err(format!("已达到最大重试次数（{}/{}）", retry_count, max_retries));
+    }
+
+    if assignee.is_empty() {
+        return Err("任务尚未分配执行者，无法重试".to_string());
+    }
+
+    // Reset workflow run if exists
+    let failed_runs: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT id, current_step FROM workflow_runs WHERE project_id = ? AND task_id = ? AND status = 'failed' ORDER BY started_at DESC LIMIT 1"
+    )
+    .bind(&project_id)
+    .bind(&task_id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    for (run_id, current_step) in &failed_runs {
+        // Reset failed steps and subsequent steps to 'pending'
+        sqlx::query(
+            "UPDATE workflow_run_steps SET status = 'pending', completed_at = NULL WHERE run_id = ? AND step_index >= ? AND status IN ('failed', 'rejected')"
+        )
+        .bind(run_id)
+        .bind(current_step)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        // Reset the first retried step to 'running'
+        sqlx::query(
+            "UPDATE workflow_run_steps SET status = 'running', started_at = ?, completed_at = NULL, output = ? WHERE run_id = ? AND step_index = ?"
+        )
+        .bind(now)
+        .bind(&format!("任务重试 — 第 {} 次重试", retry_count + 1))
+        .bind(run_id)
+        .bind(current_step)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        // Reset workflow run to 'running'
+        sqlx::query("UPDATE workflow_runs SET status = 'running', completed_at = NULL WHERE id = ?")
+            .bind(run_id)
+            .execute(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    // Mark failed artifacts as 'rejected' for the task
+    sqlx::query(
+        "UPDATE project_artifacts SET status = 'rejected', review_comment = ?, updated_at = ? WHERE project_id = ? AND task_id = ? AND status = 'failed'"
+    )
+    .bind(&format!("任务重试 — 第 {} 次重试", retry_count + 1))
+    .bind(now)
+    .bind(&project_id)
+    .bind(&task_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Also mark assignee's in_progress artifacts for this task as rejected
+    sqlx::query(
+        "UPDATE project_artifacts SET status = 'rejected', review_comment = ?, updated_at = ? WHERE project_id = ? AND task_id = ? AND status = 'in_progress'"
+    )
+    .bind(&format!("任务重试 — 第 {} 次重试", retry_count + 1))
+    .bind(now)
+    .bind(&project_id)
+    .bind(&task_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Update task: reset to 'ready', increment retry_count, clear result
+    sqlx::query(
+        "UPDATE project_tasks SET status = 'ready', retry_count = ?, result = '', claim_lock = '', claim_expire_at = 0, completed_at = NULL, updated_at = ? WHERE id = ?"
+    )
+    .bind(retry_count + 1)
+    .bind(now)
+    .bind(&task_id)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Append a system message for context
+    let msg_id = uuid::Uuid::new_v4().to_string();
+    let retry_msg = format!(
+        "⚠️ 任务「{}」上次执行失败，正在第 {} 次重试...\n本次需要完成的任务：\n**{}**\n{}",
+        title,
+        retry_count + 1,
+        title,
+        body
+    );
+
+    let sp: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM app_config WHERE key = 'conversation_storage_path'"
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
+    .filter(|v: &String| !v.is_empty());
+
+    if crate::crypto::key_manager::get_cached_key().is_none() {
+        let _ = crate::crypto::key_manager::init_or_load_key(sp.as_deref());
+    }
+
+    let _ = crate::crypto::file_storage::append_message_to_project(sp.as_deref(), &project_id, crate::crypto::file_storage::EncryptedProjectMessage {
+        id: msg_id.clone(),
+        role_id: "builtin_user".to_string(),
+        content: retry_msg.clone(),
+        message_type: "task_retry".to_string(),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        created_at: now,
+    });
+
+    // Re-dispatch the task
+    do_dispatch_task(&app, &pool, &task_id, &assignee, &project_id, &title, &body, priority, Some(&format!("任务重试（第 {} 次）", retry_count + 1)), "retry").await?;
+
+    let _ = crate::commands::project::record_activity(&app, &project_id, Some(&assignee), "task_retried", Some("task"), Some(&task_id), &format!("重试任务（第 {} 次）: {}", retry_count + 1, title)).await;
+
+    let _ = app.emit("task_status_changed", serde_json::json!({
+        "projectId": project_id,
+        "taskId": task_id,
+        "newStatus": "ready",
+        "retryCount": retry_count + 1,
+    }));
+
+    crate::commands::helpers::debounced_emit(&app, &project_id, "tasks");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "workflow_steps");
+    crate::commands::helpers::debounced_emit(&app, &project_id, "artifacts");
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn list_project_boards(app: AppHandle, project_id: String) -> Result<Vec<db::ProjectBoard>, String> {
     let pool = get_pool(&app)?;
     let rows = sqlx::query_as::<_, (String, String, String, String, i64, i64, i64, i64)>(

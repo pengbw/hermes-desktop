@@ -362,5 +362,6 @@ export function useChat(t: (key: string, params?: Record<string, string | number
     sendMessage,
     sendMessageFromHome,
     streamVoiceResponse,
+    stopStreaming: stream.stopStreaming,
   };
 }

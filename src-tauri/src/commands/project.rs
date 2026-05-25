@@ -278,7 +278,7 @@ pub(crate) async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), Stri
         .map_err(|e| e.to_string())?;
     }
 
-    for (i, role) in templates_data.templates.iter().flat_map(|t| &t.roles).enumerate() {
+    for (i, role) in crate::database::seeds::load_builtin_roles().iter().enumerate() {
         let id = format!("builtin_{}", role.id);
         sqlx::query(
             "INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at) VALUES (?, '', ?, ?, '', '', '', '', 'default', ?, ?, ?, 1, 100, 'neutral', ?, ?) ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, icon=excluded.icon, avatar_preset=excluded.avatar_preset, avatar_color=excluded.avatar_color, sort_order=excluded.sort_order, updated_at=excluded.updated_at"
@@ -308,7 +308,7 @@ pub(crate) async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), Stri
                 None => "start".to_string(),
             };
             let to_role_id = if wf.to_role_id == "end" { "end".to_string() } else { format!("builtin_{}", wf.to_role_id) };
-            let reject_to_role_id = wf.reject_to_role_id.as_ref().map(|r| format!("builtin_{}", r));
+            let reject_to_role_id = wf.reject_to_role_id.as_ref().map(|r| format!("builtin_{}", r)).unwrap_or_default();
 
             sqlx::query(
                 "INSERT INTO template_workflows (id, template_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, sort_order) VALUES (?, ?, ?, ?, '', ?, ?, ?) ON CONFLICT(id) DO UPDATE SET from_role_id=excluded.from_role_id, to_role_id=excluded.to_role_id, transition_type=excluded.transition_type, reject_to_role_id=excluded.reject_to_role_id, sort_order=excluded.sort_order"
@@ -338,7 +338,9 @@ pub(crate) async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), Stri
 pub async fn list_project_templates(app: AppHandle, locale: Option<String>) -> Result<Vec<db::ProjectTemplateDetail>, String> {
     let pool = get_pool(&app)?;
 
-    let _ = seed_builtin_templates(&pool).await;
+    if let Err(e) = seed_builtin_templates(&pool).await {
+        log::error!("list_project_templates: seed_builtin_templates failed: {}", e);
+    }
 
     let loc = locale.as_deref().unwrap_or("zh-CN");
     let seeds_data = crate::database::seeds::load_project_templates();
@@ -404,14 +406,11 @@ pub async fn list_project_templates(app: AppHandle, locale: Option<String>) -> R
             {
                 if role.is_builtin {
                     let seed_id = role.id.strip_prefix("builtin_").unwrap_or(&role.id);
-                    for seed_tmpl in &seeds_data.templates {
-                        if let Some(seed) = seed_tmpl.roles.iter().find(|r| r.id == seed_id) {
-                            role.name = crate::database::seeds::resolve_localized(&seed.name, loc).to_string();
-                            role.description = crate::database::seeds::resolve_localized(&seed.description, loc).to_string();
-                            role.responsibilities = crate::database::seeds::resolve_localized(&seed.responsibilities, loc).to_string();
-                            role.soul_content = crate::database::seeds::resolve_localized(&seed.soul_content, loc).to_string();
-                            break;
-                        }
+                    if let Some(seed) = crate::database::seeds::get_builtin_role(seed_id) {
+                        role.name = crate::database::seeds::resolve_localized(&seed.name, loc).to_string();
+                        role.description = crate::database::seeds::resolve_localized(&seed.description, loc).to_string();
+                        role.responsibilities = crate::database::seeds::resolve_localized(&seed.responsibilities, loc).to_string();
+                        role.soul_content = crate::database::seeds::resolve_localized(&seed.soul_content, loc).to_string();
                     }
                 }
                 roles.push(role);
@@ -432,7 +431,9 @@ pub async fn list_project_templates(app: AppHandle, locale: Option<String>) -> R
 pub async fn create_project_from_template(app: AppHandle, req: db::CreateProjectFromTemplateRequest, locale: Option<String>) -> Result<db::Project, String> {
     let pool = get_pool(&app)?;
 
-    let _ = seed_builtin_templates(&pool).await;
+    if let Err(e) = seed_builtin_templates(&pool).await {
+        log::error!("create_project_from_template: seed_builtin_templates failed: {}", e);
+    }
 
     let loc = locale.as_deref().unwrap_or("zh-CN");
     let seeds_data = crate::database::seeds::load_project_templates();
@@ -470,6 +471,8 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
+
+    log::info!("create_project_from_template: template_id={}, template_workflows count={}", req.template_id, template_workflows.len());
 
     let mut role_ids: Vec<String> = Vec::new();
     for w in &template_workflows {
@@ -542,9 +545,29 @@ pub async fn create_project_from_template(app: AppHandle, req: db::CreateProject
         .bind(now)
         .execute(&pool)
         .await;
-        match result {
+        match &result {
             Ok(r) => log::info!("create_project_from_template: member inserted rows_affected={}", r.rows_affected()),
-            Err(e) => log::error!("create_project_from_template: member insert failed: {}", e),
+            Err(e) => {
+                log::warn!("create_project_from_template: member insert failed ({}), retrying with re-seed", e);
+                if let Err(se) = seed_builtin_templates(&pool).await {
+                    log::error!("create_project_from_template: re-seed failed: {}", se);
+                }
+                let retry = sqlx::query(
+                    "INSERT INTO project_members (id, project_id, role_id, profile_name, custom_soul, custom_responsibilities, sort_order, created_at, updated_at) VALUES (?, ?, ?, '', '', '', ?, ?, ?)"
+                )
+                .bind(&member_id)
+                .bind(&project_id)
+                .bind(role_id)
+                .bind(i as i64)
+                .bind(now)
+                .bind(now)
+                .execute(&pool)
+                .await;
+                match retry {
+                    Ok(r) => log::info!("create_project_from_template: member inserted after re-seed rows_affected={}", r.rows_affected()),
+                    Err(e2) => return Err(format!("Failed to insert project member {}: {}", role_id, e2)),
+                }
+            }
         }
     }
 

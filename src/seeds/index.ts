@@ -17,7 +17,7 @@ export type {
   GesturesData,
   UIStyleSeed,
   UIStylesData,
-  TemplateRoleSeed,
+  RoleSeed,
   TemplateWorkflowSeed,
   ProjectTemplateSeed,
   ProjectTemplatesData,

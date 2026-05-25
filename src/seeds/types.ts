@@ -57,8 +57,9 @@ export interface UIStylesData {
   styles: UIStyleSeed[];
 }
 
-export interface TemplateRoleSeed {
+export interface RoleSeed {
   id: string;
+  templateId: string;
   nickname: string;
   icon: string;
   name: LocalizedString;
@@ -85,7 +86,7 @@ export interface ProjectTemplateSeed {
   description: LocalizedString;
   projectRule: LocalizedString;
   projectGuidelines: LocalizedString;
-  roles: TemplateRoleSeed[];
+  roleIds: string[];
   workflows: TemplateWorkflowSeed[];
 }
 

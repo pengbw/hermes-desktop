@@ -1,8 +1,11 @@
 use crate::commands::helpers::{
     command, hermes_api_base_from_pool, hermes_api_key_from_pool, hermes_bin, path_with_local_bin, tool_label,
-    ChatStreamEvent, call_hermes_api_streaming,
+    ChatStreamEvent, start_hermes_run, stop_hermes_run, RunHandleInner, AppState,
 };
 use crate::crypto::{file_storage, key_manager};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
 #[tauri::command]
@@ -393,7 +396,6 @@ pub async fn chat_with_hermes_api(
     let mut request_body = serde_json::json!({
         "model": "hermes-agent",
         "messages": messages,
-        "stream": true
     });
 
     if let Some(m) = &model {
@@ -406,17 +408,17 @@ pub async fn chat_with_hermes_api(
         request_body["hermes_session_id"] = serde_json::json!(sid);
     }
 
-    log::info!("[chat_api] api_base={}, api_key={}chars, request body: {}", api_base, api_key.len(), serde_json::to_string(&request_body).unwrap_or_default());
+    log::info!("[chat_api] api_base={}, using /v1/runs API", api_base);
 
-    let response = match call_hermes_api_streaming(&api_base, &api_key, "", request_body).await {
-        Ok(r) => r,
+    let run_id = match start_hermes_run(&api_base, &api_key, "", request_body).await {
+        Ok(id) => id,
         Err(e) => {
-            log::error!("[chat_api] HTTP request failed: {}", e);
+            log::error!("[chat_api] Failed to start run: {}", e);
             let _ = app.emit(&event_id, ChatStreamEvent {
                 event_type: Some("error".to_string()),
                 tool_name: None,
                 tool_label: None,
-                chunk: format!("[Error] API request failed: {}", e),
+                chunk: format!("[Error] {}", e),
                 done: false,
             });
             let _ = app.emit(&event_id, ChatStreamEvent {
@@ -430,67 +432,72 @@ pub async fn chat_with_hermes_api(
         }
     };
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        log::error!("[chat_api] API returned error ({}): {}", status, body);
-        let _ = app.emit(&event_id, ChatStreamEvent {
-            event_type: Some("error".to_string()),
-            tool_name: None,
-            tool_label: None,
-            chunk: format!("[Error] API returned {}: {}", status, body),
-            done: false,
-        });
-        let _ = app.emit(&event_id, ChatStreamEvent {
-            event_type: None,
-            tool_name: None,
-            tool_label: None,
-            chunk: "".to_string(),
-            done: true,
-        });
-        return Ok(());
+    let run_handle = Arc::new(RunHandleInner {
+        run_id: run_id.clone(),
+        cancelled: AtomicBool::new(false),
+    });
+
+    {
+        let state = app.state::<AppState>();
+        let mut map = state.cancel_map.lock().map_err(|e| e.to_string())?;
+        map.insert(event_id.clone(), run_handle.clone());
     }
+
+    let run_base = api_base.trim_end_matches("/v1");
+    let events_url = format!("{}/v1/runs/{}/events", run_base, run_id);
+
+    let client = reqwest::Client::new();
+    let response = match client
+        .get(&events_url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("[chat_api] Failed to connect to run events: {}", e);
+            let _ = app.emit(&event_id, ChatStreamEvent {
+                event_type: Some("error".to_string()),
+                tool_name: None,
+                tool_label: None,
+                chunk: format!("[Error] {}", e),
+                done: false,
+            });
+            let _ = app.emit(&event_id, ChatStreamEvent {
+                event_type: None,
+                tool_name: None,
+                tool_label: None,
+                chunk: "".to_string(),
+                done: true,
+            });
+            drop_run_handle(&app, &event_id);
+            return Ok(());
+        }
+    };
 
     use futures_util::StreamExt;
 
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
     let mut current_event: Option<String> = None;
-    let mut first_chunk = true;
 
     while let Some(chunk_result) = stream.next().await {
+        if run_handle.cancelled.load(Ordering::Relaxed) {
+            log::info!("[chat_api] cancelled for event_id={}", event_id);
+            let _ = app.emit(&event_id, ChatStreamEvent {
+                event_type: Some("cancelled".to_string()),
+                tool_name: None,
+                tool_label: None,
+                chunk: "".to_string(),
+                done: false,
+            });
+            break;
+        }
+
         match chunk_result {
             Ok(chunk) => {
                 let chunk_str = String::from_utf8_lossy(&chunk).to_string();
-                log::info!("[chat_api] received chunk: {} bytes, first 200 chars: {:?}", chunk.len(), &chunk_str[..chunk_str.len().min(200)]);
                 buffer.push_str(&chunk_str);
-
-                if first_chunk && buffer.trim_start().starts_with('{') {
-                    log::warn!("[chat_api] first chunk starts with '{{', treating as potential error response, buffer len={}", buffer.len());
-                    if let Ok(err) = serde_json::from_str::<serde_json::Value>(buffer.trim()) {
-                        if let Some(msg) = err["error"]["message"].as_str() {
-                            log::error!("[chat_api] API returned error: {}", msg);
-                            let _ = app.emit(&event_id, ChatStreamEvent {
-                                event_type: Some("error".to_string()),
-                                tool_name: None,
-                                tool_label: None,
-                                chunk: format!("[Error] {}", msg),
-                                done: false,
-                            });
-                            let _ = app.emit(&event_id, ChatStreamEvent {
-                                event_type: None,
-                                tool_name: None,
-                                tool_label: None,
-                                chunk: "".to_string(),
-                                done: true,
-                            });
-                            return Ok(());
-                        } else {
-                            log::warn!("[chat_api] first chunk is JSON but not an error response, content keys: {:?}", err.as_object().map(|o| o.keys().collect::<Vec<_>>()));
-                        }
-                    }
-                }
-                first_chunk = false;
 
                 while let Some(line_end) = buffer.find('\n') {
                     let line = buffer[..line_end].trim().to_string();
@@ -507,54 +514,62 @@ pub async fn chat_with_hermes_api(
 
                     if line.starts_with("data: ") || line.starts_with("data:") {
                         let data = if line.starts_with("data: ") {
-                            line[6..].trim()
+                            &line[6..]
                         } else {
-                            line[5..].trim()
+                            &line[5..]
                         };
 
-                        if data == "[DONE]" {
-                            log::info!("[chat_api] received [DONE] signal");
+                        if data.trim() == "[DONE]" {
                             continue;
                         }
 
+                        let evt_type = current_event.take();
+
                         match serde_json::from_str::<serde_json::Value>(data) {
                             Ok(parsed) => {
-                                let event_type = current_event.take();
+                                let event_name = evt_type.as_deref().unwrap_or("");
 
-                                if event_type.as_deref() == Some("hermes.tool.progress") {
-                                    let t_name = parsed["tool_name"].as_str().unwrap_or("unknown");
-                                    let label = tool_label(t_name);
-                                    log::info!("[chat_api] tool progress: {} -> {}", t_name, label);
-                                    let _ = app.emit(&event_id, ChatStreamEvent {
-                                        event_type: Some("tool_progress".to_string()),
-                                        tool_name: Some(t_name.to_string()),
-                                        tool_label: Some(label.to_string()),
-                                        chunk: label.to_string(),
-                                        done: false,
-                                    });
-                                } else {
-                                    if let Some(delta) = parsed["choices"][0]["delta"]["content"].as_str() {
+                                match event_name {
+                                    "message.delta" => {
+                                        if let Some(delta) = parsed["delta"].as_str() {
+                                            let _ = app.emit(&event_id, ChatStreamEvent {
+                                                event_type: Some("text".to_string()),
+                                                tool_name: None,
+                                                tool_label: None,
+                                                chunk: delta.to_string(),
+                                                done: false,
+                                            });
+                                        }
+                                    }
+                                    "tool.started" => {
+                                        let t_name = parsed["tool"].as_str().unwrap_or("unknown");
+                                        let label = tool_label(t_name);
                                         let _ = app.emit(&event_id, ChatStreamEvent {
-                                            event_type: Some("text".to_string()),
-                                            tool_name: None,
-                                            tool_label: None,
-                                            chunk: delta.to_string(),
+                                            event_type: Some("tool_progress".to_string()),
+                                            tool_name: Some(t_name.to_string()),
+                                            tool_label: Some(label.to_string()),
+                                            chunk: label.to_string(),
                                             done: false,
                                         });
-                                    } else {
-                                        let has_choices = parsed["choices"].is_array();
-                                        let has_delta = parsed["choices"][0]["delta"].is_object();
-                                        let delta_keys: Vec<&str> = parsed["choices"][0]["delta"].as_object().map(|o| o.keys().map(|k| k.as_str()).collect()).unwrap_or_default();
-                                        log::warn!("[chat_api] SSE data has no content: has_choices={}, has_delta={}, delta_keys={:?}", has_choices, has_delta, delta_keys);
                                     }
+                                    "run.failed" => {
+                                        let error = parsed["error"].as_str().unwrap_or("Unknown error");
+                                        log::error!("[chat_api] run failed: {}", error);
+                                        let _ = app.emit(&event_id, ChatStreamEvent {
+                                            event_type: Some("error".to_string()),
+                                            tool_name: None,
+                                            tool_label: None,
+                                            chunk: format!("[Error] {}", error),
+                                            done: false,
+                                        });
+                                    }
+                                    _ => {}
                                 }
                             }
                             Err(e) => {
                                 log::warn!("[chat_api] failed to parse SSE data: {} data={}", e, data);
                             }
                         }
-                    } else if !line.starts_with("id:") && !line.starts_with("retry:") {
-                        log::warn!("[chat_api] skipping unrecognized line: {:?}", &line[..line.len().min(100)]);
                     }
                 }
             }
@@ -565,6 +580,8 @@ pub async fn chat_with_hermes_api(
         }
     }
 
+    drop_run_handle(&app, &event_id);
+
     let _ = app.emit(&event_id, ChatStreamEvent {
         event_type: None,
         tool_name: None,
@@ -574,5 +591,39 @@ pub async fn chat_with_hermes_api(
     });
 
     log::info!("[chat_api] done");
+    Ok(())
+}
+
+fn drop_run_handle(app: &AppHandle, event_id: &str) {
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut map) = state.cancel_map.lock() {
+            map.remove(event_id);
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn stop_chat_stream(app: AppHandle, event_id: String) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let cancel_map = state.cancel_map.clone();
+
+    let handle = {
+        let map = cancel_map.lock().map_err(|e| e.to_string())?;
+        map.get(&event_id).cloned()
+    };
+
+    if let Some(handle) = handle {
+        handle.cancelled.store(true, Ordering::Relaxed);
+
+        let pool = state.db_pool.clone();
+        let api_base = hermes_api_base_from_pool(&pool).await;
+        let api_key = hermes_api_key_from_pool(&pool).await;
+        let _ = stop_hermes_run(&api_base, &api_key, &handle.run_id).await;
+
+        log::info!("[stop_chat] stopped event_id={}, run_id={}", event_id, handle.run_id);
+    } else {
+        log::info!("[stop_chat] no running task found for event_id={}", event_id);
+    }
+
     Ok(())
 }

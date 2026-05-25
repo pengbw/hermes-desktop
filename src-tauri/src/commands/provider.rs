@@ -29,7 +29,7 @@ fn encrypt_api_key(plain: &str) -> String {
     }
 }
 
-fn decrypt_api_key(stored: &str) -> String {
+pub(crate) fn decrypt_api_key(stored: &str) -> String {
     if stored.is_empty() || !encryption::is_encrypted(stored) {
         return stored.to_string();
     }

@@ -44,6 +44,7 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
     const [speakingMember, setSpeakingMember] = useState<string | null>(null);
     const [speakText, setSpeakText] = useState("");
     const [zoneInfo, setZoneInfo] = useState<string | null>(null);
+    const [selectedMember, setSelectedMember] = useState<string | null>(null);
     const [panelCollapsed, setPanelCollapsed] = useState(false);
 
     const toGM = useCallback(
@@ -86,11 +87,15 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
         const scene = new OfficeScene3D(el, toGM(members), officeTheme, officeLayout);
         scene.onZoneClick = (z) => {
           setZoneInfo(z.label);
+          setSelectedMember(null);
           setTimeout(() => setZoneInfo(null), 2000);
         };
         scene.onSpeak = (id, txt) => onSpeak(id, txt);
         scene.onDeliverComplete = (fromRoleId, toRoleId, artifactType) => {
           onDeliverComplete?.(fromRoleId, toRoleId, artifactType);
+        };
+        scene.onMemberClick = (memberId) => {
+          setSelectedMember((prev) => (prev === memberId ? null : memberId));
         };
         if (workflows && workflows.length > 0) {
           scene.setWorkflows(workflows);
@@ -215,6 +220,56 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
             <span>📍 {zoneInfo}</span>
           </div>
         )}
+        {selectedMember &&
+          (() => {
+            const m = members.find((mb) => mb.id === selectedMember);
+            if (!m) return null;
+            const statusText =
+              m.status === "working" ? "忙碌" : m.status === "waiting_approval" ? "待审批" : "空闲";
+            const statusColor =
+              m.status === "working"
+                ? "#f39c12"
+                : m.status === "waiting_approval"
+                  ? "#e67e22"
+                  : "#27ae60";
+            return (
+              <div className={styles.office3dMemberInfo} onClick={() => setSelectedMember(null)}>
+                <div className={styles.office3dMemberInfoCard} onClick={(e) => e.stopPropagation()}>
+                  <div className={styles.office3dMemberInfoHeader}>
+                    <div
+                      className={styles.office3dMemberInfoAvatar}
+                      style={{ background: m.color || "#6c5ce7" }}
+                    >
+                      {m.icon || "🤖"}
+                    </div>
+                    <div className={styles.office3dMemberInfoMain}>
+                      <span className={styles.office3dMemberInfoName}>{m.name}</span>
+                      <span className={styles.office3dMemberInfoRole}>
+                        {m.roleId ? `🎯 ${m.roleId}` : "无角色"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.office3dMemberInfoBody}>
+                    <div className={styles.office3dMemberInfoRow}>
+                      <span className={styles.office3dMemberInfoLabel}>状态</span>
+                      <span
+                        className={styles.office3dMemberInfoValue}
+                        style={{ color: statusColor }}
+                      >
+                        ● {statusText}
+                      </span>
+                    </div>
+                    <div className={styles.office3dMemberInfoRow}>
+                      <span className={styles.office3dMemberInfoLabel}>工位</span>
+                      <span className={styles.office3dMemberInfoValue}>
+                        {m.isWorking ? "工作中" : "空闲"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         <div className={styles.office3dControls}>
           <button
             className={styles.office3dCtrlBtn}

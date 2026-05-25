@@ -287,6 +287,7 @@ export class OfficeScene3D {
   charLabelEls: Map<string, HTMLElement> = new Map();
   charStatusLabelEls: Map<string, HTMLElement> = new Map();
   charHomeDesks: Map<string, { col: number; row: number }> = new Map();
+  charHomePositions: Map<string, { x: number; z: number }> = new Map();
   pathGrid: boolean[][] = [];
   walkAnims: WalkAnim[] = [];
   workflows: WorkflowStep[] = [];
@@ -294,7 +295,7 @@ export class OfficeScene3D {
   artifactMeshes: THREE.Group[] = [];
   particleSystems: ParticleSystem[] = [];
   memberStates: Map<string, MemberState> = new Map();
-  idleActionInterval = 8;
+  idleActionInterval = 30;
 
   raycaster = new THREE.Raycaster();
   mouse = new THREE.Vector2();
@@ -305,6 +306,7 @@ export class OfficeScene3D {
   onZoneClick?: (z: Zone) => void;
   onSpeak?: (id: string, txt: string) => void;
   onDeliverComplete?: (fromRoleId: string, toRoleId: string, artifactType: string) => void;
+  onMemberClick?: (memberId: string) => void;
 
   tod = 0.3;
   nightOverlay!: THREE.Mesh;
@@ -1969,6 +1971,7 @@ export class OfficeScene3D {
         sr = -1;
         const charGroup = this.buildCharacter(m, true);
         charGroup.position.set(deskCx + 0.3, 0, deskCz - 1.2);
+        charGroup.rotation.y = Math.PI;
         charGroup.userData = {
           col: d.col + 0.5,
           row: d.row + d.rows - 0.3,
@@ -1976,6 +1979,7 @@ export class OfficeScene3D {
           seated: true,
         };
         this.charHomeDesks.set(m.id, { col: d.col + 0.5, row: d.row + d.rows - 0.3 });
+        this.charHomePositions.set(m.id, { x: deskCx + 0.3, z: deskCz - 1.2 });
         this.scene.add(charGroup);
         this.charGroups.set(m.id, charGroup);
 
@@ -2026,6 +2030,7 @@ export class OfficeScene3D {
 
       const charGroup = this.buildCharacter(m, seated);
       const pos = c2w(sc, sr);
+      this.charHomePositions.set(m.id, { x: pos.x, z: pos.z });
       charGroup.position.set(pos.x, 0, pos.z);
       charGroup.userData = { col: sc, row: sr, memberId: m.id, seated };
       this.scene.add(charGroup);
@@ -2171,9 +2176,13 @@ export class OfficeScene3D {
     group.add(collarR);
 
     for (const side of [-1, 1]) {
+      const sideLabel = side === -1 ? "left" : "right";
       const upperArm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), shirtMat);
+      upperArm.name = `${sideLabel}Arm`;
       const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.25, 0.08), shirtMat);
+      forearm.name = `${sideLabel}Forearm`;
       const hand = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.04, 0.09), handMat);
+      hand.name = `${sideLabel}Hand`;
 
       if (seated) {
         upperArm.position.set(side * 0.24, baseY + 1.08, 0.0);
@@ -2197,9 +2206,13 @@ export class OfficeScene3D {
 
     const hipMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.7 });
     for (const side of [-1, 1]) {
+      const sideLabel = side === -1 ? "left" : "right";
       const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.35, 0.13), hipMat);
+      thigh.name = `${sideLabel}Leg`;
       const shin = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.35, 0.11), pantsMat);
+      shin.name = `${sideLabel}Shin`;
       const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.18), shoeMat);
+      shoe.name = `${sideLabel}Shoe`;
 
       if (seated) {
         thigh.position.set(side * 0.09, baseY + 0.68, 0.1);
@@ -2221,6 +2234,148 @@ export class OfficeScene3D {
     }
 
     return group;
+  }
+
+  applySeatedPose(group: THREE.Group) {
+    group.userData.seated = true;
+    const leftArm = group.getObjectByName("leftArm") as THREE.Mesh | undefined;
+    const rightArm = group.getObjectByName("rightArm") as THREE.Mesh | undefined;
+    const leftForearm = group.getObjectByName("leftForearm") as THREE.Mesh | undefined;
+    const rightForearm = group.getObjectByName("rightForearm") as THREE.Mesh | undefined;
+    const leftHand = group.getObjectByName("leftHand") as THREE.Mesh | undefined;
+    const rightHand = group.getObjectByName("rightHand") as THREE.Mesh | undefined;
+    const leftLeg = group.getObjectByName("leftLeg") as THREE.Mesh | undefined;
+    const rightLeg = group.getObjectByName("rightLeg") as THREE.Mesh | undefined;
+    const leftShin = group.getObjectByName("leftShin") as THREE.Mesh | undefined;
+    const rightShin = group.getObjectByName("rightShin") as THREE.Mesh | undefined;
+    const leftShoe = group.getObjectByName("leftShoe") as THREE.Mesh | undefined;
+    const rightShoe = group.getObjectByName("rightShoe") as THREE.Mesh | undefined;
+
+    group.children.forEach((child) => {
+      child.position.y -= 0.4;
+    });
+
+    if (leftArm) {
+      leftArm.position.set(-0.24, 0.68, 0);
+      leftArm.rotation.set(0, 0, 0.15);
+    }
+    if (rightArm) {
+      rightArm.position.set(0.24, 0.68, 0);
+      rightArm.rotation.set(0, 0, -0.15);
+    }
+    if (leftForearm) {
+      leftForearm.position.set(-0.22, 0.86, 0.3);
+      leftForearm.rotation.set(-1.3, 0, 0);
+    }
+    if (rightForearm) {
+      rightForearm.position.set(0.22, 0.86, 0.3);
+      rightForearm.rotation.set(-1.3, 0, 0);
+    }
+    if (leftHand) {
+      leftHand.position.set(-0.18, 0.82, 0.45);
+      leftHand.rotation.set(-0.5, 0, 0);
+    }
+    if (rightHand) {
+      rightHand.position.set(0.18, 0.82, 0.45);
+      rightHand.rotation.set(-0.5, 0, 0);
+    }
+
+    if (leftLeg) {
+      leftLeg.position.set(-0.09, 0.28, 0.1);
+      leftLeg.rotation.set(-1.2, 0, 0);
+    }
+    if (rightLeg) {
+      rightLeg.position.set(0.09, 0.28, 0.1);
+      rightLeg.rotation.set(-1.2, 0, 0);
+    }
+    if (leftShin) {
+      leftShin.position.set(-0.09, 0.38, 0.35);
+      leftShin.rotation.set(-Math.PI / 2.5, 0, 0);
+    }
+    if (rightShin) {
+      rightShin.position.set(0.09, 0.38, 0.35);
+      rightShin.rotation.set(-Math.PI / 2.5, 0, 0);
+    }
+    if (leftShoe) {
+      leftShoe.position.set(-0.09, 0.12, 0.48);
+      leftShoe.rotation.set(-Math.PI / 2.5, 0, 0);
+    }
+    if (rightShoe) {
+      rightShoe.position.set(0.09, 0.12, 0.48);
+      rightShoe.rotation.set(-Math.PI / 2.5, 0, 0);
+    }
+
+    group.rotation.y = Math.PI;
+  }
+
+  applyStandingPose(group: THREE.Group) {
+    group.userData.seated = false;
+    const leftArm = group.getObjectByName("leftArm") as THREE.Mesh | undefined;
+    const rightArm = group.getObjectByName("rightArm") as THREE.Mesh | undefined;
+    const leftForearm = group.getObjectByName("leftForearm") as THREE.Mesh | undefined;
+    const rightForearm = group.getObjectByName("rightForearm") as THREE.Mesh | undefined;
+    const leftHand = group.getObjectByName("leftHand") as THREE.Mesh | undefined;
+    const rightHand = group.getObjectByName("rightHand") as THREE.Mesh | undefined;
+    const leftLeg = group.getObjectByName("leftLeg") as THREE.Mesh | undefined;
+    const rightLeg = group.getObjectByName("rightLeg") as THREE.Mesh | undefined;
+    const leftShin = group.getObjectByName("leftShin") as THREE.Mesh | undefined;
+    const rightShin = group.getObjectByName("rightShin") as THREE.Mesh | undefined;
+    const leftShoe = group.getObjectByName("leftShoe") as THREE.Mesh | undefined;
+    const rightShoe = group.getObjectByName("rightShoe") as THREE.Mesh | undefined;
+
+    group.children.forEach((child) => {
+      child.position.y += 0.4;
+    });
+
+    if (leftArm) {
+      leftArm.position.set(-0.24, 1.02, 0);
+      leftArm.rotation.set(0, 0, 0.08);
+    }
+    if (rightArm) {
+      rightArm.position.set(0.24, 1.02, 0);
+      rightArm.rotation.set(0, 0, -0.08);
+    }
+    if (leftForearm) {
+      leftForearm.position.set(-0.26, 0.72, 0.02);
+      leftForearm.rotation.set(0, 0, 0);
+    }
+    if (rightForearm) {
+      rightForearm.position.set(0.26, 0.72, 0.02);
+      rightForearm.rotation.set(0, 0, 0);
+    }
+    if (leftHand) {
+      leftHand.position.set(-0.26, 0.58, 0.04);
+      leftHand.rotation.set(0, 0, 0);
+    }
+    if (rightHand) {
+      rightHand.position.set(0.26, 0.58, 0.04);
+      rightHand.rotation.set(0, 0, 0);
+    }
+
+    if (leftLeg) {
+      leftLeg.position.set(-0.09, 0.68, 0);
+      leftLeg.rotation.set(0, 0, 0);
+    }
+    if (rightLeg) {
+      rightLeg.position.set(0.09, 0.68, 0);
+      rightLeg.rotation.set(0, 0, 0);
+    }
+    if (leftShin) {
+      leftShin.position.set(-0.09, 0.33, 0);
+      leftShin.rotation.set(0, 0, 0);
+    }
+    if (rightShin) {
+      rightShin.position.set(0.09, 0.33, 0);
+      rightShin.rotation.set(0, 0, 0);
+    }
+    if (leftShoe) {
+      leftShoe.position.set(-0.09, 0.12, 0.03);
+      leftShoe.rotation.set(0, 0, 0);
+    }
+    if (rightShoe) {
+      rightShoe.position.set(0.09, 0.12, 0.03);
+      rightShoe.rotation.set(0, 0, 0);
+    }
   }
 
   updateReceptionistTyping(elapsed: number, _dt: number) {
@@ -2258,8 +2413,37 @@ export class OfficeScene3D {
       this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
       this.raycaster.setFromCamera(this.mouse, this.camera);
-      const intersects = this.raycaster.intersectObject(this.floorMesh);
 
+      const allCharMeshes: THREE.Object3D[] = [];
+      for (const cg of this.charGroups.values()) {
+        cg.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            allCharMeshes.push(child);
+          }
+        });
+      }
+      if (this.receptionistGroup) {
+        this.receptionistGroup.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            allCharMeshes.push(child);
+          }
+        });
+      }
+
+      const charIntersects =
+        allCharMeshes.length > 0 ? this.raycaster.intersectObjects(allCharMeshes, false) : [];
+      if (charIntersects.length > 0) {
+        let obj: THREE.Object3D | null = charIntersects[0].object;
+        while (obj) {
+          if (obj.userData.memberId) {
+            this.onMemberClick?.(obj.userData.memberId);
+            return;
+          }
+          obj = obj.parent;
+        }
+      }
+
+      const intersects = this.raycaster.intersectObject(this.floorMesh);
       if (intersects.length > 0) {
         const point = intersects[0].point;
         const col = Math.floor(point.x / CELL);
@@ -2285,10 +2469,7 @@ export class OfficeScene3D {
     if (!cg) return;
 
     if (cg.userData.seated) {
-      cg.userData.seated = false;
-      cg.children.forEach((child) => {
-        child.position.y += 0.4;
-      });
+      this.applyStandingPose(cg);
     }
 
     const cc = cg.userData.col as number;
@@ -2359,10 +2540,14 @@ export class OfficeScene3D {
 
     if (status === "working" && prevStatus !== "working") {
       this.returnToDesk(memberId);
+      state.idleAction = "none";
+      state.idleActionTimer = 0;
     }
 
     if (status === "waiting_approval" && prevStatus !== "waiting_approval") {
       this.returnToDesk(memberId);
+      state.idleAction = "none";
+      state.idleActionTimer = 0;
     }
 
     if (status === "idle" && (prevStatus === "working" || prevStatus === "waiting_approval")) {
@@ -2418,7 +2603,7 @@ export class OfficeScene3D {
     const state = this.memberStates.get(memberId);
     if (!state || state.status !== "idle") return;
 
-    const actions: IdleAction[] = ["coffee", "book", "stretch", "chat", "wander"];
+    const actions: IdleAction[] = ["coffee", "book", "stretch", "chat"];
     const action = actions[Math.floor(Math.random() * actions.length)];
     state.idleAction = action;
 
@@ -2437,7 +2622,7 @@ export class OfficeScene3D {
       case "book": {
         const lounge = ZONES.find((z) => z.type === "lounge");
         if (lounge) {
-          this.moveTo(memberId, lounge.col + 1, lounge.row + 1);
+          this.moveTo(memberId, lounge.col + 2, lounge.row + lounge.rows - 1);
           this.showBubble(memberId, "📖 看看书放松一下");
         }
         break;
@@ -2447,7 +2632,11 @@ export class OfficeScene3D {
         break;
       }
       case "chat": {
-        const otherMembers = this.members.filter((m) => m.id !== memberId);
+        const otherMembers = this.members.filter((m) => {
+          if (m.id === memberId) return false;
+          const s = this.memberStates.get(m.id);
+          return s?.status === "idle";
+        });
         if (otherMembers.length > 0) {
           const other = otherMembers[Math.floor(Math.random() * otherMembers.length)];
           const otherCg = this.charGroups.get(other.id);
@@ -2487,7 +2676,11 @@ export class OfficeScene3D {
       } else if (isDelivering) {
         state.status = "delivering";
       } else if (state.status === "walking") {
-        if (state.idleAction && state.idleAction !== "none") {
+        const member = this.members.find((m) => m.id === memberId);
+        if (member?.isWorking) {
+          state.status = "working";
+          state.idleAction = "none";
+        } else if (state.idleAction && state.idleAction !== "none") {
           state.status = "resting";
         } else {
           state.status = "idle";
@@ -2533,6 +2726,10 @@ export class OfficeScene3D {
 
     const existingDelivery = this.deliveryAnims.find((d) => d.fromMemberId === fromMemberId);
     if (existingDelivery) return;
+
+    if (fromCg.userData.seated) {
+      this.applyStandingPose(fromCg);
+    }
 
     const toCol = toCg.userData.col as number;
     const toRow = toCg.userData.row as number;
@@ -3230,13 +3427,15 @@ export class OfficeScene3D {
             const cc = cg.userData.col as number;
             const cr = cg.userData.row as number;
             if (Math.abs(cc - home.col) < 1 && Math.abs(cr - home.row) < 1) {
-              cg.position.set((home.col + 0.5) * CELL, 0, (home.row + 0.5) * CELL);
+              const homePos = this.charHomePositions.get(anim.memberId);
+              if (homePos) {
+                cg.position.set(homePos.x, 0, homePos.z);
+              } else {
+                cg.position.set((home.col + 0.5) * CELL, 0, (home.row + 0.5) * CELL);
+              }
               cg.userData.col = home.col;
               cg.userData.row = home.row;
-              cg.userData.seated = true;
-              cg.children.forEach((child) => {
-                child.position.y -= 0.4;
-              });
+              this.applySeatedPose(cg);
             }
           }
           continue;
@@ -3283,14 +3482,23 @@ export class OfficeScene3D {
       const isWalking = this.walkAnims.some((a) => a.memberId === m.id);
       const leftArm = cg.getObjectByName("leftArm");
       const rightArm = cg.getObjectByName("rightArm");
+      const leftForearm = cg.getObjectByName("leftForearm");
+      const rightForearm = cg.getObjectByName("rightForearm");
       const leftLeg = cg.getObjectByName("leftLeg");
       const rightLeg = cg.getObjectByName("rightLeg");
+      const leftShin = cg.getObjectByName("leftShin");
+      const rightShin = cg.getObjectByName("rightShin");
 
       if (isWalking) {
-        if (leftArm) leftArm.rotation.x = Math.sin(elapsed * 8) * 0.5;
-        if (rightArm) rightArm.rotation.x = -Math.sin(elapsed * 8) * 0.5;
-        if (leftLeg) leftLeg.rotation.x = -Math.sin(elapsed * 8) * 0.4;
-        if (rightLeg) rightLeg.rotation.x = Math.sin(elapsed * 8) * 0.4;
+        const walkPhase = elapsed * 8;
+        if (leftArm) leftArm.rotation.x = Math.sin(walkPhase) * 0.6;
+        if (rightArm) rightArm.rotation.x = -Math.sin(walkPhase) * 0.6;
+        if (leftForearm) leftForearm.rotation.x = Math.sin(walkPhase) * 0.3;
+        if (rightForearm) rightForearm.rotation.x = -Math.sin(walkPhase) * 0.3;
+        if (leftLeg) leftLeg.rotation.x = -Math.sin(walkPhase) * 0.6;
+        if (rightLeg) rightLeg.rotation.x = Math.sin(walkPhase) * 0.6;
+        if (leftShin) leftShin.rotation.x = -Math.sin(walkPhase + Math.PI * 0.4) * 0.4;
+        if (rightShin) rightShin.rotation.x = Math.sin(walkPhase + Math.PI * 0.4) * 0.4;
       } else if (state?.status === "working") {
         if (leftArm) leftArm.rotation.x = Math.sin(elapsed * 5) * 0.3 - 0.6;
         if (rightArm) rightArm.rotation.x = Math.sin(elapsed * 5 + 1) * 0.3 - 0.6;
@@ -3358,10 +3566,12 @@ export class OfficeScene3D {
           row = d.row + d.rows - 0.3;
           const charGroup = this.buildCharacter(m, true);
           charGroup.position.set(deskCx + 0.3, 0, deskCz - 1.2);
+          charGroup.rotation.y = Math.PI;
           charGroup.userData = { col, row, memberId: m.id, seated: true };
           this.scene.add(charGroup);
           this.charGroups.set(m.id, charGroup);
           this.charHomeDesks.set(m.id, { col, row });
+          this.charHomePositions.set(m.id, { x: deskCx + 0.3, z: deskCz - 1.2 });
           deskIdx++;
         } else {
           col = 3 + deskIdx;
@@ -3373,6 +3583,7 @@ export class OfficeScene3D {
           this.scene.add(charGroup);
           this.charGroups.set(m.id, charGroup);
           this.charHomeDesks.set(m.id, { col, row });
+          this.charHomePositions.set(m.id, { x: pos.x, z: pos.z });
           deskIdx++;
         }
 

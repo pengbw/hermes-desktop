@@ -1,4 +1,5 @@
 use crate::database::models as db;
+use crate::commands::provider::decrypt_api_key;
 use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter, Manager};
@@ -586,7 +587,7 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
             .fetch_optional(&pool)
             .await
             .map_err(|e| e.to_string())?;
-            provider.map(|(base_url, api_key)| (base_url, api_key, embed_model))
+            provider.map(|(base_url, api_key)| (base_url, decrypt_api_key(&api_key), embed_model))
         } else {
             None
         }
@@ -923,6 +924,7 @@ pub async fn retrieve_knowledge_internal(app: &AppHandle, id: &str, query: &str,
                 .map_err(|e| e.to_string())?;
 
                 if let Some((base_url, api_key)) = provider {
+                    let api_key = decrypt_api_key(&api_key);
                     match embed_text_cloud(&base_url, &api_key, embed_model, &[query.to_string()]).await {
                         Ok(mut vecs) => vecs.pop(),
                         Err(e) => {
@@ -1418,6 +1420,8 @@ pub async fn test_cloud_embedding(app: AppHandle, provider: String, model: Strin
     .fetch_one(&pool)
     .await
     .map_err(|e| format!("Provider not found: {}", e))?;
+
+    let api_key = decrypt_api_key(&api_key);
 
     log::debug!("[test_cloud_embedding] base_url={}, api_key_len={}", base_url, api_key.len());
 

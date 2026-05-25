@@ -32,6 +32,7 @@ interface MessageInputProps {
     kbIds?: string[];
     voiceInfo?: { audioPath: string; audioDuration: number };
   }) => void;
+  onStop?: () => void;
   onSttComplete?: (text: string, audioPath: string, audioDuration?: number) => void;
   isStreaming: boolean;
   voiceEnabled: boolean;
@@ -45,6 +46,7 @@ export default function MessageInput({
   input,
   setInput,
   onSend,
+  onStop,
   onSttComplete,
   isStreaming,
   voiceEnabled,
@@ -516,11 +518,13 @@ export default function MessageInput({
             <Button
               size="sm"
               className="h-7 w-7 p-0"
-              onClick={handleSend}
-              disabled={isStreaming || (!input.trim() && attachedFiles.length === 0)}
+              onClick={isStreaming && onStop ? onStop : handleSend}
+              disabled={!isStreaming && !input.trim() && attachedFiles.length === 0}
             >
               {isStreaming ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span className="flex items-center justify-center w-3.5 h-3.5">
+                  <span className="w-2.5 h-2.5 border-2 border-current rounded-sm" />
+                </span>
               ) : (
                 <Send className="h-3.5 w-3.5" />
               )}
