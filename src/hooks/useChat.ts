@@ -18,7 +18,11 @@ export function useChat(t: (key: string, params?: Record<string, string | number
   };
 
   const createNewConversation = async () => {
-    return conv.createNewConversation(t("chat.newConversation"));
+    const id = await conv.createNewConversation(t("chat.newConversation"));
+    if (id) {
+      stream.setActiveConversation(id);
+    }
+    return id;
   };
 
   const deleteConversation = async (id: string) => {
