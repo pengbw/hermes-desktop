@@ -19,7 +19,7 @@ function SkillsPanel({
   const [detailSkill, setDetailSkill] = useState<CatalogSkill | null>(null);
   const [detailContent, setDetailContent] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
-  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+
   const [installing, setInstalling] = useState<string | null>(null);
   const [installMsg, setInstallMsg] = useState("");
   const [skillPage, setSkillPage] = useState(1);
@@ -76,14 +76,6 @@ function SkillsPanel({
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery, filterSource, filterInstalled, activeCategory]);
-
-  useEffect(() => {
-    const handler = () => {
-      if (menuOpen) setMenuOpen(null);
-    };
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, [menuOpen]);
 
   const handleInstall = async (skill: CatalogSkill) => {
     if (skill.configSchema && Object.keys(skill.configSchema).length > 0) {
@@ -160,7 +152,6 @@ function SkillsPanel({
     try {
       await invoke("uninstall_skill", { name: skill.name });
       loadCatalog(skillPage);
-      setMenuOpen(null);
     } catch {
       // console.error("Uninstall failed:", err);
     }
@@ -367,50 +358,7 @@ function SkillsPanel({
                 >
                   {skill.installed ? t("skills.installed") : t("skills.notInstalled")}
                 </span>
-                <div className={skillStyles.skillCardMenuWrap}>
-                  <button
-                    className={skillStyles.skillCardMenuBtn}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuOpen(menuOpen === skill.id ? null : skill.id);
-                    }}
-                  >
-                    ⋮
-                  </button>
-                  {menuOpen === skill.id && (
-                    <div className={skillStyles.skillCardMenu} onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => {
-                          handleInspect(skill);
-                          setMenuOpen(null);
-                        }}
-                      >
-                        {t("skills.viewDetail")}
-                      </button>
-                      {skill.installed && (
-                        <button
-                          onClick={() => {
-                            handleUninstall(skill);
-                          }}
-                        >
-                          {t("skills.uninstall")}
-                        </button>
-                      )}
-                      {skill.configSchema && Object.keys(skill.configSchema).length > 0 && (
-                        <button
-                          onClick={() => {
-                            setConfigSkill(skill);
-                            setConfigValues({ ...skill.userConfig });
-                            setShowConfigModal(true);
-                            setMenuOpen(null);
-                          }}
-                        >
-                          {t("skills.editConfig")}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <span className={skillStyles.skillSourceCornerTag}>{skill.source}</span>
                 <div className={skillStyles.skillIcon}>
                   <span className={skillStyles.skillIconEmoji}>
                     {skill.category ? getCategoryIcon(skill.category) : "🔧"}
@@ -439,13 +387,6 @@ function SkillsPanel({
                     </span>
                   </div>
                 )}
-                {skill.description && (
-                  <div className={skillStyles.skillDescTooltip}>
-                    {tooltipSkill === skill.id && (
-                      <div className={skillStyles.descTooltipContent}>{skill.description}</div>
-                    )}
-                  </div>
-                )}
               </div>
               <div className={skillStyles.skillCardFooter}>
                 <button className={skillStyles.skillBtn} onClick={() => handleInspect(skill)}>
@@ -468,6 +409,9 @@ function SkillsPanel({
                   </button>
                 )}
               </div>
+              {skill.description && tooltipSkill === skill.id && (
+                <div className={skillStyles.descTooltipContent}>{skill.description}</div>
+              )}
             </div>
           ))}
         </div>

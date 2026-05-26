@@ -75,7 +75,7 @@ export default function TitleBar({
       {/* Logo + 拖拽区域 */}
       <div className="flex items-center gap-2 px-3 h-full" data-tauri-drag-region>
         <img src={logoIcon} alt="Hermes" className="w-5 h-5" />
-        <span className="text-sm font-medium text-foreground">Hermes Desktop</span>
+        <span className="text-sm font-medium text-foreground">HD</span>
       </div>
 
       {/* 菜单栏 */}

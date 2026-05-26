@@ -119,8 +119,7 @@ export function useStreamingChat() {
         const assistantMsg: Message = {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content:
-            fullContent || (event.payload as { cancelled?: boolean }).cancelled ? "" : fullContent,
+          content: (event.payload as { cancelled?: boolean }).cancelled ? "" : fullContent,
           timestamp: Date.now(),
           knowledgeSources: pendingSources.length > 0 ? [...pendingSources] : undefined,
           messageType: isVoiceMessage ? "voice" : "text",

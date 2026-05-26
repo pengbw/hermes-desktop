@@ -527,7 +527,10 @@ pub async fn chat_with_hermes_api(
 
                         match serde_json::from_str::<serde_json::Value>(data) {
                             Ok(parsed) => {
-                                let event_name = evt_type.as_deref().unwrap_or("");
+                                let event_name = evt_type
+                                    .as_deref()
+                                    .or_else(|| parsed["event"].as_str())
+                                    .unwrap_or("");
 
                                 match event_name {
                                     "message.delta" => {

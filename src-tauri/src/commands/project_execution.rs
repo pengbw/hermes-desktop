@@ -422,7 +422,10 @@ pub async fn chat_with_project_role(app: AppHandle, project_id: String, role_id:
                             let evt_type = current_event.take();
 
                             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(data) {
-                                let event_name = evt_type.as_deref().unwrap_or("");
+                                let event_name = evt_type
+                                    .as_deref()
+                                    .or_else(|| parsed["event"].as_str())
+                                    .unwrap_or("");
 
                                 match event_name {
                                     "message.delta" => {
