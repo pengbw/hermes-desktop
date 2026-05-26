@@ -1558,6 +1558,7 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
             crate::commands::helpers::debounced_emit(&rec_app, &rec_project, "tasks");
             crate::commands::helpers::debounced_emit(&rec_app, &rec_project, "artifacts");
             crate::commands::helpers::debounced_emit(&rec_app, &rec_project, "members");
+            crate::commands::helpers::debounced_emit(&rec_app, &rec_project, "messages");
         });
     }
 
@@ -1582,8 +1583,8 @@ pub async fn run_workflow_auto_chat(app: AppHandle, project_id: String, start_ro
     let mut visited = std::collections::HashSet::new();
     visited.insert(start_role_id.clone());
 
-    let max_steps = 5;
-    for step in 0..max_steps {
+    let mut step = 0;
+    loop {
         let workflows: Vec<(String, String, String, String)> = sqlx::query_as(
             "SELECT id, from_role_id, to_role_id, transition_type FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'auto_push' ORDER BY sort_order ASC"
         )
@@ -1640,6 +1641,7 @@ pub async fn run_workflow_auto_chat(app: AppHandle, project_id: String, start_ro
             results.push(result);
             current_role_id = to_role_id.clone();
         }
+        step += 1;
     }
 
     let _ = app.emit(&event_id, serde_json::json!({
@@ -3289,6 +3291,19 @@ fn scan_dir_recursive_set(base: &std::path::Path, dir: &std::path::Path) -> std:
 pub async fn record_chat_files(app: AppHandle, project_id: String, role_id: String, task_id: String) -> Result<(), String> {
     let pool = get_pool(&app)?;
 
+    let effective_task_id = if task_id.is_empty() {
+        sqlx::query_scalar(
+            "SELECT id FROM project_tasks WHERE project_id = ? AND status IN ('running', 'ready') ORDER BY updated_at DESC LIMIT 1"
+        )
+        .bind(&project_id)
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(None)
+        .unwrap_or_default()
+    } else {
+        task_id
+    };
+
     let workspace_path: (String,) = sqlx::query_as(
         "SELECT workspace_path FROM projects WHERE id = ?"
     )
@@ -3350,7 +3365,7 @@ pub async fn record_chat_files(app: AppHandle, project_id: String, role_id: Stri
             .bind(&id)
             .bind(&project_id)
             .bind(&role_id)
-            .bind(&task_id)
+            .bind(&effective_task_id)
             .bind(&relative_path)
             .bind(&file_name)
             .bind(&file_ext)

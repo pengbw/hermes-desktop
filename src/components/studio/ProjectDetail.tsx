@@ -237,6 +237,10 @@ function ProjectDetail({
           invoke<ProjectMember[]>("list_project_members", { projectId: project.id })
             .then(onMembersUpdate)
             .catch(console.error);
+        } else if (change === "messages") {
+          invoke<ProjectMessage[]>("list_project_messages", { projectId: project.id })
+            .then(onMessagesUpdate)
+            .catch(console.error);
         }
       }
     }).then((fn) => {
@@ -245,7 +249,7 @@ function ProjectDetail({
     return () => {
       unlisten?.();
     };
-  }, [project.id, onTasksUpdate, onArtifactsUpdate, onMembersUpdate]);
+  }, [project.id, onTasksUpdate, onArtifactsUpdate, onMembersUpdate, onMessagesUpdate]);
 
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;

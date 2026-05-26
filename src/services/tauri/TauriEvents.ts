@@ -25,7 +25,7 @@ export interface ChatStreamEvent {
 
 export interface ProjectDataChangePayload {
   projectId: string;
-  changes: Array<"tasks" | "artifacts" | "members" | "workflow_steps">;
+  changes: Array<"tasks" | "artifacts" | "members" | "workflow_steps" | "messages">;
 }
 
 export interface ArtifactStatusChangePayload {
