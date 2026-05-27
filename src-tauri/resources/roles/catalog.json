@@ -1,0 +1,159 @@
+{
+  "version": "1.0.0",
+  "departments": [
+    {
+      "id": "engineering",
+      "name": {
+        "zh-CN": "工程部",
+        "zh-XG": "工程部",
+        "en": "Engineering"
+      },
+      "roleCount": 35
+    },
+    {
+      "id": "design",
+      "name": {
+        "zh-CN": "设计部",
+        "zh-XG": "設計部",
+        "en": "Design"
+      },
+      "roleCount": 8
+    },
+    {
+      "id": "marketing",
+      "name": {
+        "zh-CN": "营销部",
+        "zh-XG": "營銷部",
+        "en": "Marketing"
+      },
+      "roleCount": 36
+    },
+    {
+      "id": "paid_media",
+      "name": {
+        "zh-CN": "付费媒体部",
+        "zh-XG": "付費媒體部",
+        "en": "Paid Media"
+      },
+      "roleCount": 7
+    },
+    {
+      "id": "sales",
+      "name": {
+        "zh-CN": "销售部",
+        "zh-XG": "銷售部",
+        "en": "Sales"
+      },
+      "roleCount": 8
+    },
+    {
+      "id": "finance",
+      "name": {
+        "zh-CN": "金融部",
+        "zh-XG": "金融部",
+        "en": "Finance"
+      },
+      "roleCount": 8
+    },
+    {
+      "id": "hr",
+      "name": {
+        "zh-CN": "人力资源部",
+        "zh-XG": "人力資源部",
+        "en": "Human Resources"
+      },
+      "roleCount": 2
+    },
+    {
+      "id": "legal",
+      "name": {
+        "zh-CN": "法务部",
+        "zh-XG": "法務部",
+        "en": "Legal"
+      },
+      "roleCount": 2
+    },
+    {
+      "id": "supply_chain",
+      "name": {
+        "zh-CN": "供应链部",
+        "zh-XG": "供應鏈部",
+        "en": "Supply Chain"
+      },
+      "roleCount": 4
+    },
+    {
+      "id": "product",
+      "name": {
+        "zh-CN": "产品部",
+        "zh-XG": "產品部",
+        "en": "Product"
+      },
+      "roleCount": 5
+    },
+    {
+      "id": "project_management",
+      "name": {
+        "zh-CN": "项目管理部",
+        "zh-XG": "專案管理部",
+        "en": "Project Management"
+      },
+      "roleCount": 6
+    },
+    {
+      "id": "testing",
+      "name": {
+        "zh-CN": "测试部",
+        "zh-XG": "測試部",
+        "en": "Testing"
+      },
+      "roleCount": 9
+    },
+    {
+      "id": "support",
+      "name": {
+        "zh-CN": "支持部",
+        "zh-XG": "支持部",
+        "en": "Support"
+      },
+      "roleCount": 7
+    },
+    {
+      "id": "specialized",
+      "name": {
+        "zh-CN": "专项部",
+        "zh-XG": "專項部",
+        "en": "Specialized"
+      },
+      "roleCount": 46
+    },
+    {
+      "id": "spatial_computing",
+      "name": {
+        "zh-CN": "空间计算部",
+        "zh-XG": "空間計算部",
+        "en": "Spatial Computing"
+      },
+      "roleCount": 6
+    },
+    {
+      "id": "game_dev",
+      "name": {
+        "zh-CN": "游戏开发部",
+        "zh-XG": "遊戲開發部",
+        "en": "Game Development"
+      },
+      "roleCount": 20
+    },
+    {
+      "id": "academic",
+      "name": {
+        "zh-CN": "学术部",
+        "zh-XG": "學術部",
+        "en": "Academic"
+      },
+      "roleCount": 6
+    }
+  ],
+  "totalRoles": 215
+}

@@ -1573,6 +1573,80 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
     })
 }
 
+async fn evaluate_condition_with_ai(
+    app: &AppHandle,
+    project_id: &str,
+    role_id: &str,
+    condition_expr: &str,
+    artifact_content: &str,
+) -> Result<String, String> {
+    let pool = get_pool(app)?;
+    let api_base = helpers::hermes_api_base_from_pool(&pool).await;
+    let api_key = helpers::hermes_api_key_from_pool(&pool).await;
+
+    let truncated_content = if artifact_content.len() > 4000 {
+        let mut end = 4000;
+        while end > 0 && !artifact_content.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...(内容过长已截断)", &artifact_content[..end])
+    } else {
+        artifact_content.to_string()
+    };
+
+    let judge_prompt = format!(
+        "你是一个流程判断助手。请严格根据以下「判断条件」，评估「上游产出物内容」是否满足要求。\n\
+         只回复一个词：「是」或「否」。不要回复任何其他内容。\n\n\
+         【判断条件】\n{}\n\n\
+         【上游产出物内容】\n{}",
+        condition_expr, truncated_content
+    );
+
+    let body = serde_json::json!({
+        "model": "default",
+        "messages": [
+            {"role": "system", "content": "你是一个流程判断助手。你的唯一任务是阅读判断条件和上游产出物，然后只回复一个词：「是」或「否」。不要添加任何解释。"},
+            {"role": "user", "content": judge_prompt}
+        ],
+        "stream": false,
+    });
+
+    log::info!("[evaluate_condition] project={}, role={}, condition={}", project_id, role_id, condition_expr);
+
+    let response = call_hermes_api_non_streaming(&api_base, &api_key, project_id, body)
+        .await
+        .map_err(|e| format!("条件判断 AI 调用失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(format!("条件判断 AI 返回错误: {} - {}", status, text));
+    }
+
+    let resp_json: serde_json::Value = response.json().await
+        .map_err(|e| format!("条件判断 AI 响应解析失败: {}", e))?;
+
+    let ai_response = resp_json["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    log::info!("[evaluate_condition] AI response: '{}'", ai_response);
+
+    let result = if ai_response.contains("是") || ai_response.to_lowercase().contains("yes") {
+        "yes"
+    } else if ai_response.contains("否") || ai_response.to_lowercase().contains("no") {
+        "no"
+    } else {
+        log::warn!("[evaluate_condition] unexpected AI response '{}', defaulting to 'yes'", ai_response);
+        "yes"
+    };
+
+    log::info!("[evaluate_condition] result: {}", result);
+    Ok(result.to_string())
+}
+
 #[tauri::command]
 pub async fn run_workflow_auto_chat(app: AppHandle, project_id: String, start_role_id: String, initial_message: String, event_id: String) -> Result<Vec<AutoDelegateResult>, String> {
     let pool = get_pool(&app)?;
@@ -2018,7 +2092,7 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
         .await
         .map_err(|e| e.to_string())?;
 
-        let next_step = current_step + 1;
+        let mut next_step = current_step + 1;
         let max_step: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workflow_run_steps WHERE run_id = ?")
             .bind(&run_id)
             .fetch_one(&pool)
@@ -2134,18 +2208,110 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
 
             // Trigger workflow execution using the CURRENT step's role_id as from_role_id
             // This will find workflows from the current role to downstream roles and delegate work
+            let current_role_id_for_branch = current_role_id.clone();
+            let mut condition_branch_result: Option<String> = None;
             if let Some(from_role_id) = current_role_id {
                 if !from_role_id.is_empty() && from_role_id != "start" && from_role_id != "end" {
+                    let condition_expr: Option<String> = sqlx::query_scalar(
+                        "SELECT condition_expr FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'condition' AND condition_expr IS NOT NULL AND condition_expr != '' LIMIT 1"
+                    )
+                    .bind(&project_id)
+                    .bind(&from_role_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .flatten();
+
+                    let condition_result = if let Some(ref expr) = condition_expr {
+                        if !expr.is_empty() {
+                            let artifact_content: Option<String> = sqlx::query_scalar(
+                                "SELECT content FROM project_artifacts WHERE project_id = ? AND role_id = ? AND status = 'approved' ORDER BY updated_at DESC LIMIT 1"
+                            )
+                            .bind(&project_id)
+                            .bind(&from_role_id)
+                            .fetch_optional(&pool)
+                            .await
+                            .map_err(|e| e.to_string())?
+                            .flatten();
+
+                            if let Some(content) = artifact_content {
+                                match evaluate_condition_with_ai(&app, &project_id, &from_role_id, expr, &content).await {
+                                    Ok(result) => {
+                                        log::info!("confirm_workflow_step: condition evaluated as '{}' for role {}", result, from_role_id);
+                                        Some(result)
+                                    }
+                                    Err(e) => {
+                                        log::error!("confirm_workflow_step: condition evaluation failed: {}, defaulting to 'yes'", e);
+                                        Some("yes".to_string())
+                                    }
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    condition_branch_result = condition_result.clone();
+
                     let _ = trigger_workflow_execution(
                         app.clone(),
                         project_id.clone(),
-                        from_role_id,
+                        from_role_id.clone(),
                         None,
-                        None,
+                        condition_result,
                         None,
                         Some(run_id.clone()),
                         Some(next_step as i32),
                     ).await;
+                }
+            }
+
+            // Determine next_step based on condition branch result
+            if let Some(ref branch) = condition_branch_result {
+                if let Some(ref from_role_id) = current_role_id_for_branch {
+                    let target_role: Option<String> = sqlx::query_scalar(
+                        "SELECT to_role_id FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'condition' AND branch_label = ? LIMIT 1"
+                    )
+                    .bind(&project_id)
+                    .bind(from_role_id)
+                    .bind(branch)
+                    .fetch_optional(&pool)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .flatten();
+
+                    if let Some(ref target_role) = target_role {
+                        let condition_target_step: Option<i64> = sqlx::query_scalar(
+                            "SELECT step_index FROM workflow_run_steps WHERE run_id = ? AND role_id = ? ORDER BY step_index ASC LIMIT 1"
+                        )
+                        .bind(&run_id)
+                        .bind(target_role)
+                        .fetch_optional(&pool)
+                        .await
+                        .map_err(|e| e.to_string())?
+                        .flatten();
+
+                        if let Some(ts) = condition_target_step {
+                            if ts > current_step + 1 {
+                                for skip_idx in (current_step + 1)..ts {
+                                    let _ = sqlx::query(
+                                        "UPDATE workflow_run_steps SET status = 'skipped' WHERE run_id = ? AND step_index = ?"
+                                    )
+                                    .bind(&run_id)
+                                    .bind(skip_idx)
+                                    .execute(&pool)
+                                    .await;
+                                }
+                                log::info!("confirm_workflow_step: skipped {} intermediate condition branch steps", ts - (current_step + 1));
+                            }
+                            next_step = ts;
+                            log::info!("confirm_workflow_step: condition branch '{}' → step {} ({})", branch, next_step, target_role);
+                        }
+                    }
                 }
             }
         }
@@ -2174,6 +2340,127 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
 
         if let Some((step_role_id, step_action)) = step_info {
             if !step_role_id.is_empty() {
+                let step_artifact_type: Option<String> = sqlx::query_scalar(
+                    "SELECT artifact_type FROM project_artifacts WHERE project_id = ? AND role_id = ? AND status = 'submitted' ORDER BY updated_at DESC LIMIT 1"
+                )
+                .bind(&project_id)
+                .bind(&step_role_id)
+                .fetch_optional(&pool)
+                .await
+                .map_err(|e| e.to_string())?
+                .flatten();
+
+                let reject_target: Option<String> = sqlx::query_scalar(
+                    "SELECT reject_to_role_id FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'need_confirm' AND reject_to_role_id IS NOT NULL AND reject_to_role_id != '' AND (artifact_type = ? OR artifact_type = '') ORDER BY CASE WHEN artifact_type = ? THEN 0 ELSE 1 END LIMIT 1"
+                )
+                .bind(&project_id)
+                .bind(&step_role_id)
+                .bind(step_artifact_type.as_deref().unwrap_or(""))
+                .bind(step_artifact_type.as_deref().unwrap_or(""))
+                .fetch_optional(&pool)
+                .await
+                .map_err(|e| e.to_string())?
+                .flatten();
+
+                if let Some(target_role_id) = reject_target {
+                    let target_step: Option<i64> = sqlx::query_scalar(
+                        "SELECT step_index FROM workflow_run_steps WHERE run_id = ? AND role_id = ? ORDER BY step_index ASC LIMIT 1"
+                    )
+                    .bind(&run_id)
+                    .bind(&target_role_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .flatten();
+
+                    if let Some(target_idx) = target_step {
+                        sqlx::query("UPDATE workflow_run_steps SET status = 'pending', output = ? WHERE run_id = ? AND step_index = ?")
+                            .bind(comment.clone().unwrap_or_default())
+                            .bind(&run_id)
+                            .bind(target_idx)
+                            .execute(&pool)
+                            .await
+                            .map_err(|e| e.to_string())?;
+
+                        sqlx::query("UPDATE workflow_run_steps SET status = 'skipped' WHERE run_id = ? AND step_index > ? AND step_index < ?")
+                            .bind(&run_id)
+                            .bind(target_idx)
+                            .bind(current_step)
+                            .execute(&pool)
+                            .await
+                            .map_err(|e| e.to_string())?;
+
+                        sqlx::query("UPDATE workflow_runs SET current_step = ? WHERE id = ?")
+                            .bind(target_idx)
+                            .bind(&run_id)
+                            .execute(&pool)
+                            .await
+                            .map_err(|e| e.to_string())?;
+
+                        sqlx::query("UPDATE workflow_run_steps SET status = 'running', started_at = ? WHERE run_id = ? AND step_index = ?")
+                            .bind(now)
+                            .bind(&run_id)
+                            .bind(target_idx)
+                            .execute(&pool)
+                            .await
+                            .map_err(|e| e.to_string())?;
+
+                        let _ = sqlx::query(
+                            "UPDATE project_artifacts SET status = 'rejected', updated_at = ? WHERE project_id = ? AND role_id = ? AND status = 'submitted'"
+                        )
+                        .bind(now)
+                        .bind(&project_id)
+                        .bind(&step_role_id)
+                        .execute(&pool)
+                        .await;
+
+                        log::info!("confirm_workflow_step(rejected): rolled back to role {} at step {}", target_role_id, target_idx);
+
+                        let target_task_id = wf_task_id.clone();
+                        let target_project_id = project_id.clone();
+                        let target_step_role = target_role_id.clone();
+                        let target_comment = comment.clone().unwrap_or_default();
+                        let app_rollback = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if !target_step_role.is_empty() && target_step_role != "start" && target_step_role != "end" {
+                                let pool_r = match get_pool(&app_rollback) {
+                                    Ok(p) => p,
+                                    Err(e) => {
+                                        log::error!("confirm_workflow_step(rollback): get_pool failed: {}", e);
+                                        return;
+                                    }
+                                };
+                                if let (Some(ref tid), _) = (&target_task_id, &target_step_role) {
+                                    if !tid.is_empty() {
+                                        let _ = sqlx::query(
+                                            "UPDATE project_tasks SET assignee = ?, status = 'running', updated_at = ? WHERE id = ?"
+                                        )
+                                        .bind(&target_step_role)
+                                        .bind(now)
+                                        .bind(tid)
+                                        .execute(&pool_r)
+                                        .await;
+                                    }
+                                }
+
+                                let context_msg = format!(
+                                    "你的上游产出物被驳回，请根据以下意见重新工作：\n{}",
+                                    target_comment
+                                );
+                                let event_id = format!("wf_rollback_{}_{}", target_project_id, uuid::Uuid::new_v4());
+                                let _ = crate::commands::project_execution::auto_delegate_chat(
+                                    app_rollback.clone(),
+                                    target_project_id.clone(),
+                                    "builtin_user".to_string(),
+                                    target_step_role.clone(),
+                                    context_msg,
+                                    event_id,
+                                    target_task_id.clone(),
+                                ).await;
+                            }
+                        });
+                    }
+                } else {
                 // Create a new retry step at current_step position with status "pending"
                 // First, shift all later steps' index by 1
                 let max_step: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM workflow_run_steps WHERE run_id = ?")
@@ -2308,6 +2595,7 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                         wf_task_id.clone(),
                     ).await;
                 });
+                }
             }
         }
     }

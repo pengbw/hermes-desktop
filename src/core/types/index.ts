@@ -109,6 +109,7 @@ export interface AiRoleItem {
   avatarType?: string;
   avatarPreset?: string;
   avatarColor?: string;
+  department: string;
   sortOrder: number;
   isBuiltin: boolean;
   energy: number;

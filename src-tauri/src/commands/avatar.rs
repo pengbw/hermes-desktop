@@ -64,7 +64,7 @@ pub async fn import_role_from_file(app: AppHandle, file_path: String, locale: Op
     let soul_content = crate::database::seeds::resolve_localized(&seed.soul_content, loc).to_string();
 
     sqlx::query(
-        "INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', 'default', ?, ?, ?, 0, 100, 'neutral', ?, ?)"
+        "INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department, sort_order, is_builtin, energy, mood, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, '', 'default', ?, ?, ?, ?, 0, 100, 'neutral', ?, ?)"
     )
     .bind(&seed.id)
     .bind(&name)
@@ -75,6 +75,7 @@ pub async fn import_role_from_file(app: AppHandle, file_path: String, locale: Op
     .bind(&soul_content)
     .bind(&seed.avatar_preset)
     .bind(&seed.avatar_color)
+    .bind(&seed.template_id)
     .bind(sort_order)
     .bind(now)
     .bind(now)
@@ -83,7 +84,7 @@ pub async fn import_role_from_file(app: AppHandle, file_path: String, locale: Op
     .map_err(|e| e.to_string())?;
 
     let role: db::AiRole = sqlx::query_as::<_, db::AiRole>(
-        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
+        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
     )
     .bind(&seed.id)
     .fetch_one(&pool)
@@ -98,7 +99,7 @@ pub async fn export_role_to_file(app: AppHandle, role_id: String, file_path: Str
     let pool = get_pool(&app)?;
 
     let role: db::AiRole = sqlx::query_as::<_, db::AiRole>(
-        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
+        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
     )
     .bind(&role_id)
     .fetch_one(&pool)
@@ -381,7 +382,7 @@ pub async fn list_ai_roles(app: AppHandle, locale: Option<String>) -> Result<Vec
     }
 
     let mut rows = sqlx::query_as::<_, db::AiRole>(
-        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles ORDER BY sort_order ASC, created_at ASC"
+        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles ORDER BY sort_order ASC, created_at ASC"
     )
     .fetch_all(&pool)
     .await
@@ -426,7 +427,7 @@ pub async fn create_ai_role(app: AppHandle, req: db::CreateAiRoleRequest) -> Res
     let avatar_preset = req.avatar_preset.unwrap_or_default();
     let avatar_color = req.avatar_color.unwrap_or_default();
 
-    sqlx::query("INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 100, 'neutral', ?, ?)")
+    sqlx::query("INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department, sort_order, is_builtin, energy, mood, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 0, 100, 'neutral', ?, ?)")
         .bind(&id)
         .bind(&req.name)
         .bind(&nickname)
@@ -446,7 +447,7 @@ pub async fn create_ai_role(app: AppHandle, req: db::CreateAiRoleRequest) -> Res
         .map_err(|e| e.to_string())?;
 
     Ok(db::AiRole {
-        id, name: req.name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin: false, energy: 100, mood: "neutral".to_string(), created_at: now, updated_at: now,
+        id, name: req.name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department: String::new(), sort_order, is_builtin: false, energy: 100, mood: "neutral".to_string(), created_at: now, updated_at: now,
     })
 }
 
@@ -456,7 +457,7 @@ pub async fn update_ai_role(app: AppHandle, req: db::UpdateAiRoleRequest) -> Res
     let now = chrono::Utc::now().timestamp_millis();
 
     let role: db::AiRole = sqlx::query_as::<_, db::AiRole>(
-        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
+        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
     )
     .bind(&req.id)
     .fetch_one(&pool)
@@ -502,7 +503,7 @@ pub async fn update_ai_role(app: AppHandle, req: db::UpdateAiRoleRequest) -> Res
 pub async fn upload_vrm_avatar(app: AppHandle, role_id: String, file_path: String) -> Result<String, String> {
     let pool = get_pool(&app)?;
     let role: Option<db::AiRole> = sqlx::query_as::<_, db::AiRole>(
-        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
+        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
     )
     .bind(&role_id)
     .fetch_optional(&pool)
@@ -610,7 +611,7 @@ pub async fn update_role_energy(app: AppHandle, role_id: String, energy_cost: i6
         .map_err(|e| e.to_string())?;
 
     let role: db::AiRole = sqlx::query_as::<_, db::AiRole>(
-        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
+        "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
     )
     .bind(&role_id)
     .fetch_one(&pool)

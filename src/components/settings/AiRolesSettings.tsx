@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { SkillItem } from "@core/types";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ interface AiRoleItem {
   avatarType: string;
   avatarPreset: string;
   avatarColor: string;
+  department: string;
   sortOrder: number;
   isBuiltin: boolean;
   createdAt: number;
@@ -69,6 +70,7 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
   const [availableSkills, setAvailableSkills] = useState<SkillItem[]>([]);
   const [showSkillPicker, setShowSkillPicker] = useState(false);
   const [skillSearch, setSkillSearch] = useState("");
+  const [deptFilter, setDeptFilter] = useState<string>("all");
 
   const [newRoleSkills, setNewRoleSkills] = useState<string[]>([]);
   const [viewingRole, setViewingRole] = useState<AiRoleItem | null>(null);
@@ -83,6 +85,40 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
       setLoading(false);
     }
   };
+
+  const DEPT_LABELS: Record<string, string> = {
+    engineering: "⚙️ 工程部",
+    design: "🎨 设计部",
+    marketing: "📢 营销部",
+    paid_media: "💰 付费媒体部",
+    sales: "🤝 销售部",
+    finance: "🏦 金融部",
+    hr: "👥 人力资源部",
+    legal: "⚖️ 法务部",
+    supply_chain: "🔗 供应链部",
+    product: "📦 产品部",
+    project_management: "📋 项目管理部",
+    testing: "🧪 测试部",
+    support: "🎧 支持部",
+    specialized: "🎯 专项部",
+    spatial_computing: "🥽 空间计算部",
+    game_dev: "🎮 游戏开发部",
+    academic: "🎓 学术部",
+  };
+
+  const departments = useMemo(() => {
+    const deptSet = new Set<string>();
+    for (const r of roles) {
+      if (r.department) deptSet.add(r.department);
+    }
+    const depts = Array.from(deptSet).sort();
+    return depts;
+  }, [roles]);
+
+  const filteredRoles = useMemo(() => {
+    if (deptFilter === "all") return roles;
+    return roles.filter((r) => r.department === deptFilter);
+  }, [roles, deptFilter]);
 
   const loadRoleSkills = useCallback(async (roleId: string) => {
     try {
@@ -278,8 +314,28 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
         <p className="text-[13px] text-muted-foreground mb-4 leading-relaxed">
           {t("aiRoles.desc")}
         </p>
+        {departments.length > 1 && (
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <span className="text-xs text-muted-foreground">部门筛选：</span>
+            <button
+              className={`px-2 py-1 rounded-md text-xs cursor-pointer transition-all border ${deptFilter === "all" ? "bg-primary/10 text-primary border-primary/30 font-medium" : "bg-transparent text-foreground border-border hover:bg-muted"}`}
+              onClick={() => setDeptFilter("all")}
+            >
+              全部 ({roles.length})
+            </button>
+            {departments.map((dept) => (
+              <button
+                key={dept}
+                className={`px-2 py-1 rounded-md text-xs cursor-pointer transition-all border ${deptFilter === dept ? "bg-primary/10 text-primary border-primary/30 font-medium" : "bg-transparent text-foreground border-border hover:bg-muted"}`}
+                onClick={() => setDeptFilter(dept)}
+              >
+                {DEPT_LABELS[dept] || dept} ({roles.filter((r) => r.department === dept).length})
+              </button>
+            ))}
+          </div>
+        )}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
-          {roles.map((role) => (
+          {filteredRoles.map((role) => (
             <div
               key={role.id}
               className="relative bg-card border border-border rounded-xl p-3 flex flex-col gap-1 transition-all hover:border-primary/30 hover:shadow-md hover:-translate-y-px group cursor-pointer"

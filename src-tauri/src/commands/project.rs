@@ -280,14 +280,16 @@ pub(crate) async fn seed_builtin_templates(pool: &SqlitePool) -> Result<(), Stri
 
     for (i, role) in crate::database::seeds::load_builtin_roles().iter().enumerate() {
         let id = format!("builtin_{}", role.id);
+        let dept = &role.template_id;
         sqlx::query(
-            "INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at) VALUES (?, '', ?, ?, '', '', '', '', 'default', ?, ?, ?, 1, 100, 'neutral', ?, ?) ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, icon=excluded.icon, avatar_preset=excluded.avatar_preset, avatar_color=excluded.avatar_color, sort_order=excluded.sort_order, updated_at=excluded.updated_at"
+            "INSERT INTO ai_roles (id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department, sort_order, is_builtin, energy, mood, created_at, updated_at) VALUES (?, '', ?, ?, '', '', '', '', 'default', ?, ?, ?, ?, 1, 100, 'neutral', ?, ?) ON CONFLICT(id) DO UPDATE SET nickname=excluded.nickname, icon=excluded.icon, avatar_preset=excluded.avatar_preset, avatar_color=excluded.avatar_color, department=excluded.department, sort_order=excluded.sort_order, updated_at=excluded.updated_at"
         )
         .bind(&id)
         .bind(&role.nickname)
         .bind(&role.icon)
         .bind(&role.avatar_preset)
         .bind(&role.avatar_color)
+        .bind(dept)
         .bind(i as i64)
         .bind(now)
         .bind(now)
@@ -397,7 +399,7 @@ pub async fn list_project_templates(app: AppHandle, locale: Option<String>) -> R
         let mut roles = Vec::new();
         for rid in &role_ids {
             if let Some(mut role) = sqlx::query_as::<_, db::AiRole>(
-                "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
+                "SELECT id, name, nickname, icon, description, responsibilities, soul_content, avatar_url, avatar_type, avatar_preset, avatar_color, department, sort_order, is_builtin, energy, mood, created_at, updated_at FROM ai_roles WHERE id = ?"
             )
             .bind(rid)
             .fetch_optional(&pool)

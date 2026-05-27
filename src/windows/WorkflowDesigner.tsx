@@ -269,7 +269,155 @@ function buildFlowFromWorkflows(
 
   const sorted = [...workflows].sort((a, b) => a.sortOrder - b.sortOrder);
 
+  // Group condition/parallel workflows by from_role
+  const conditionByRole = new Map<string, WorkflowData[]>();
+  const parallelByRole = new Map<string, WorkflowData[]>();
+  const handledIds = new Set<string>();
+
+  sorted.forEach((wf) => {
+    if (
+      wf.transitionType === "condition" &&
+      wf.fromRoleId &&
+      wf.toRoleId &&
+      wf.toRoleId !== "end"
+    ) {
+      const key = wf.fromRoleId;
+      if (!conditionByRole.has(key)) conditionByRole.set(key, []);
+      conditionByRole.get(key)!.push(wf);
+      handledIds.add(wf.id);
+    }
+    if (wf.transitionType === "parallel" && wf.fromRoleId && wf.toRoleId && wf.toRoleId !== "end") {
+      const key = wf.fromRoleId;
+      if (!parallelByRole.has(key)) parallelByRole.set(key, []);
+      parallelByRole.get(key)!.push(wf);
+      handledIds.add(wf.id);
+    }
+  });
+
+  // Create condition nodes and edges
+  conditionByRole.forEach((wfs, fromId) => {
+    addRoleNode(fromId, null);
+    const condId = `cond_${conditionCounter.val++}`;
+    const condExpr = wfs[0].conditionExpr || "";
+
+    nodes.push({
+      id: condId,
+      type: "conditionNode",
+      position: { x: 0, y: 0 },
+      data: {
+        label: condExpr ? `条件判断` : "条件判断",
+        conditionDesc: condExpr,
+      },
+    });
+
+    edges.push({
+      id: `e-${fromId}-${condId}`,
+      source: fromId,
+      target: condId,
+      type: "smoothstep",
+      animated: true,
+      style: { stroke: "#f39c12", strokeWidth: 2 },
+      label: wfs[0].artifactType || "",
+      labelStyle: { fill: "#f39c12", fontWeight: 600, fontSize: 11 },
+      labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
+      labelBgPadding: [4, 6] as [number, number],
+      labelBgBorderRadius: 4,
+      markerEnd: { type: MarkerType.ArrowClosed, color: "#f39c12" },
+    });
+
+    wfs.forEach((wf) => {
+      const isYes = wf.branchLabel === "yes" || !wf.branchLabel;
+      addRoleNode(wf.toRoleId, wf);
+      edges.push({
+        id: `e-${condId}-${wf.toRoleId}-${isYes ? "yes" : "no"}`,
+        source: condId,
+        sourceHandle: isYes ? "yes" : "no",
+        target: wf.toRoleId,
+        type: "smoothstep",
+        style: isYes
+          ? { stroke: "#27ae60", strokeWidth: 2 }
+          : { stroke: "#e74c3c", strokeWidth: 2, strokeDasharray: "5 3" },
+        label: isYes ? "✅ 是" : "❌ 否",
+        labelStyle: { fill: isYes ? "#27ae60" : "#e74c3c", fontWeight: 600, fontSize: 11 },
+        labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
+        labelBgPadding: [4, 6] as [number, number],
+        labelBgBorderRadius: 4,
+        markerEnd: { type: MarkerType.ArrowClosed, color: isYes ? "#27ae60" : "#e74c3c" },
+      });
+    });
+  });
+
+  // Create parallel nodes and edges
+  parallelByRole.forEach((wfs, fromId) => {
+    addRoleNode(fromId, null);
+    const parId = `par_${conditionCounter.val++}`;
+    const mergeId = `merge_${conditionCounter.val++}`;
+
+    nodes.push({
+      id: parId,
+      type: "parallelNode",
+      position: { x: 0, y: 0 },
+      data: { label: "并行分支" },
+    });
+
+    nodes.push({
+      id: mergeId,
+      type: "mergeNode",
+      position: { x: 0, y: 0 },
+      data: { label: "合并汇聚" },
+    });
+
+    edges.push({
+      id: `e-${fromId}-${parId}`,
+      source: fromId,
+      target: parId,
+      type: "smoothstep",
+      animated: true,
+      style: { stroke: "#00b894", strokeWidth: 2 },
+      label: "并行开始",
+      labelStyle: { fill: "#00b894", fontWeight: 600, fontSize: 11 },
+      labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
+      labelBgPadding: [4, 6] as [number, number],
+      labelBgBorderRadius: 4,
+      markerEnd: { type: MarkerType.ArrowClosed, color: "#00b894" },
+    });
+
+    wfs.forEach((wf) => {
+      addRoleNode(wf.toRoleId, wf);
+      edges.push({
+        id: `e-${parId}-${wf.toRoleId}`,
+        source: parId,
+        target: wf.toRoleId,
+        type: "smoothstep",
+        animated: true,
+        style: { stroke: "#00b894", strokeWidth: 2 },
+        label: wf.artifactType || "并行",
+        labelStyle: { fill: "#00b894", fontWeight: 600, fontSize: 11 },
+        labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
+        labelBgPadding: [4, 6] as [number, number],
+        labelBgBorderRadius: 4,
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#00b894" },
+      });
+      edges.push({
+        id: `e-${wf.toRoleId}-${mergeId}`,
+        source: wf.toRoleId,
+        target: mergeId,
+        type: "smoothstep",
+        animated: true,
+        style: { stroke: "#0984e3", strokeWidth: 2 },
+        label: "完成",
+        labelStyle: { fill: "#0984e3", fontWeight: 600, fontSize: 11 },
+        labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
+        labelBgPadding: [4, 6] as [number, number],
+        labelBgBorderRadius: 4,
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#0984e3" },
+      });
+    });
+  });
+
   for (const wf of sorted) {
+    if (handledIds.has(wf.id)) continue;
+
     const fromId = wf.fromRoleId;
     const toId = wf.toRoleId;
 
@@ -517,7 +665,7 @@ function Sidebar({
               type: "conditionNode",
               data: {
                 label: "条件判断",
-                conditionDesc: "确认通过？",
+                conditionDesc: "",
               },
             })
           }
@@ -651,14 +799,14 @@ function EdgeEditorModal({
                 value={rejectToRoleId}
                 onChange={(e) => onRejectToRoleIdChange(e.target.value)}
               >
-                <option value="">不驳回</option>
+                <option value="">当前角色重做</option>
                 {roles.map((role) => (
                   <option key={role.id} value={role.id}>
                     {role.icon} {role.name}
                   </option>
                 ))}
               </select>
-              <div className={styles.wfAddHint}>选择驳回时回退到哪个角色，留空则不驳回</div>
+              <div className={styles.wfAddHint}>选择驳回时回退的目标角色，留空则当前角色重做</div>
             </div>
           </>
         )}
@@ -760,6 +908,57 @@ function validateWorkflow(nodes: FlowNode[], edges: Edge[]): { valid: boolean; e
     if (!canReachEnd) {
       const label = (node.data as any).label || node.id;
       return { valid: false, error: `节点 "${label}" 无法连通到结束节点，存在死胡同或未连接` };
+    }
+  }
+
+  const conditionNodes = nodes.filter((n) => n.type === "conditionNode");
+  for (const condNode of conditionNodes) {
+    const yesEdges = edges.filter(
+      (e) => e.source === condNode.id && (e.sourceHandle === "yes" || !e.sourceHandle)
+    );
+    const noEdges = edges.filter((e) => e.source === condNode.id && e.sourceHandle === "no");
+
+    if (yesEdges.length === 0) {
+      return {
+        valid: false,
+        error: `条件节点 "${(condNode.data as any).label || condNode.id}" 缺少「是」分支连线`,
+      };
+    }
+    if (noEdges.length === 0) {
+      return {
+        valid: false,
+        error: `条件节点 "${(condNode.data as any).label || condNode.id}" 缺少「否」分支连线`,
+      };
+    }
+
+    const checkBranchReachEnd = (startNodeId: string): boolean => {
+      const visited = new Set<string>();
+      const stack = [startNodeId];
+      while (stack.length > 0) {
+        const curr = stack.pop()!;
+        if (endNodes.some((n) => n.id === curr)) return true;
+        if (!visited.has(curr)) {
+          visited.add(curr);
+          const neighbors = graph.get(curr) || [];
+          for (const neighbor of neighbors) {
+            stack.push(neighbor);
+          }
+        }
+      }
+      return false;
+    };
+
+    if (!checkBranchReachEnd(yesEdges[0].target)) {
+      return {
+        valid: false,
+        error: `条件节点 "${(condNode.data as any).label || condNode.id}" 的「是」分支无法连通到结束节点`,
+      };
+    }
+    if (!checkBranchReachEnd(noEdges[0].target)) {
+      return {
+        valid: false,
+        error: `条件节点 "${(condNode.data as any).label || condNode.id}" 的「否」分支无法连通到结束节点`,
+      };
     }
   }
 
@@ -902,7 +1101,73 @@ function WorkflowDesignerInner({
       const sourceNode = nodes.find((n) => n.id === edge.source);
       const targetNode = nodes.find((n) => n.id === edge.target);
 
-      if (
+      if (sourceNode?.type === "conditionNode") {
+        const branchLabel = (edge.sourceHandle as string) || "yes";
+        const upstreamEdge = edges.find((e) => e.target === edge.source);
+        const upstreamNode = upstreamEdge ? nodes.find((n) => n.id === upstreamEdge.source) : null;
+        const fromRoleId =
+          upstreamNode?.type === "startNode"
+            ? "start"
+            : upstreamNode?.type === "roleNode"
+              ? (upstreamNode as RoleNodeType).data.roleId
+              : null;
+        const toRoleId =
+          targetNode?.type === "roleNode" ? (targetNode as RoleNodeType).data.roleId : null;
+
+        if (fromRoleId && toRoleId) {
+          const wf = workflows.find(
+            (w) =>
+              w.fromRoleId === fromRoleId &&
+              w.toRoleId === toRoleId &&
+              w.transitionType === "condition" &&
+              w.branchLabel === branchLabel
+          );
+          if (wf) {
+            setEdgeEditorData({
+              source: edge.source,
+              target: edge.target,
+              sourceHandle: branchLabel,
+              artifactType: wf.artifactType || "",
+              transitionType: wf.transitionType,
+              rejectToRoleId: wf.rejectToRoleId || "",
+              workflowId: wf.id,
+            });
+            setEdgeEditorOpen(true);
+          }
+        }
+      } else if (sourceNode?.type === "parallelNode") {
+        const upstreamEdge = edges.find((e) => e.target === edge.source);
+        const upstreamNode = upstreamEdge ? nodes.find((n) => n.id === upstreamEdge.source) : null;
+        const fromRoleId =
+          upstreamNode?.type === "startNode"
+            ? "start"
+            : upstreamNode?.type === "roleNode"
+              ? (upstreamNode as RoleNodeType).data.roleId
+              : null;
+        const toRoleId =
+          targetNode?.type === "roleNode" ? (targetNode as RoleNodeType).data.roleId : null;
+
+        if (fromRoleId && toRoleId) {
+          const wf = workflows.find(
+            (w) =>
+              w.fromRoleId === fromRoleId &&
+              w.toRoleId === toRoleId &&
+              w.transitionType === "parallel"
+          );
+          if (wf) {
+            setEdgeEditorData({
+              source: edge.source,
+              target: edge.target,
+              sourceHandle: (edge.sourceHandle as string) ?? null,
+              artifactType: wf.artifactType || "",
+              transitionType: wf.transitionType,
+              rejectToRoleId: wf.rejectToRoleId || "",
+              workflowId: wf.id,
+            });
+            setEdgeEditorOpen(true);
+          }
+        }
+      } else if (
         (sourceNode?.type === "roleNode" || sourceNode?.type === "startNode") &&
         (targetNode?.type === "roleNode" || targetNode?.type === "endNode")
       ) {
@@ -943,10 +1208,21 @@ function WorkflowDesignerInner({
             workflowId: wf.id,
           });
           setEdgeEditorOpen(true);
+        } else {
+          setEdgeEditorData({
+            source: edge.source,
+            target: edge.target,
+            sourceHandle: null,
+            artifactType: "",
+            transitionType: "condition",
+            rejectToRoleId: "",
+            workflowId: "",
+          });
+          setEdgeEditorOpen(true);
         }
       }
     },
-    [nodes, workflows]
+    [nodes, edges, workflows]
   );
 
   const onPaneClick = useCallback(() => {
@@ -1050,7 +1326,7 @@ function WorkflowDesignerInner({
     [nodes, projectId, loadWorkflows, setEdges]
   );
 
-  const handleEdgeEditorConfirm = useCallback(() => {
+  const handleEdgeEditorConfirm = useCallback(async () => {
     const {
       source,
       target,
@@ -1124,60 +1400,83 @@ function WorkflowDesignerInner({
     const sourceRole = sourceNode as RoleNodeType | StartNodeType | undefined;
     const targetNode = nodes.find((n) => n.id === target) as RoleNodeType | EndNodeType | undefined;
 
-    if (
+    const saveWorkflow = async (
+      fromId: string,
+      toId: string,
+      overrides: Record<string, string | undefined> = {}
+    ) => {
+      try {
+        await invoke("add_project_workflow", {
+          req: {
+            projectId,
+            fromRoleId: fromId,
+            toRoleId: toId,
+            artifactType: overrides.artifactType ?? (artifactType || undefined),
+            transitionType: overrides.transitionType ?? (transitionType || undefined),
+            rejectToRoleId: overrides.rejectToRoleId ?? (rejectToRoleId || undefined),
+            conditionExpr: overrides.conditionExpr ?? undefined,
+            branchLabel: overrides.branchLabel ?? undefined,
+            parallelGroup: overrides.parallelGroup ?? undefined,
+            groupId: activeGroupId || undefined,
+          },
+        });
+        if (workflowId) {
+          try {
+            await invoke("remove_project_workflow", { id: workflowId });
+          } catch {}
+        }
+        loadWorkflows();
+        invoke("sync_workflow_to_file", { projectId }).catch(console.error);
+      } catch {}
+    };
+
+    const findUpstreamRole = (nodeId: string): string | null => {
+      const upstreamEdge = edges.find((e) => e.target === nodeId);
+      if (!upstreamEdge) return null;
+      const upstreamNode = nodes.find((n) => n.id === upstreamEdge.source);
+      if (!upstreamNode) return null;
+      if (upstreamNode.type === "startNode" || upstreamNode.id === "start") return "start";
+      if (upstreamNode.type === "roleNode") return (upstreamNode as RoleNodeType).data.roleId;
+      return null;
+    };
+
+    if (isConditionYes || isConditionNo) {
+      const conditionDesc = (sourceNode?.data as ConditionNodeType["data"])?.conditionDesc || "";
+      const branchLabel = isConditionYes ? "yes" : "no";
+      const fromRoleId = findUpstreamRole(source);
+      const toRoleId =
+        targetNode?.type === "roleNode" ? (targetNode as RoleNodeType).data.roleId : null;
+      if (fromRoleId && toRoleId) {
+        await saveWorkflow(fromRoleId, toRoleId, {
+          transitionType: "condition",
+          conditionExpr: conditionDesc,
+          branchLabel,
+          artifactType: (targetNode as RoleNodeType).data.artifactType || artifactType || undefined,
+        });
+      }
+    } else if (sourceNode?.type === "parallelNode") {
+      const fromRoleId = findUpstreamRole(source);
+      const toRoleId =
+        targetNode?.type === "roleNode" ? (targetNode as RoleNodeType).data.roleId : null;
+      if (fromRoleId && toRoleId) {
+        await saveWorkflow(fromRoleId, toRoleId, {
+          transitionType: "parallel",
+          parallelGroup: `pg-${fromRoleId}`,
+          artifactType: (targetNode as RoleNodeType).data.artifactType || artifactType || undefined,
+        });
+      }
+    } else if (
       (sourceRole?.type === "roleNode" || sourceRole?.type === "startNode") &&
       (targetNode?.type === "roleNode" || targetNode?.type === "endNode")
     ) {
-      let conditionExpr = "";
-      let branchLabel = "";
-      let parallelGroup = "";
-
-      if (isConditionYes) {
-        branchLabel = "yes";
-        conditionExpr = "approved";
-      } else if (isConditionNo) {
-        branchLabel = "no";
-        conditionExpr = "approved";
-      }
-
-      if (transitionType === "parallel") {
-        parallelGroup = `pg-${sourceRole.id}`;
-      }
-
       const fromRoleId =
         sourceRole.type === "startNode" ? "start" : (sourceRole as RoleNodeType).data.roleId;
-
       const toRoleId =
         targetNode.type === "endNode" ? "end" : (targetNode as RoleNodeType).data.roleId;
 
-      invoke("add_project_workflow", {
-        req: {
-          projectId,
-          fromRoleId,
-          toRoleId,
-          artifactType: artifactType || undefined,
-          transitionType: transitionType || undefined,
-          rejectToRoleId: rejectToRoleId || undefined,
-          conditionExpr: conditionExpr || undefined,
-          branchLabel: branchLabel || undefined,
-          parallelGroup: parallelGroup || undefined,
-          groupId: activeGroupId || undefined,
-        },
-      })
-        .then(async () => {
-          if (workflowId) {
-            try {
-              await invoke("remove_project_workflow", { id: workflowId });
-            } catch {
-              // console.error("Failed to remove old workflow:", err);
-            }
-          }
-          loadWorkflows();
-          invoke("sync_workflow_to_file", { projectId }).catch(console.error);
-        })
-        .catch(console.error);
+      await saveWorkflow(fromRoleId, toRoleId);
     }
-  }, [edgeEditorData, nodes, projectId, loadWorkflows, setEdges]);
+  }, [edgeEditorData, nodes, edges, projectId, activeGroupId, loadWorkflows, setEdges]);
 
   const handleDeleteNode = useCallback(
     async (nodeId: string) => {
@@ -1222,24 +1521,131 @@ function WorkflowDesignerInner({
       const sourceNode = nodes.find((n) => n.id === edge.source);
       const targetNode = nodes.find((n) => n.id === edge.target);
 
+      const getFromRoleId = (node: FlowNode | undefined): string | undefined => {
+        if (!node) return undefined;
+        if (node.type === "startNode") return "start";
+        if (node.type === "roleNode") return (node as RoleNodeType).data.roleId;
+        return undefined;
+      };
+
+      const getToRoleId = (node: FlowNode | undefined): string | undefined => {
+        if (!node) return undefined;
+        if (node.type === "endNode") return "end";
+        if (node.type === "roleNode") return (node as RoleNodeType).data.roleId;
+        return undefined;
+      };
+
+      const workflowsToDelete: string[] = [];
+
       if (
         (sourceNode?.type === "roleNode" || sourceNode?.type === "startNode") &&
         (targetNode?.type === "roleNode" || targetNode?.type === "endNode")
       ) {
-        const toRoleId =
-          targetNode.type === "endNode" ? "end" : (targetNode as RoleNodeType).data.roleId;
-        const fromRoleId =
-          sourceNode.type === "startNode" ? "start" : (sourceNode as RoleNodeType).data.roleId;
-        const wf = workflows.find((w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId);
-        if (wf) {
-          try {
-            await invoke("remove_project_workflow", { id: wf.id });
-            await loadWorkflows();
-            invoke("sync_workflow_to_file", { projectId }).catch(console.error);
-          } catch {
-            // console.error("Failed to remove workflow:", err);
+        const fromRoleId = getFromRoleId(sourceNode);
+        const toRoleId = getToRoleId(targetNode);
+        if (fromRoleId && toRoleId) {
+          const wf = workflows.find((w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId);
+          if (wf) workflowsToDelete.push(wf.id);
+        }
+      } else if (sourceNode?.type === "roleNode" && targetNode?.type === "conditionNode") {
+        const fromRoleId = getFromRoleId(sourceNode);
+        if (fromRoleId) {
+          const relatedWfs = workflows.filter(
+            (w) =>
+              w.fromRoleId === fromRoleId &&
+              (w.transitionType === "condition" || w.transitionType === "need_confirm")
+          );
+          relatedWfs.forEach((wf) => workflowsToDelete.push(wf.id));
+        }
+      } else if (sourceNode?.type === "conditionNode") {
+        const upstreamEdge = edges.find((e) => e.target === edge.source);
+        const upstreamNode = upstreamEdge
+          ? nodes.find((n) => n.id === upstreamEdge.source)
+          : undefined;
+        const fromRoleId = getFromRoleId(upstreamNode);
+        const toRoleId = getToRoleId(targetNode);
+        const branchLabel = (edge.sourceHandle as string) || "yes";
+        if (fromRoleId && toRoleId) {
+          const wf = workflows.find(
+            (w) =>
+              w.fromRoleId === fromRoleId &&
+              w.toRoleId === toRoleId &&
+              (w.transitionType === "condition" || w.transitionType === "need_confirm") &&
+              (w.branchLabel === branchLabel || (!w.branchLabel && branchLabel === "yes"))
+          );
+          if (wf) {
+            workflowsToDelete.push(wf.id);
+          } else {
+            const fallbackWf = workflows.find(
+              (w) =>
+                w.fromRoleId === fromRoleId &&
+                w.toRoleId === toRoleId &&
+                (w.transitionType === "condition" || w.transitionType === "need_confirm")
+            );
+            if (fallbackWf) workflowsToDelete.push(fallbackWf.id);
           }
         }
+      } else if (sourceNode?.type === "roleNode" && targetNode?.type === "parallelNode") {
+        const fromRoleId = getFromRoleId(sourceNode);
+        if (fromRoleId) {
+          const relatedWfs = workflows.filter(
+            (w) => w.fromRoleId === fromRoleId && w.transitionType === "parallel"
+          );
+          relatedWfs.forEach((wf) => workflowsToDelete.push(wf.id));
+        }
+      } else if (sourceNode?.type === "parallelNode" && targetNode?.type === "roleNode") {
+        const upstreamEdge = edges.find((e) => e.target === edge.source);
+        const upstreamNode = upstreamEdge
+          ? nodes.find((n) => n.id === upstreamEdge.source)
+          : undefined;
+        const fromRoleId = getFromRoleId(upstreamNode);
+        const toRoleId = getToRoleId(targetNode);
+        if (fromRoleId && toRoleId) {
+          const wf = workflows.find(
+            (w) =>
+              w.fromRoleId === fromRoleId &&
+              w.toRoleId === toRoleId &&
+              w.transitionType === "parallel"
+          );
+          if (wf) workflowsToDelete.push(wf.id);
+        }
+      } else if (sourceNode?.type === "roleNode" && targetNode?.type === "mergeNode") {
+        const toRoleId = getToRoleId(sourceNode);
+        const mergeIncomingEdges = edges.filter((e) => e.target === edge.target);
+        const branchRoleIds = mergeIncomingEdges.map((e) => e.source);
+        const parallelEdge = edges.find((e) => {
+          const src = nodes.find((n) => n.id === e.source);
+          return src?.type === "parallelNode" && branchRoleIds.includes(e.target);
+        });
+        if (parallelEdge) {
+          const upstreamEdge2 = edges.find((e) => e.target === parallelEdge.source);
+          const upstreamNode2 = upstreamEdge2
+            ? nodes.find((n) => n.id === upstreamEdge2.source)
+            : undefined;
+          const fromRoleId = getFromRoleId(upstreamNode2);
+          if (fromRoleId && toRoleId) {
+            const wf = workflows.find(
+              (w) =>
+                w.fromRoleId === fromRoleId &&
+                w.toRoleId === toRoleId &&
+                w.transitionType === "parallel"
+            );
+            if (wf) workflowsToDelete.push(wf.id);
+          }
+        }
+      }
+
+      for (const wfId of workflowsToDelete) {
+        try {
+          await invoke("remove_project_workflow", { id: wfId });
+        } catch {
+          // ignore
+        }
+      }
+
+      if (workflowsToDelete.length > 0) {
+        await loadWorkflows();
+        invoke("sync_workflow_to_file", { projectId }).catch(console.error);
       }
     },
     [edges, nodes, workflows, setEdges, projectId, loadWorkflows]
@@ -1528,6 +1934,17 @@ function WorkflowDesignerInner({
                 }
 
                 try {
+                  const findUpstreamRoleId = (nodeId: string): string | null => {
+                    const ue = edges.find((e) => e.target === nodeId);
+                    if (!ue) return null;
+                    const un = nodes.find((n) => n.id === ue.source);
+                    if (!un) return null;
+                    if (un.type === "startNode" || un.id === "start") return "start";
+                    if (un.type === "roleNode") return (un as RoleNodeType).data.roleId;
+                    return null;
+                  };
+
+                  // Save role↔role edges
                   const roleEdges = edges.filter((e) => {
                     const src = nodes.find((n) => n.id === e.source);
                     const tgt = nodes.find((n) => n.id === e.target);
@@ -1562,6 +1979,60 @@ function WorkflowDesignerInner({
                           (edge.data as { artifactType?: string })?.artifactType || undefined,
                         transitionType:
                           (edge.data as { transitionType?: string })?.transitionType || undefined,
+                        groupId: activeGroupId || undefined,
+                      },
+                    });
+                  }
+
+                  // Save condition/parallel edges from logic nodes to role nodes
+                  const conditionParallelEdges = edges.filter((e) => {
+                    const src = nodes.find((n) => n.id === e.source);
+                    const tgt = nodes.find((n) => n.id === e.target);
+                    return (
+                      (src?.type === "conditionNode" || src?.type === "parallelNode") &&
+                      tgt?.type === "roleNode"
+                    );
+                  });
+                  for (const edge of conditionParallelEdges) {
+                    const srcNode = nodes.find((n) => n.id === edge.source);
+                    const tgtNode = nodes.find((n) => n.id === edge.target) as
+                      | RoleNodeType
+                      | undefined;
+                    if (!srcNode || !tgtNode) continue;
+                    const fromRoleId = findUpstreamRoleId(edge.source);
+                    if (!fromRoleId) continue;
+                    const toRoleId = tgtNode.data.roleId;
+                    const isCondition = srcNode.type === "conditionNode";
+                    const branchLabel = (edge.sourceHandle as string) || "yes";
+                    const condExpr = isCondition
+                      ? (srcNode.data as ConditionNodeType["data"]).conditionDesc || ""
+                      : "";
+
+                    const existing = isCondition
+                      ? workflows.find(
+                          (w) =>
+                            w.fromRoleId === fromRoleId &&
+                            w.toRoleId === toRoleId &&
+                            w.transitionType === "condition" &&
+                            w.branchLabel === branchLabel
+                        )
+                      : workflows.find(
+                          (w) =>
+                            w.fromRoleId === fromRoleId &&
+                            w.toRoleId === toRoleId &&
+                            w.transitionType === "parallel"
+                        );
+                    if (existing) continue;
+                    await invoke("add_project_workflow", {
+                      req: {
+                        projectId,
+                        fromRoleId,
+                        toRoleId,
+                        artifactType: tgtNode.data.artifactType || undefined,
+                        transitionType: isCondition ? "condition" : "parallel",
+                        conditionExpr: condExpr || undefined,
+                        branchLabel: isCondition ? branchLabel : undefined,
+                        parallelGroup: isCondition ? undefined : `pg-${fromRoleId}`,
                         groupId: activeGroupId || undefined,
                       },
                     });
@@ -1665,6 +2136,70 @@ function WorkflowDesignerInner({
           </div>
         )}
 
+        {selectedNode && selectedNode.type === "conditionNode" && (
+          <div
+            className={`${styles.wfDetailPanel} ${isDragging ? styles.wfDetailPanelDragging : ""}`}
+            style={{ left: detailPanelPos.x, top: detailPanelPos.y }}
+          >
+            <div className={styles.wfDetailHeader} onMouseDown={handleDetailPanelDragStart}>
+              <span>◆ {(selectedNode.data as ConditionNodeType["data"]).label || "条件判断"}</span>
+              <button className={styles.wfDetailClose} onClick={() => setSelectedNode(null)}>
+                ✕
+              </button>
+            </div>
+            <div className={styles.wfDetailBody}>
+              <div className={styles.wfAddField}>
+                <label>判断名称</label>
+                <input
+                  className={styles.wfAddInput}
+                  placeholder="如：代码审查、内容审核"
+                  value={(selectedNode.data as ConditionNodeType["data"]).label}
+                  onChange={(e) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === selectedNode.id
+                          ? { ...n, data: { ...n.data, label: e.target.value } }
+                          : n
+                      )
+                    );
+                    setSelectedNode((prev) =>
+                      prev ? { ...prev, data: { ...prev.data, label: e.target.value } } : null
+                    );
+                  }}
+                />
+              </div>
+              <div className={styles.wfAddField}>
+                <label>判断条件</label>
+                <textarea
+                  className={styles.wfAddInput}
+                  placeholder="描述判断标准，如：检查代码是否包含SQL注入风险、文章字数是否超过3000且无错别字"
+                  rows={4}
+                  style={{ resize: "vertical", minHeight: 80 }}
+                  value={(selectedNode.data as ConditionNodeType["data"]).conditionDesc || ""}
+                  onChange={(e) => {
+                    setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === selectedNode.id
+                          ? { ...n, data: { ...n.data, conditionDesc: e.target.value } }
+                          : n
+                      )
+                    );
+                    setSelectedNode((prev) =>
+                      prev
+                        ? { ...prev, data: { ...prev.data, conditionDesc: e.target.value } }
+                        : null
+                    );
+                  }}
+                />
+              </div>
+              <p style={{ fontSize: 12, color: "#888", margin: 0, lineHeight: 1.6 }}>
+                💡
+                运行时系统会自动拼接上游角色的产出内容+你的判断条件，发送给AI判断，返回「是」或「否」
+              </p>
+            </div>
+          </div>
+        )}
+
         {selectedEdge && (
           <div
             className={`${styles.wfDetailPanel} ${isDragging ? styles.wfDetailPanelDragging : ""}`}
@@ -1712,7 +2247,7 @@ function WorkflowDesignerInner({
         artifactType={edgeEditorData.artifactType}
         transitionType={edgeEditorData.transitionType}
         rejectToRoleId={edgeEditorData.rejectToRoleId}
-        roles={roles}
+        roles={memberRoles}
         onArtifactTypeChange={(v) => setEdgeEditorData((prev) => ({ ...prev, artifactType: v }))}
         onTransitionTypeChange={(v) =>
           setEdgeEditorData((prev) => ({ ...prev, transitionType: v }))

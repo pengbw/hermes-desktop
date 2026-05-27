@@ -1,12 +1,12 @@
 {
   "version": "1.0.0",
-  "updatedAt": "2026-05-25",
+  "updatedAt": "2026-05-27",
   "templates": [
     {
       "id": "software_dev",
       "icon": "🏗️",
       "name": { "zh-CN": "软件开发", "zh-XG": "軟體開發", "en": "Software Development" },
-      "description": { "zh-CN": "产品经理→开发工程师→测试工程师→代码审查", "zh-XG": "產品經理→開發工程師→測試工程師→程式碼審查", "en": "PM → Developer → QA → Code Review" },
+      "description": { "zh-CN": "产品经理→高级开发者→测试结果分析师→代码审查员", "zh-XG": "產品經理→高級開發者→測試結果分析師→程式碼審查員", "en": "Product Manager → Senior Developer → Test Results Analyst → Code Reviewer" },
       "projectRule": {
         "zh-CN": "遵循敏捷开发流程，每个迭代产出可交付的增量。代码必须经过审查才能合并。",
         "zh-XG": "遵循敏捷開發流程，每個迭代產出可交付的增量。程式碼必須經過審查才能合併。",
@@ -17,20 +17,20 @@
         "zh-XG": "1. 需求文件需明確驗收標準\n2. 程式碼實作需包含單元測試\n3. 測試報告需覆蓋功能與邊界\n4. 審查回饋需具體可操作",
         "en": "1. Requirements documents must specify acceptance criteria\n2. Code implementation must include unit tests\n3. Test reports must cover functionality and edge cases\n4. Review feedback must be specific and actionable"
       },
-      "roleIds": ["software_dev_pm", "software_dev_dev", "software_dev_qa", "software_dev_reviewer"],
+      "roleIds": ["product_product-manager", "engineering_senior-developer", "testing_test-results-analyzer", "engineering_code-reviewer"],
       "workflows": [
-        { "id": "software_dev_wf0", "fromRoleId": null, "toRoleId": "software_dev_pm", "artifactType": { "zh-CN": "需求文档", "zh-XG": "需求文件", "en": "Requirements Document" }, "transitionType": "auto_push" },
-        { "id": "software_dev_wf1", "fromRoleId": "software_dev_pm", "toRoleId": "software_dev_dev", "artifactType": { "zh-CN": "需求规格", "zh-XG": "需求規格", "en": "Requirements Spec" }, "transitionType": "need_confirm" },
-        { "id": "software_dev_wf2", "fromRoleId": "software_dev_dev", "toRoleId": "software_dev_qa", "artifactType": { "zh-CN": "代码实现", "zh-XG": "程式碼實作", "en": "Code Implementation" }, "transitionType": "auto_push" },
-        { "id": "software_dev_wf3", "fromRoleId": "software_dev_qa", "toRoleId": "software_dev_reviewer", "artifactType": { "zh-CN": "测试报告", "zh-XG": "測試報告", "en": "Test Report" }, "transitionType": "need_confirm", "rejectToRoleId": "software_dev_dev" },
-        { "id": "software_dev_wf4", "fromRoleId": "software_dev_reviewer", "toRoleId": "end", "artifactType": { "zh-CN": "结束", "zh-XG": "結束", "en": "End" }, "transitionType": "auto_push" }
+        { "id": "software_dev_wf0", "fromRoleId": null, "toRoleId": "product_product-manager", "artifactType": { "zh-CN": "需求文档", "zh-XG": "需求文件", "en": "Requirements Document" }, "transitionType": "auto_push" },
+        { "id": "software_dev_wf1", "fromRoleId": "product_product-manager", "toRoleId": "engineering_senior-developer", "artifactType": { "zh-CN": "需求规格", "zh-XG": "需求規格", "en": "Requirements Spec" }, "transitionType": "need_confirm" },
+        { "id": "software_dev_wf2", "fromRoleId": "engineering_senior-developer", "toRoleId": "testing_test-results-analyzer", "artifactType": { "zh-CN": "代码实现", "zh-XG": "程式碼實作", "en": "Code Implementation" }, "transitionType": "auto_push" },
+        { "id": "software_dev_wf3", "fromRoleId": "testing_test-results-analyzer", "toRoleId": "engineering_code-reviewer", "artifactType": { "zh-CN": "测试报告", "zh-XG": "測試報告", "en": "Test Report" }, "transitionType": "need_confirm", "rejectToRoleId": "engineering_senior-developer" },
+        { "id": "software_dev_wf4", "fromRoleId": "engineering_code-reviewer", "toRoleId": "end", "artifactType": { "zh-CN": "结束", "zh-XG": "結束", "en": "End" }, "transitionType": "auto_push" }
       ]
     },
     {
       "id": "content_creation",
       "icon": "🎨",
       "name": { "zh-CN": "内容创作", "zh-XG": "內容創作", "en": "Content Creation" },
-      "description": { "zh-CN": "策划→撰稿→编辑→审核发布", "zh-XG": "策劃→撰稿→編輯→審核發布", "en": "Planner → Writer → Editor → Auditor" },
+      "description": { "zh-CN": "增长黑客→视觉叙事师→品牌守护者→无障碍审核员", "zh-XG": "增長黑客→視覺敘事師→品牌守護者→無障礙審核員", "en": "Growth Hacker → Visual Storyteller → Brand Guardian → Accessibility Auditor" },
       "projectRule": {
         "zh-CN": "内容创作遵循选题→大纲→初稿→修改→发布的标准流程，确保内容质量和品牌一致性。",
         "zh-XG": "內容創作遵循選題→大綱→初稿→修改→發布的標準流程，確保內容品質和品牌一致性。",
@@ -41,20 +41,20 @@
         "zh-XG": "1. 選題需有明確目標受眾和價值主張\n2. 大綱需包含核心論點和結構\n3. 初稿需語言流暢、邏輯清晰\n4. 審核需檢查事實準確性和品牌調性",
         "en": "1. Topics must have clear target audience and value proposition\n2. Outlines must include core arguments and structure\n3. Drafts must be fluent and logically clear\n4. Reviews must check factual accuracy and brand tone"
       },
-      "roleIds": ["content_creation_planner", "content_creation_writer", "content_creation_editor", "content_creation_auditor"],
+      "roleIds": ["marketing_growth-hacker", "design_visual-storyteller", "design_brand-guardian", "testing_accessibility-auditor-cn"],
       "workflows": [
-        { "id": "content_creation_wf0", "fromRoleId": null, "toRoleId": "content_creation_planner", "artifactType": { "zh-CN": "选题方向", "zh-XG": "選題方向", "en": "Topic Direction" }, "transitionType": "auto_push" },
-        { "id": "content_creation_wf1", "fromRoleId": "content_creation_planner", "toRoleId": "content_creation_writer", "artifactType": { "zh-CN": "内容大纲", "zh-XG": "內容大綱", "en": "Content Outline" }, "transitionType": "need_confirm" },
-        { "id": "content_creation_wf2", "fromRoleId": "content_creation_writer", "toRoleId": "content_creation_editor", "artifactType": { "zh-CN": "初稿", "zh-XG": "初稿", "en": "First Draft" }, "transitionType": "auto_push" },
-        { "id": "content_creation_wf3", "fromRoleId": "content_creation_editor", "toRoleId": "content_creation_auditor", "artifactType": { "zh-CN": "修改稿", "zh-XG": "修改稿", "en": "Revised Draft" }, "transitionType": "auto_push" },
-        { "id": "content_creation_wf4", "fromRoleId": "content_creation_auditor", "toRoleId": "end", "artifactType": { "zh-CN": "结束", "zh-XG": "結束", "en": "End" }, "transitionType": "need_confirm", "rejectToRoleId": "content_creation_writer" }
+        { "id": "content_creation_wf0", "fromRoleId": null, "toRoleId": "marketing_growth-hacker", "artifactType": { "zh-CN": "选题方向", "zh-XG": "選題方向", "en": "Topic Direction" }, "transitionType": "auto_push" },
+        { "id": "content_creation_wf1", "fromRoleId": "marketing_growth-hacker", "toRoleId": "design_visual-storyteller", "artifactType": { "zh-CN": "内容大纲", "zh-XG": "內容大綱", "en": "Content Outline" }, "transitionType": "need_confirm" },
+        { "id": "content_creation_wf2", "fromRoleId": "design_visual-storyteller", "toRoleId": "design_brand-guardian", "artifactType": { "zh-CN": "初稿", "zh-XG": "初稿", "en": "First Draft" }, "transitionType": "auto_push" },
+        { "id": "content_creation_wf3", "fromRoleId": "design_brand-guardian", "toRoleId": "testing_accessibility-auditor-cn", "artifactType": { "zh-CN": "修改稿", "zh-XG": "修改稿", "en": "Revised Draft" }, "transitionType": "auto_push" },
+        { "id": "content_creation_wf4", "fromRoleId": "testing_accessibility-auditor-cn", "toRoleId": "end", "artifactType": { "zh-CN": "结束", "zh-XG": "結束", "en": "End" }, "transitionType": "need_confirm", "rejectToRoleId": "design_visual-storyteller" }
       ]
     },
     {
       "id": "game_dev",
       "icon": "🎮",
       "name": { "zh-CN": "游戏开发", "zh-XG": "遊戲開發", "en": "Game Development" },
-      "description": { "zh-CN": "策划→美术→程序→测试", "zh-XG": "策劃→美術→程式→測試", "en": "Design → Art → Code → Test" },
+      "description": { "zh-CN": "游戏设计师→技术美术→Unity架构师→性能基准师", "zh-XG": "遊戲設計師→技術美術→Unity架構師→效能基準師", "en": "Game Designer → Technical Artist → Unity Architect → Performance Benchmarker" },
       "projectRule": {
         "zh-CN": "游戏开发遵循设计驱动流程，确保玩法体验和技术实现的平衡。",
         "zh-XG": "遊戲開發遵循設計驅動流程，確保玩法體驗和技術實作的平衡。",
@@ -65,20 +65,20 @@
         "zh-XG": "1. 策劃文件需包含核心玩法和數值設計\n2. 美術資源需符合風格指南和效能預算\n3. 程式碼實作需遵循引擎規範和架構設計\n4. 測試需覆蓋功能、效能和相容性",
         "en": "1. Design documents must include core gameplay and numerical design\n2. Art assets must conform to style guide and performance budget\n3. Code must follow engine standards and architecture design\n4. Testing must cover functionality, performance, and compatibility"
       },
-      "roleIds": ["game_dev_designer", "game_dev_artist", "game_dev_coder", "game_dev_tester"],
+      "roleIds": ["game_dev_game-designer", "game_dev_unreal-technical-artist", "game_dev_unity-architect", "testing_performance-benchmarker-cn"],
       "workflows": [
-        { "id": "game_dev_wf0", "fromRoleId": null, "toRoleId": "game_dev_designer", "artifactType": { "zh-CN": "游戏概念", "zh-XG": "遊戲概念", "en": "Game Concept" }, "transitionType": "auto_push" },
-        { "id": "game_dev_wf1", "fromRoleId": "game_dev_designer", "toRoleId": "game_dev_artist", "artifactType": { "zh-CN": "设计文档", "zh-XG": "設計文件", "en": "Design Document" }, "transitionType": "need_confirm" },
-        { "id": "game_dev_wf2", "fromRoleId": "game_dev_artist", "toRoleId": "game_dev_coder", "artifactType": { "zh-CN": "美术资源", "zh-XG": "美術資源", "en": "Art Assets" }, "transitionType": "auto_push" },
-        { "id": "game_dev_wf3", "fromRoleId": "game_dev_coder", "toRoleId": "game_dev_tester", "artifactType": { "zh-CN": "可玩版本", "zh-XG": "可玩版本", "en": "Playable Build" }, "transitionType": "auto_push" },
-        { "id": "game_dev_wf4", "fromRoleId": "game_dev_tester", "toRoleId": "end", "artifactType": { "zh-CN": "结束", "zh-XG": "結束", "en": "End" }, "transitionType": "need_confirm", "rejectToRoleId": "game_dev_coder" }
+        { "id": "game_dev_wf0", "fromRoleId": null, "toRoleId": "game_dev_game-designer", "artifactType": { "zh-CN": "游戏概念", "zh-XG": "遊戲概念", "en": "Game Concept" }, "transitionType": "auto_push" },
+        { "id": "game_dev_wf1", "fromRoleId": "game_dev_game-designer", "toRoleId": "game_dev_unreal-technical-artist", "artifactType": { "zh-CN": "设计文档", "zh-XG": "設計文件", "en": "Design Document" }, "transitionType": "need_confirm" },
+        { "id": "game_dev_wf2", "fromRoleId": "game_dev_unreal-technical-artist", "toRoleId": "game_dev_unity-architect", "artifactType": { "zh-CN": "美术资源", "zh-XG": "美術資源", "en": "Art Assets" }, "transitionType": "auto_push" },
+        { "id": "game_dev_wf3", "fromRoleId": "game_dev_unity-architect", "toRoleId": "testing_performance-benchmarker-cn", "artifactType": { "zh-CN": "可玩版本", "zh-XG": "可玩版本", "en": "Playable Build" }, "transitionType": "auto_push" },
+        { "id": "game_dev_wf4", "fromRoleId": "testing_performance-benchmarker-cn", "toRoleId": "end", "artifactType": { "zh-CN": "结束", "zh-XG": "結束", "en": "End" }, "transitionType": "need_confirm", "rejectToRoleId": "game_dev_unity-architect" }
       ]
     },
     {
       "id": "research_project",
       "icon": "🔬",
       "name": { "zh-CN": "学术研究", "zh-XG": "學術研究", "en": "Academic Research" },
-      "description": { "zh-CN": "选题→文献→实验→论文撰写", "zh-XG": "選題→文獻→實驗→論文撰寫", "en": "Topic Selection → Literature Review → Experimentation → Paper Writing" },
+      "description": { "zh-CN": "趋势研究员→UX研究员→数据工程师→数据整合师→数据分析师→实验追踪员", "zh-XG": "趨勢研究員→UX研究員→資料工程師→資料整合師→資料分析師→實驗追蹤員", "en": "Trend Researcher → UX Researcher → Data Engineer → Data Consolidator → Data Analyst → Experiment Tracker" },
       "projectRule": {
         "zh-CN": "学术研究需遵循严谨的方法论，确保研究的可复现性和学术诚信。",
         "zh-XG": "學術研究需遵循嚴謹的方法論，確保研究的可重現性和學術誠信。",
@@ -89,15 +89,15 @@
         "zh-XG": "1. 選題需有學術價值和創新性\n2. 文獻綜述需全面且批判性分析\n3. 實驗設計需控制變數和偏差\n4. 論文需符合學術寫作規範",
         "en": "1. Topics must have academic value and novelty\n2. Literature reviews must be comprehensive with critical analysis\n3. Experimental design must control variables and biases\n4. Papers must conform to academic writing standards"
       },
-      "roleIds": ["research_pi", "research_lr", "research_er", "research_de", "research_ba", "research_ds"],
+      "roleIds": ["product_trend-researcher", "design_ux-researcher", "engineering_data-engineer", "specialized_data-consolidator", "support_data-analyst", "project_management_experiment-tracker-cn"],
       "workflows": [
-        { "id": "research_wf0", "fromRoleId": null, "toRoleId": "research_pi", "artifactType": { "zh-CN": "研究选题", "zh-XG": "研究選題", "en": "Research Topic" }, "transitionType": "auto_push" },
-        { "id": "research_wf1", "fromRoleId": "research_pi", "toRoleId": "research_lr", "artifactType": { "zh-CN": "研究方向", "zh-XG": "研究方向", "en": "Research Direction" }, "transitionType": "auto_push" },
-        { "id": "research_wf2", "fromRoleId": "research_lr", "toRoleId": "research_de", "artifactType": { "zh-CN": "数据需求", "zh-XG": "資料需求", "en": "Data Requirements" }, "transitionType": "auto_push" },
-        { "id": "research_wf3", "fromRoleId": "research_de", "toRoleId": "research_ds", "artifactType": { "zh-CN": "清洗数据集", "zh-XG": "清洗資料集", "en": "Cleaned Dataset" }, "transitionType": "auto_push" },
-        { "id": "research_wf4", "fromRoleId": "research_ds", "toRoleId": "research_ba", "artifactType": { "zh-CN": "分析报告", "zh-XG": "分析報告", "en": "Analysis Report" }, "transitionType": "auto_push" },
-        { "id": "research_wf5", "fromRoleId": "research_ba", "toRoleId": "research_er", "artifactType": { "zh-CN": "商业洞察", "zh-XG": "商業洞察", "en": "Business Insights" }, "transitionType": "auto_push" },
-        { "id": "research_wf6", "fromRoleId": "research_er", "toRoleId": "end", "artifactType": { "zh-CN": "结束", "zh-XG": "結束", "en": "End" }, "transitionType": "need_confirm" }
+        { "id": "research_wf0", "fromRoleId": null, "toRoleId": "product_trend-researcher", "artifactType": { "zh-CN": "研究选题", "zh-XG": "研究選題", "en": "Research Topic" }, "transitionType": "auto_push" },
+        { "id": "research_wf1", "fromRoleId": "product_trend-researcher", "toRoleId": "design_ux-researcher", "artifactType": { "zh-CN": "研究方向", "zh-XG": "研究方向", "en": "Research Direction" }, "transitionType": "auto_push" },
+        { "id": "research_wf2", "fromRoleId": "design_ux-researcher", "toRoleId": "engineering_data-engineer", "artifactType": { "zh-CN": "数据需求", "zh-XG": "資料需求", "en": "Data Requirements" }, "transitionType": "auto_push" },
+        { "id": "research_wf3", "fromRoleId": "engineering_data-engineer", "toRoleId": "specialized_data-consolidator", "artifactType": { "zh-CN": "清洗数据集", "zh-XG": "清洗資料集", "en": "Cleaned Dataset" }, "transitionType": "auto_push" },
+        { "id": "research_wf4", "fromRoleId": "specialized_data-consolidator", "toRoleId": "support_data-analyst", "artifactType": { "zh-CN": "分析报告", "zh-XG": "分析報告", "en": "Analysis Report" }, "transitionType": "auto_push" },
+        { "id": "research_wf5", "fromRoleId": "support_data-analyst", "toRoleId": "project_management_experiment-tracker-cn", "artifactType": { "zh-CN": "商业洞察", "zh-XG": "商業洞察", "en": "Business Insights" }, "transitionType": "auto_push" },
+        { "id": "research_wf6", "fromRoleId": "project_management_experiment-tracker-cn", "toRoleId": "end", "artifactType": { "zh-CN": "结束", "zh-XG": "結束", "en": "End" }, "transitionType": "need_confirm" }
       ]
     }
   ]

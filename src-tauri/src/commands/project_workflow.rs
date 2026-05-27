@@ -856,6 +856,25 @@ async fn validate_group_workflows(pool: &sqlx::SqlitePool, group_id: &str) -> Re
         graph.entry(from_key).or_default().push(to.as_str());
     }
 
+    fn can_reach(graph: &std::collections::HashMap<&str, Vec<&str>>, from: &str, target: &str) -> bool {
+        let mut visited = std::collections::HashSet::new();
+        let mut stack = vec![from];
+        while let Some(curr) = stack.pop() {
+            if curr == target {
+                return true;
+            }
+            if !visited.insert(curr) {
+                continue;
+            }
+            if let Some(neighbors) = graph.get(curr) {
+                for &next in neighbors {
+                    stack.push(next);
+                }
+            }
+        }
+        false
+    }
+
     let mut visited = std::collections::HashSet::new();
     let mut stack = vec!["start"];
     while let Some(curr) = stack.pop() {
@@ -876,6 +895,35 @@ async fn validate_group_workflows(pool: &sqlx::SqlitePool, group_id: &str) -> Re
         }
         if !visited.contains(to.as_str()) && to != "end" {
             return Err(format!("角色 \"{}\" 无法从开始节点到达", to));
+        }
+    }
+
+    // ⑦ 条件分支独立连通性：每个分支必须能独立到达结束节点
+    for (from, _, trans, _, _) in &rows {
+        if trans != "condition" {
+            continue;
+        }
+        let from_key = from.as_deref().unwrap_or("");
+        let yes_target = rows.iter()
+            .find(|(f, _, t, b, _)| {
+                f.as_deref() == Some(from_key) && *t == "condition" && (*b == "yes" || b.is_empty())
+            })
+            .map(|(_, to, _, _, _)| to.as_str());
+        let no_target = rows.iter()
+            .find(|(f, _, t, b, _)| {
+                f.as_deref() == Some(from_key) && *t == "condition" && *b == "no"
+            })
+            .map(|(_, to, _, _, _)| to.as_str());
+
+        if let Some(yes_to) = yes_target {
+            if yes_to != "end" && !can_reach(&graph, yes_to, "end") {
+                return Err(format!("条件节点 \"{}\" 的「是」分支无法连通到结束节点", from_key));
+            }
+        }
+        if let Some(no_to) = no_target {
+            if no_to != "end" && !can_reach(&graph, no_to, "end") {
+                return Err(format!("条件节点 \"{}\" 的「否」分支无法连通到结束节点", from_key));
+            }
         }
     }
 
@@ -1485,10 +1533,14 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
                     "SELECT pw.reject_to_role_id FROM project_workflows pw \
                      WHERE pw.project_id = ? AND pw.from_role_id = ? AND pw.transition_type = 'need_confirm' \
                      AND pw.reject_to_role_id IS NOT NULL AND pw.reject_to_role_id != '' \
+                     AND (pw.artifact_type = ? OR pw.artifact_type = '') \
+                     ORDER BY CASE WHEN pw.artifact_type = ? THEN 0 ELSE 1 END \
                      LIMIT 1"
                 )
                 .bind(&art_project_id)
                 .bind(&art_role_id)
+                .bind(&art_type)
+                .bind(&art_type)
                 .fetch_optional(&pool)
                 .await
                 .unwrap_or(None);

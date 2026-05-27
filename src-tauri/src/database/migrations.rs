@@ -46,5 +46,18 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             .await?;
     }
 
+    let has_ai_roles_department: bool = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM pragma_table_info('ai_roles') WHERE name = 'department'"
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0) > 0;
+
+    if !has_ai_roles_department {
+        sqlx::query("ALTER TABLE ai_roles ADD COLUMN department TEXT NOT NULL DEFAULT ''")
+            .execute(pool)
+            .await?;
+    }
+
     Ok(())
 }
