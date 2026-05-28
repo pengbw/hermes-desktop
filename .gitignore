@@ -10,6 +10,7 @@ src-tauri/target/
 .idea/
 .arts/
 .codeartsdoer/
+.codegraph/
 
 # Test
 src/windows/test_pose.json
