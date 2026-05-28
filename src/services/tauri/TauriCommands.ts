@@ -31,6 +31,9 @@ import type {
   CreateProjectFromTemplateRequest,
   ChannelStatusResult,
   QrCodeResult,
+  McpServerInfo,
+  CronJob,
+  CronJobOutput,
 } from "@core/tauri/types";
 
 export const TauriCommands = {
@@ -595,5 +598,63 @@ export const TauriCommands = {
 
   async restartGateway(): Promise<void> {
     return invoke("restart_gateway");
+  },
+
+  // MCP Commands
+  async mcpListServers(): Promise<McpServerInfo[]> {
+    return invoke<McpServerInfo[]>("mcp_list_servers");
+  },
+  async mcpAddServer(server: McpServerInfo): Promise<void> {
+    return invoke("mcp_add_server", { server });
+  },
+  async mcpUpdateServer(originalName: string, server: McpServerInfo): Promise<void> {
+    return invoke("mcp_update_server", { originalName, server });
+  },
+  async mcpRemoveServer(name: string): Promise<void> {
+    return invoke("mcp_remove_server", { name });
+  },
+  async mcpTestServer(name: string): Promise<string> {
+    return invoke("mcp_test_server", { name });
+  },
+  async mcpEnableServer(name: string, enabled: boolean): Promise<void> {
+    return invoke("mcp_enable_server", { name, enabled });
+  },
+
+  // Cron Commands
+  async cronListJobs(): Promise<CronJob[]> {
+    return invoke<CronJob[]>("cron_list_jobs");
+  },
+  async cronCreateJob(
+    name: string,
+    prompt: string,
+    schedule: string,
+    skills: string[]
+  ): Promise<CronJob> {
+    return invoke<CronJob>("cron_create_job", { name, prompt, schedule, skills });
+  },
+  async cronUpdateJob(
+    id: string,
+    name?: string,
+    prompt?: string,
+    schedule?: string,
+    skills?: string[],
+    enabled?: boolean
+  ): Promise<CronJob> {
+    return invoke<CronJob>("cron_update_job", { id, name, prompt, schedule, skills, enabled });
+  },
+  async cronDeleteJob(id: string): Promise<void> {
+    return invoke("cron_delete_job", { id });
+  },
+  async cronTriggerJob(id: string): Promise<CronJob> {
+    return invoke<CronJob>("cron_trigger_job", { id });
+  },
+  async cronPauseJob(id: string): Promise<void> {
+    return invoke("cron_pause_job", { id });
+  },
+  async cronResumeJob(id: string): Promise<void> {
+    return invoke("cron_resume_job", { id });
+  },
+  async cronGetOutputs(id: string): Promise<CronJobOutput[]> {
+    return invoke<CronJobOutput[]>("cron_get_outputs", { id });
   },
 };

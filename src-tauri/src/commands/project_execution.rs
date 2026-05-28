@@ -2362,6 +2362,20 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                 .map_err(|e| e.to_string())?
                 .flatten();
 
+                let reject_target = if reject_target.is_none() {
+                    sqlx::query_scalar(
+                        "SELECT reject_to_role_id FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'need_confirm' AND reject_to_role_id IS NOT NULL AND reject_to_role_id != '' LIMIT 1"
+                    )
+                    .bind(&project_id)
+                    .bind(&step_role_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .flatten()
+                } else {
+                    reject_target
+                };
+
                 if let Some(target_role_id) = reject_target {
                     let target_step: Option<i64> = sqlx::query_scalar(
                         "SELECT step_index FROM workflow_run_steps WHERE run_id = ? AND role_id = ? ORDER BY step_index ASC LIMIT 1"

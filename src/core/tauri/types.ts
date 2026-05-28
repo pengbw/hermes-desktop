@@ -219,3 +219,48 @@ export interface QrCodeResult {
   qrType: string;
   expiresIn?: number;
 }
+
+export interface McpServerInfo {
+  name: string;
+  transport: "stdio" | "http" | "sse";
+  command?: string;
+  args?: string[];
+  url?: string;
+  enabled: boolean;
+  tool_count?: number;
+  auth?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+}
+
+export interface McpToolInfo {
+  name: string;
+  server_name: string;
+  description?: string;
+}
+
+export interface CronJob {
+  id: string;
+  name: string;
+  prompt: string;
+  schedule: string;
+  schedule_display: string;
+  skills: string[];
+  enabled: boolean;
+  state: "scheduled" | "paused" | "running" | "completed" | "error";
+  next_run?: string;
+  last_run?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CronJobOutput {
+  id: string;
+  job_id: string;
+  job_name: string;
+  status: string;
+  output: string;
+  started_at?: string;
+  finished_at?: string;
+  duration?: number;
+}

@@ -843,10 +843,10 @@ function AiRolesSettingsSection({ t }: { t: (key: string) => string }) {
           onClick={closeView}
         >
           <div
-            className="bg-card border border-border rounded-xl w-full max-w-[480px] max-h-[80vh] flex flex-col shadow-xl overflow-hidden"
+            className="bg-card border border-border rounded-xl w-full max-w-[640px] max-h-[80vh] flex flex-col shadow-xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="flex items-center justify-between h-10 px-3 border-b border-border">
               <h3 className="text-base font-semibold text-foreground m-0">
                 {t("aiRoles.roleDetail")}
               </h3>

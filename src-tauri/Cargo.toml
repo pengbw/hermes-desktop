@@ -46,6 +46,7 @@ mp3-duration = "0.1"
 aes-gcm = "0.10"
 argon2 = "0.5"
 rand = "0.8"
+serde_yaml = "0.9"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }

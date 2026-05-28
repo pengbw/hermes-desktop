@@ -8,6 +8,8 @@ import AgentSettings from "@components/settings/AgentSettings";
 import ProviderSettings from "@components/settings/ProviderSettings";
 import type { Provider } from "@components/settings/ProviderSettings";
 import SystemSettings from "@components/settings/SystemSettings";
+import McpSettings from "@components/settings/McpSettings";
+import CronSettings from "@components/settings/CronSettings";
 import GestureSettingsComponent from "@components/settings/GestureSettings";
 import AiRolesSettingsSection from "@components/settings/AiRolesSettings";
 import KnowledgeSettingsSection from "@components/settings/KnowledgeSettings";
@@ -393,6 +395,8 @@ function SettingsPanel() {
               { key: "gesture", icon: "💃", labelKey: "nav.gesture" as const, dirty: 0 },
               { key: "cardManager", icon: "🃏", labelKey: "nav.cardManager" as const, dirty: 0 },
               { key: "aiRoles", icon: "👥", labelKey: "nav.aiRoles" as const, dirty: 0 },
+              { key: "mcp", icon: "🛠️", labelKey: "nav.mcp" as const, dirty: 0 },
+              { key: "cron", icon: "⏰", labelKey: "nav.cron" as const, dirty: 0 },
               {
                 key: "system",
                 icon: "⚙️",
@@ -653,6 +657,8 @@ function SettingsPanel() {
           {activeSection === "knowledge" && <KnowledgeSettingsSection t={t} />}
 
           {activeSection === "channel" && <ChannelSettings t={t} />}
+          {activeSection === "mcp" && <McpSettings t={t} />}
+          {activeSection === "cron" && <CronSettings t={t} />}
         </div>
       </div>
 

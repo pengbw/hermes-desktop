@@ -487,6 +487,20 @@ pub fn run() {
             commands::tts::text_to_speech,
             commands::tts::text_to_speech_file,
             commands::tts::check_tts_available,
+            commands::mcp::mcp_list_servers,
+            commands::mcp::mcp_add_server,
+            commands::mcp::mcp_update_server,
+            commands::mcp::mcp_remove_server,
+            commands::mcp::mcp_test_server,
+            commands::mcp::mcp_enable_server,
+            commands::cron::cron_list_jobs,
+            commands::cron::cron_create_job,
+            commands::cron::cron_update_job,
+            commands::cron::cron_delete_job,
+            commands::cron::cron_trigger_job,
+            commands::cron::cron_pause_job,
+            commands::cron::cron_resume_job,
+            commands::cron::cron_get_outputs,
         ])
         .run(tauri::generate_context!())
         .expect("Hermes Desktop failed to start");
