@@ -151,8 +151,13 @@ pub fn run() {
                     .join("all-MiniLM-L6-v2");
                 let _ = std::fs::create_dir_all(&data_dir);
                 let dest_onnx = data_dir.join("model.onnx");
-                if !dest_onnx.exists() {
-                    log::info!("[onnx] 首次启动，从资源目录安装ONNX模型");
+                if !dest_onnx.exists() || dest_onnx.metadata().map(|m| m.len() == 0).unwrap_or(false) {
+                    if dest_onnx.exists() {
+                        log::warn!("[onnx] ONNX模型文件为空，从资源目录重新安装");
+                        let _ = std::fs::remove_file(&dest_onnx);
+                    } else {
+                        log::info!("[onnx] 首次启动，从资源目录安装ONNX模型");
+                    }
                     if let Err(e) = std::fs::copy(&bundled_onnx, &dest_onnx) {
                         log::warn!("[onnx] 从资源目录复制ONNX模型失败: {}", e);
                     } else {

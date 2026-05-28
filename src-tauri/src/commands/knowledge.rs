@@ -1158,7 +1158,7 @@ pub async fn get_knowledge_config(app: AppHandle) -> Result<serde_json::Value, S
             "defaultEmbeddingModel": "local",
             "defaultRetrievalMode": "off",
             "defaultMaxContextChunks": 8,
-            "globalAutoRetrieve": true
+            "globalAutoRetrieve": false
         })),
     }
 }
@@ -1190,6 +1190,10 @@ pub async fn set_knowledge_config(app: AppHandle, config: serde_json::Value) -> 
     Ok(())
 }
 
+pub(crate) fn is_valid_file(path: &std::path::Path) -> bool {
+    path.metadata().map(|m| m.len() > 0).unwrap_or(false)
+}
+
 #[tauri::command]
 pub async fn check_local_embedding_model() -> Result<String, String> {
     let data_dir = dirs::data_local_dir()
@@ -1207,7 +1211,7 @@ pub async fn check_local_embedding_model() -> Result<String, String> {
     let has_tokenizer = tokenizer_file.exists();
 
     #[cfg(not(target_os = "windows"))]
-    if onnx_file.exists() && has_tokenizer {
+    if is_valid_file(&onnx_file) && has_tokenizer {
         return Ok("onnx_ready".to_string());
     }
 
@@ -1237,7 +1241,7 @@ pub async fn install_local_embedding_model(app: AppHandle) -> Result<String, Str
     let origin_base = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
 
     #[cfg(not(target_os = "windows"))]
-    let onnx_exists = data_dir.join("model.onnx").exists();
+    let onnx_exists = is_valid_file(&data_dir.join("model.onnx"));
     #[cfg(target_os = "windows")]
     let onnx_exists: bool = false;
 
@@ -1377,9 +1381,13 @@ pub async fn install_onnx_model(app: AppHandle) -> Result<String, String> {
     }
 
     let onnx_dest = data_dir.join("model.onnx");
-    if onnx_dest.exists() {
+    if is_valid_file(&onnx_dest) {
         log::info!("[onnx] ONNX模型已存在: {}", onnx_dest.display());
         return Ok("already_exists".to_string());
+    }
+    if onnx_dest.exists() {
+        log::warn!("[onnx] ONNX模型文件为空，删除后重新安装");
+        let _ = std::fs::remove_file(&onnx_dest);
     }
 
     let resource_dir = app
