@@ -250,8 +250,8 @@ export interface CronJob {
   state: "scheduled" | "paused" | "running" | "completed" | "error";
   next_run?: string;
   last_run?: string;
-  created_at?: number;
-  updated_at?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CronJobOutput {

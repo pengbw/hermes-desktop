@@ -624,17 +624,29 @@ export const TauriCommands = {
   async cronListJobs(): Promise<CronJob[]> {
     return invoke<CronJob[]>("cron_list_jobs");
   },
-  async cronCreateJob(name: string, prompt: string, schedule: string, skills: string[]): Promise<CronJob> {
+  async cronCreateJob(
+    name: string,
+    prompt: string,
+    schedule: string,
+    skills: string[]
+  ): Promise<CronJob> {
     return invoke<CronJob>("cron_create_job", { name, prompt, schedule, skills });
   },
-  async cronUpdateJob(id: string, name?: string, prompt?: string, schedule?: string, skills?: string[], enabled?: boolean): Promise<CronJob> {
+  async cronUpdateJob(
+    id: string,
+    name?: string,
+    prompt?: string,
+    schedule?: string,
+    skills?: string[],
+    enabled?: boolean
+  ): Promise<CronJob> {
     return invoke<CronJob>("cron_update_job", { id, name, prompt, schedule, skills, enabled });
   },
   async cronDeleteJob(id: string): Promise<void> {
     return invoke("cron_delete_job", { id });
   },
-  async cronTriggerJob(id: string): Promise<string> {
-    return invoke("cron_trigger_job", { id });
+  async cronTriggerJob(id: string): Promise<CronJob> {
+    return invoke<CronJob>("cron_trigger_job", { id });
   },
   async cronPauseJob(id: string): Promise<void> {
     return invoke("cron_pause_job", { id });

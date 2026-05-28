@@ -1545,6 +1545,22 @@ pub async fn reject_project_artifact(app: AppHandle, id: String, reason: String)
                 .await
                 .unwrap_or(None);
 
+                let explicit_reject = if explicit_reject.is_none() {
+                    sqlx::query_scalar(
+                        "SELECT pw.reject_to_role_id FROM project_workflows pw \
+                         WHERE pw.project_id = ? AND pw.from_role_id = ? AND pw.transition_type = 'need_confirm' \
+                         AND pw.reject_to_role_id IS NOT NULL AND pw.reject_to_role_id != '' \
+                         LIMIT 1"
+                    )
+                    .bind(&art_project_id)
+                    .bind(&art_role_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap_or(None)
+                } else {
+                    explicit_reject
+                };
+
                 let resolved_prev_step: i64;
 
                 if let Some(ref explicit_role) = explicit_reject {

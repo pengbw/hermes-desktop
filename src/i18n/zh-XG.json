@@ -360,6 +360,7 @@
   "aiRoles.avatarUrlPlaceholder": "輸入形象圖片路徑或URL",
   "aiRoles.importRole": "匯入角色",
   "aiRoles.exportRole": "匯出角色",
+  "aiRoles.roleDetail": "角色詳情",
   "studio.settings": "設定",
   "studio.maximize": "最大化",
   "studio.restore": "還原",
@@ -641,5 +642,12 @@
   "studio.wfRun.remarkOptional": "新增備註（選填）...",
   "studio.wfRun.start": "🚀 開始",
   "studio.wfRun.startFailed": "啟動工作流失敗",
-  "studio.workflows": "🔄 工作流"
+  "studio.workflows": "🔄 工作流",
+  "mcp.transportHelp": "傳輸類型說明",
+  "mcp.transportStdioDesc": "透過標準輸入/輸出與本地程序通訊，適用於本地安裝的 MCP 伺服器",
+  "mcp.transportStdioExample": "示例：命令 npx，參數 -y @modelcontextprotocol/server-filesystem /path",
+  "mcp.transportHttpDesc": "透過 HTTP 協定與遠端服務通訊，支援串流回應",
+  "mcp.transportHttpExample": "示例：http://localhost:3000/mcp",
+  "mcp.transportSseDesc": "透過 Server-Sent Events 與遠端服務通訊，適用於舊版 SSE 協定的伺服器",
+  "mcp.transportSseExample": "示例：http://localhost:3000/sse"
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { TauriCommands } from "@services/tauri/TauriCommands";
 import type { McpServerInfo } from "@core/tauri/types";
 
@@ -25,30 +25,122 @@ function McpServerModal({
   const [url, setUrl] = useState(server?.url || "");
   const [auth, setAuth] = useState(server?.auth || "");
   const [envText, setEnvText] = useState(
-    server?.env ? Object.entries(server.env).map(([k, v]) => `${k}=${v}`).join("\n") : ""
+    server?.env
+      ? Object.entries(server.env)
+          .map(([k, v]) => `${k}=${v}`)
+          .join("\n")
+      : ""
   );
   const [headersText, setHeadersText] = useState(
-    server?.headers ? Object.entries(server.headers).map(([k, v]) => `${k}=${v}`).join("\n") : ""
+    server?.headers
+      ? Object.entries(server.headers)
+          .map(([k, v]) => `${k}=${v}`)
+          .join("\n")
+      : ""
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [showTransportHelp, setShowTransportHelp] = useState(false);
+  const transportHelpRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showTransportHelp) return;
+    const handleClick = (e: MouseEvent) => {
+      if (transportHelpRef.current && !transportHelpRef.current.contains(e.target as Node)) {
+        setShowTransportHelp(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showTransportHelp]);
 
   const handleSubmit = async () => {
-    if (!name.trim()) {
-      setError(`${t("mcp.name")} ${t("mcp.required")}`);
-      return;
+    setError(null);
+    setWarnings([]);
+
+    const validationErrors: string[] = [];
+    const validationWarnings: string[] = [];
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      validationErrors.push(`${t("mcp.name")} ${t("mcp.required")}`);
+    } else if (!/^[a-zA-Z0-9][-a-zA-Z0-9_.]*$/.test(trimmedName)) {
+      validationErrors.push(t("mcp.invalidName"));
     }
+
     if (transport === "stdio" && !command.trim()) {
-      setError(`${t("mcp.command")} ${t("mcp.required")}`);
+      validationErrors.push(`${t("mcp.command")} ${t("mcp.required")}`);
+    }
+
+    const trimmedUrl = url.trim();
+    if (transport === "http" || transport === "sse") {
+      if (!trimmedUrl) {
+        validationErrors.push(`${t("mcp.url")} ${t("mcp.required")}`);
+      } else if (!/^https?:\/\/.+/.test(trimmedUrl)) {
+        validationErrors.push(t("mcp.invalidUrl"));
+      }
+    }
+
+    const templateVarPattern = /\$\{[^}]+\}/;
+    if (templateVarPattern.test(trimmedUrl)) {
+      validationWarnings.push(`URL: ${t("mcp.warnTemplateVar")}`);
+    }
+    if (templateVarPattern.test(auth.trim())) {
+      validationWarnings.push(`Auth: ${t("mcp.warnTemplateVar")}`);
+    }
+
+    if (envText.trim()) {
+      let hasInvalidLine = false;
+      for (const line of envText.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (!trimmed.includes("=") || trimmed.indexOf("=") === 0) {
+          hasInvalidLine = true;
+          continue;
+        }
+        if (templateVarPattern.test(trimmed)) {
+          validationWarnings.push(`Env: ${t("mcp.warnTemplateVar")}`);
+        }
+      }
+      if (hasInvalidLine) {
+        validationErrors.push(t("mcp.invalidEnvFormat"));
+      }
+    }
+
+    if (headersText.trim()) {
+      let hasInvalidLine = false;
+      for (const line of headersText.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (!trimmed.includes("=") || trimmed.indexOf("=") === 0) {
+          hasInvalidLine = true;
+          continue;
+        }
+        if (templateVarPattern.test(trimmed)) {
+          validationWarnings.push(`Headers: ${t("mcp.warnTemplateVar")}`);
+        }
+      }
+      if (hasInvalidLine) {
+        validationErrors.push(t("mcp.invalidHeaderFormat"));
+      }
+    }
+
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join("；"));
+      if (validationWarnings.length > 0) {
+        setWarnings(validationWarnings);
+      }
       return;
     }
-    if ((transport === "http" || transport === "sse") && !url.trim()) {
-      setError(`${t("mcp.url")} ${t("mcp.required")}`);
-      return;
+
+    if (validationWarnings.length > 0) {
+      setWarnings(validationWarnings);
     }
 
     setSubmitting(true);
     setError(null);
+    setWarnings([]);
 
     try {
       const envObj: Record<string, string> = {};
@@ -72,13 +164,11 @@ function McpServerModal({
       }
 
       const data: McpServerInfo = {
-        name: name.trim(),
+        name: trimmedName,
         transport: transport as "stdio" | "http" | "sse",
         command: transport === "stdio" ? command.trim() : undefined,
-        args: transport === "stdio" && args.trim()
-          ? args.trim().split(/\s+/)
-          : undefined,
-        url: (transport === "http" || transport === "sse") ? url.trim() : undefined,
+        args: transport === "stdio" && args.trim() ? args.trim().split(/\s+/) : undefined,
+        url: transport === "http" || transport === "sse" ? trimmedUrl : undefined,
         enabled: server?.enabled ?? true,
         auth: auth.trim() || undefined,
         env: Object.keys(envObj).length > 0 ? envObj : undefined,
@@ -94,9 +184,12 @@ function McpServerModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
       <div
-        className="bg-card rounded-xl border border-border shadow-xl w-[480px] max-h-[85vh] flex flex-col"
+        className="bg-card rounded-xl border border-border shadow-xl w-[560px] max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between h-10 px-3 border-b border-border">
@@ -113,11 +206,27 @@ function McpServerModal({
 
         <div className="px-5 py-4 flex flex-col gap-4 overflow-y-auto">
           {error && (
-            <div className="text-[12px] text-red-500 bg-red-500/10 px-3 py-2 rounded-lg">{error}</div>
+            <div className="text-[12px] text-red-500 bg-red-500/10 px-3 py-2 rounded-lg">
+              {error}
+            </div>
+          )}
+          {warnings.length > 0 && (
+            <div className="flex flex-col gap-1">
+              {warnings.map((w, i) => (
+                <div
+                  key={i}
+                  className="text-[12px] text-amber-500 bg-amber-500/10 px-3 py-2 rounded-lg"
+                >
+                  {w}
+                </div>
+              ))}
+            </div>
           )}
 
           <div>
-            <label className="text-[12px] font-medium text-muted-foreground mb-1 block">{t("mcp.name")}</label>
+            <label className="text-[12px] font-medium text-muted-foreground mb-1 block">
+              {t("mcp.name")}
+            </label>
             <input
               className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary"
               value={name}
@@ -128,83 +237,155 @@ function McpServerModal({
           </div>
 
           <div>
-            <label className="text-[12px] font-medium text-muted-foreground mb-1 block">{t("mcp.transport")}</label>
-            <select
-              className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary"
-              value={transport}
-              onChange={(e) => setTransport(e.target.value)}
-            >
-              <option value="stdio">stdio</option>
-              <option value="http">HTTP / StreamableHTTP</option>
-              <option value="sse">SSE</option>
-            </select>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <label className="text-[12px] font-medium text-muted-foreground">
+                {t("mcp.transport")}
+              </label>
+              <div className="relative" ref={transportHelpRef}>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-border bg-muted/50 text-[10px] text-muted-foreground cursor-pointer hover:bg-muted hover:text-foreground transition-colors"
+                  onClick={() => setShowTransportHelp(!showTransportHelp)}
+                >
+                  ?
+                </button>
+                {showTransportHelp && (
+                  <div className="absolute top-full left-0 mt-1 w-[280px] bg-card border border-border rounded-lg shadow-xl z-[60] p-3">
+                    <div className="text-[12px] font-medium text-foreground mb-2">
+                      {t("mcp.transportHelp")}
+                    </div>
+                    <div className="flex flex-col gap-2.5">
+                      <div>
+                        <div className="text-[11px] font-medium text-foreground mb-0.5">Stdio</div>
+                        <div className="text-[11px] text-muted-foreground leading-relaxed">
+                          {t("mcp.transportStdioDesc")}
+                        </div>
+                        <div className="text-[11px] text-primary/80 mt-0.5 font-mono bg-muted/40 px-2 py-1 rounded">
+                          {t("mcp.transportStdioExample")}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-medium text-foreground mb-0.5">HTTP</div>
+                        <div className="text-[11px] text-muted-foreground leading-relaxed">
+                          {t("mcp.transportHttpDesc")}
+                        </div>
+                        <div className="text-[11px] text-primary/80 mt-0.5 font-mono bg-muted/40 px-2 py-1 rounded">
+                          {t("mcp.transportHttpExample")}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-medium text-foreground mb-0.5">SSE</div>
+                        <div className="text-[11px] text-muted-foreground leading-relaxed">
+                          {t("mcp.transportSseDesc")}
+                        </div>
+                        <div className="text-[11px] text-primary/80 mt-0.5 font-mono bg-muted/40 px-2 py-1 rounded">
+                          {t("mcp.transportSseExample")}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-1 p-1 bg-muted/50 rounded-lg border border-border">
+              {(["stdio", "http", "sse"] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  className={`flex-1 px-3 py-1.5 rounded-md text-[12px] font-medium border-0 cursor-pointer transition-colors ${
+                    transport === type
+                      ? "bg-card text-foreground shadow-sm"
+                      : "bg-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setTransport(type)}
+                >
+                  {type === "stdio" ? "Stdio" : type === "http" ? "HTTP" : "SSE"}
+                </button>
+              ))}
+            </div>
           </div>
 
           {transport === "stdio" && (
-            <>
+            <div className="flex flex-col gap-4 p-3 rounded-lg bg-muted/20 border border-border/50">
               <div>
-                <label className="text-[12px] font-medium text-muted-foreground mb-1 block">{t("mcp.command")}</label>
+                <label className="text-[12px] font-medium text-muted-foreground mb-1 block">
+                  {t("mcp.command")}
+                </label>
                 <input
-                  className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary"
+                  className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary font-mono"
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
                   placeholder={t("mcp.commandPlaceholder")}
                 />
               </div>
               <div>
-                <label className="text-[12px] font-medium text-muted-foreground mb-1 block">{t("mcp.args")}</label>
+                <label className="text-[12px] font-medium text-muted-foreground mb-1 block">
+                  {t("mcp.args")}
+                </label>
                 <input
-                  className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary"
+                  className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary font-mono"
                   value={args}
                   onChange={(e) => setArgs(e.target.value)}
                   placeholder={t("mcp.argsPlaceholder")}
                 />
               </div>
-            </>
-          )}
-
-          {(transport === "http" || transport === "sse") && (
-            <div>
-              <label className="text-[12px] font-medium text-muted-foreground mb-1 block">{t("mcp.url")}</label>
-              <input
-                className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder={t("mcp.urlPlaceholder")}
-              />
             </div>
           )}
 
-          <div>
-            <label className="text-[12px] font-medium text-muted-foreground mb-1 block">{t("mcp.auth")}</label>
-            <input
-              className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary"
-              value={auth}
-              onChange={(e) => setAuth(e.target.value)}
-              placeholder={t("mcp.authPlaceholder")}
-            />
-          </div>
+          {(transport === "http" || transport === "sse") && (
+            <div className="flex flex-col gap-4 p-3 rounded-lg bg-muted/20 border border-border/50">
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground mb-1 block">
+                  {t("mcp.url")}
+                </label>
+                <input
+                  className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary font-mono"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder={t("mcp.urlPlaceholder")}
+                />
+              </div>
+            </div>
+          )}
 
-          <div>
-            <label className="text-[12px] font-medium text-muted-foreground mb-1 block">{t("mcp.env")}</label>
-            <textarea
-              className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary resize-y min-h-[60px]"
-              value={envText}
-              onChange={(e) => setEnvText(e.target.value)}
-              placeholder={t("mcp.envPlaceholder")}
-              rows={3}
-            />
-          </div>
-
-          <div>
-            <label className="text-[12px] font-medium text-muted-foreground mb-1 block">{t("mcp.headers")}</label>
-            <textarea
-              className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary resize-y min-h-[60px]"
-              value={headersText}
-              onChange={(e) => setHeadersText(e.target.value)}
-              placeholder={t("mcp.headersPlaceholder")}
-              rows={3}
-            />
+          <div className="flex flex-col gap-4 p-3 rounded-lg bg-muted/20 border border-border/50">
+            <div>
+              <label className="text-[12px] font-medium text-muted-foreground mb-1 block">
+                {t("mcp.auth")}
+              </label>
+              <input
+                className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary"
+                value={auth}
+                onChange={(e) => setAuth(e.target.value)}
+                placeholder={t("mcp.authPlaceholder")}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-muted-foreground mb-1 block">
+                {t("mcp.env")}
+              </label>
+              <textarea
+                className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary resize-y min-h-[60px] font-mono"
+                value={envText}
+                onChange={(e) => setEnvText(e.target.value)}
+                placeholder={t("mcp.envPlaceholder")}
+                rows={3}
+              />
+            </div>
+            {(transport === "http" || transport === "sse") && (
+              <div>
+                <label className="text-[12px] font-medium text-muted-foreground mb-1 block">
+                  {t("mcp.headers")}
+                </label>
+                <textarea
+                  className="w-full px-3 py-2 bg-muted/50 border border-border rounded-lg text-[13px] text-foreground outline-none focus:border-primary resize-y min-h-[60px] font-mono"
+                  value={headersText}
+                  onChange={(e) => setHeadersText(e.target.value)}
+                  placeholder={t("mcp.headersPlaceholder")}
+                  rows={3}
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
@@ -329,9 +510,7 @@ export default function McpSettings({ t }: McpSettingsProps) {
       </div>
 
       {servers.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground text-sm">
-          {t("mcp.empty")}
-        </div>
+        <div className="text-center py-8 text-muted-foreground text-sm">{t("mcp.empty")}</div>
       ) : (
         <div className="flex flex-col gap-2">
           {servers.map((server) => (
@@ -398,7 +577,9 @@ export default function McpSettings({ t }: McpSettingsProps) {
       {testResult && (
         <div className="mt-3 p-3 rounded-lg border border-border bg-muted/30">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-medium text-muted-foreground">{t("mcp.testResult")}</span>
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {t("mcp.testResult")}
+            </span>
             <button
               className="bg-transparent border-0 text-muted-foreground text-[11px] cursor-pointer hover:text-foreground"
               onClick={() => setTestResult(null)}
@@ -416,7 +597,10 @@ export default function McpSettings({ t }: McpSettingsProps) {
         <McpServerModal
           t={t}
           server={editingServer}
-          onClose={() => { setShowModal(false); setEditingServer(null); }}
+          onClose={() => {
+            setShowModal(false);
+            setEditingServer(null);
+          }}
           onSave={handleSave}
         />
       )}

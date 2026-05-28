@@ -25,31 +25,133 @@ pub struct McpToolInfo {
 }
 
 fn mcp_config_path() -> String {
-    format!("{}{}mcp_servers.yaml", hermes_home_dir(), std::path::MAIN_SEPARATOR)
+    format!("{}{}config.yaml", hermes_home_dir(), std::path::MAIN_SEPARATOR)
 }
 
-fn read_mcp_config() -> Result<serde_yaml::Value, String> {
+fn read_config_raw() -> Result<(serde_yaml::Value, Vec<(String, serde_yaml::Value)>), String> {
     let path = mcp_config_path();
     if !std::path::Path::new(&path).exists() {
-        return Ok(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
+        return Ok((serde_yaml::Value::Mapping(serde_yaml::Mapping::new()), Vec::new()));
     }
+
     let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read MCP config: {}", e))?;
+        .map_err(|e| format!("Failed to read config: {}", e))?;
+
     let config: serde_yaml::Value = serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse MCP config: {}", e))?;
-    Ok(config)
+        .map_err(|e| format!("Failed to parse config: {}", e))?;
+
+    let servers_pairs = match config.get("mcp_servers").and_then(|v| v.as_mapping()) {
+        Some(mapping) => mapping.iter()
+            .map(|(k, v)| {
+                let name = k.as_str().unwrap_or("unknown").to_string();
+                (name, v.clone())
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+
+    Ok((config, servers_pairs))
 }
 
-fn write_mcp_config(config: &serde_yaml::Value) -> Result<(), String> {
+fn migrate_old_mcp_config() {
+    let old_path = format!("{}{}mcp_servers.yaml", hermes_home_dir(), std::path::MAIN_SEPARATOR);
+    let new_path = mcp_config_path();
+
+    if !std::path::Path::new(&old_path).exists() {
+        return;
+    }
+
+    if let Ok(content) = std::fs::read_to_string(&old_path) {
+        if let Ok(old_config) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
+            if old_config.get("mcp_servers").and_then(|v| v.as_mapping()).map(|m| m.is_empty()).unwrap_or(true) {
+                let _ = std::fs::remove_file(&old_path);
+                return;
+            }
+
+            let (mut config, existing_pairs) = read_config_raw().unwrap_or_else(|_| {
+                (serde_yaml::Value::Mapping(serde_yaml::Mapping::new()), Vec::new())
+            });
+
+            let existing_names: std::collections::HashSet<String> = existing_pairs.iter().map(|(n, _)| n.clone()).collect();
+
+            let mut merged_pairs = existing_pairs;
+            if let Some(old_servers) = old_config.get("mcp_servers").and_then(|v| v.as_mapping()) {
+                for (k, v) in old_servers.iter() {
+                    let name = k.as_str().unwrap_or("unknown").to_string();
+                    if !existing_names.contains(&name) {
+                        merged_pairs.push((name, v.clone()));
+                    }
+                }
+            }
+
+            let mut servers_map = serde_yaml::Mapping::new();
+            for (name, value) in &merged_pairs {
+                servers_map.insert(
+                    serde_yaml::Value::String(name.clone()),
+                    value.clone(),
+                );
+            }
+
+            if let Some(root) = config.as_mapping_mut() {
+                root.insert(
+                    serde_yaml::Value::String("mcp_servers".to_string()),
+                    serde_yaml::Value::Mapping(servers_map),
+                );
+            }
+
+            if let Ok(yaml_str) = serde_yaml::to_string(&config) {
+                if std::fs::write(&new_path, yaml_str).is_ok() {
+                    let _ = std::fs::remove_file(&old_path);
+                    log::info!("Migrated MCP servers from mcp_servers.yaml to config.yaml");
+                }
+            }
+        }
+    }
+}
+
+fn read_mcp_servers_from_config() -> Result<(serde_yaml::Value, Vec<(String, serde_yaml::Value)>), String> {
+    migrate_old_mcp_config();
+    read_config_raw()
+}
+
+fn write_mcp_servers_to_config(servers_pairs: &[(String, serde_yaml::Value)]) -> Result<(), String> {
     let path = mcp_config_path();
     let hermes_home = hermes_home_dir();
     if let Err(e) = std::fs::create_dir_all(&hermes_home) {
         log::warn!("Failed to create hermes home dir: {}", e);
     }
-    let content = serde_yaml::to_string(config)
-        .map_err(|e| format!("Failed to serialize MCP config: {}", e))?;
+
+    let (mut config, _) = read_mcp_servers_from_config().unwrap_or_else(|_| {
+        (serde_yaml::Value::Mapping(serde_yaml::Mapping::new()), Vec::new())
+    });
+
+    let mut servers_map = serde_yaml::Mapping::new();
+    for (name, value) in servers_pairs {
+        servers_map.insert(
+            serde_yaml::Value::String(name.clone()),
+            value.clone(),
+        );
+    }
+
+    if let Some(root) = config.as_mapping_mut() {
+        root.insert(
+            serde_yaml::Value::String("mcp_servers".to_string()),
+            serde_yaml::Value::Mapping(servers_map),
+        );
+    } else {
+        let mut root = serde_yaml::Mapping::new();
+        root.insert(
+            serde_yaml::Value::String("mcp_servers".to_string()),
+            serde_yaml::Value::Mapping(servers_map),
+        );
+        config = serde_yaml::Value::Mapping(root);
+    }
+
+    let content = serde_yaml::to_string(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
     std::fs::write(&path, content)
-        .map_err(|e| format!("Failed to write MCP config: {}", e))
+        .map_err(|e| format!("Failed to write config: {}", e))
 }
 
 fn parse_server_from_yaml(name: &str, value: &serde_yaml::Value) -> McpServerInfo {
@@ -97,186 +199,112 @@ fn parse_server_from_yaml(name: &str, value: &serde_yaml::Value) -> McpServerInf
     }
 }
 
+fn server_to_yaml_value(server: &McpServerInfo) -> serde_yaml::Value {
+    let mut server_value = serde_yaml::Mapping::new();
+    server_value.insert(
+        serde_yaml::Value::String("transport".to_string()),
+        serde_yaml::Value::String(server.transport.clone()),
+    );
+    if let Some(cmd) = &server.command {
+        if !cmd.is_empty() {
+            server_value.insert(
+                serde_yaml::Value::String("command".to_string()),
+                serde_yaml::Value::String(cmd.clone()),
+            );
+        }
+    }
+    if let Some(args) = &server.args {
+        if !args.is_empty() {
+            let seq: Vec<serde_yaml::Value> = args.iter()
+                .map(|a| serde_yaml::Value::String(a.clone()))
+                .collect();
+            server_value.insert(
+                serde_yaml::Value::String("args".to_string()),
+                serde_yaml::Value::Sequence(seq),
+            );
+        }
+    }
+    if let Some(url) = &server.url {
+        if !url.is_empty() {
+            server_value.insert(
+                serde_yaml::Value::String("url".to_string()),
+                serde_yaml::Value::String(url.clone()),
+            );
+        }
+    }
+    server_value.insert(
+        serde_yaml::Value::String("enabled".to_string()),
+        serde_yaml::Value::Bool(server.enabled),
+    );
+    if let Some(auth) = &server.auth {
+        if !auth.is_empty() {
+            server_value.insert(
+                serde_yaml::Value::String("auth".to_string()),
+                serde_yaml::Value::String(auth.clone()),
+            );
+        }
+    }
+    if let Some(env) = &server.env {
+        if !env.is_empty() {
+            let mapping: serde_yaml::Mapping = env.iter()
+                .map(|(k, v)| (serde_yaml::Value::String(k.clone()), serde_yaml::Value::String(v.clone())))
+                .collect();
+            server_value.insert(
+                serde_yaml::Value::String("env".to_string()),
+                serde_yaml::Value::Mapping(mapping),
+            );
+        }
+    }
+    if let Some(headers) = &server.headers {
+        if !headers.is_empty() {
+            let mapping: serde_yaml::Mapping = headers.iter()
+                .map(|(k, v)| (serde_yaml::Value::String(k.clone()), serde_yaml::Value::String(v.clone())))
+                .collect();
+            server_value.insert(
+                serde_yaml::Value::String("headers".to_string()),
+                serde_yaml::Value::Mapping(mapping),
+            );
+        }
+    }
+    serde_yaml::Value::Mapping(server_value)
+}
+
 #[tauri::command]
 pub async fn mcp_list_servers() -> Result<Vec<McpServerInfo>, String> {
-    let config = read_mcp_config()?;
-    let servers = config.get("mcp_servers")
-        .and_then(|v| v.as_mapping())
-        .map(|m| m.iter().map(|(k, v)| {
-            let name = k.as_str().unwrap_or("unknown").to_string();
-            parse_server_from_yaml(&name, v)
-        }).collect())
-        .unwrap_or_default();
+    let (_, servers_pairs) = read_mcp_servers_from_config()?;
+    let servers: Vec<McpServerInfo> = servers_pairs.iter()
+        .map(|(name, value)| parse_server_from_yaml(name, value))
+        .collect();
     Ok(servers)
 }
 
 #[tauri::command]
 pub async fn mcp_add_server(server: McpServerInfo) -> Result<(), String> {
-    let mut config = read_mcp_config()?;
+    let (_, mut servers_pairs) = read_mcp_servers_from_config()?;
 
-    let servers = config.as_mapping_mut()
-        .ok_or("Invalid config format")?
-        .entry(serde_yaml::Value::String("mcp_servers".to_string()))
-        .or_insert(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()))
-        .as_mapping_mut()
-        .ok_or("Invalid mcp_servers format")?;
-
-    if servers.contains_key(&serde_yaml::Value::String(server.name.clone())) {
+    if servers_pairs.iter().any(|(n, _)| n == &server.name) {
         return Err(format!("Server '{}' already exists", server.name));
     }
 
-    let mut server_value = serde_yaml::Mapping::new();
-    server_value.insert(
-        serde_yaml::Value::String("transport".to_string()),
-        serde_yaml::Value::String(server.transport.clone()),
-    );
-    if let Some(cmd) = &server.command {
-        server_value.insert(
-            serde_yaml::Value::String("command".to_string()),
-            serde_yaml::Value::String(cmd.clone()),
-        );
-    }
-    if let Some(args) = &server.args {
-        let seq: Vec<serde_yaml::Value> = args.iter()
-            .map(|a| serde_yaml::Value::String(a.clone()))
-            .collect();
-        server_value.insert(
-            serde_yaml::Value::String("args".to_string()),
-            serde_yaml::Value::Sequence(seq),
-        );
-    }
-    if let Some(url) = &server.url {
-        server_value.insert(
-            serde_yaml::Value::String("url".to_string()),
-            serde_yaml::Value::String(url.clone()),
-        );
-    }
-    server_value.insert(
-        serde_yaml::Value::String("enabled".to_string()),
-        serde_yaml::Value::Bool(server.enabled),
-    );
-    if let Some(auth) = &server.auth {
-        server_value.insert(
-            serde_yaml::Value::String("auth".to_string()),
-            serde_yaml::Value::String(auth.clone()),
-        );
-    }
-    if let Some(env) = &server.env {
-        let mapping: serde_yaml::Mapping = env.iter()
-            .map(|(k, v)| (serde_yaml::Value::String(k.clone()), serde_yaml::Value::String(v.clone())))
-            .collect();
-        server_value.insert(
-            serde_yaml::Value::String("env".to_string()),
-            serde_yaml::Value::Mapping(mapping),
-        );
-    }
-    if let Some(headers) = &server.headers {
-        let mapping: serde_yaml::Mapping = headers.iter()
-            .map(|(k, v)| (serde_yaml::Value::String(k.clone()), serde_yaml::Value::String(v.clone())))
-            .collect();
-        server_value.insert(
-            serde_yaml::Value::String("headers".to_string()),
-            serde_yaml::Value::Mapping(mapping),
-        );
-    }
-
-    servers.insert(
-        serde_yaml::Value::String(server.name.clone()),
-        serde_yaml::Value::Mapping(server_value),
-    );
-
-    write_mcp_config(&config)
+    servers_pairs.push((server.name.clone(), server_to_yaml_value(&server)));
+    write_mcp_servers_to_config(&servers_pairs)
 }
 
 #[tauri::command]
 pub async fn mcp_update_server(original_name: String, server: McpServerInfo) -> Result<(), String> {
-    let mut config = read_mcp_config()?;
+    let (_, mut servers_pairs) = read_mcp_servers_from_config()?;
 
-    let servers = config.as_mapping_mut()
-        .ok_or("Invalid config format")?
-        .get_mut("mcp_servers")
-        .and_then(|v| v.as_mapping_mut())
-        .ok_or("mcp_servers not found")?;
+    servers_pairs.retain(|(n, _)| n != &original_name);
+    servers_pairs.push((server.name.clone(), server_to_yaml_value(&server)));
 
-    if original_name != server.name {
-        servers.remove(&serde_yaml::Value::String(original_name));
-    }
-
-    let mut server_value = serde_yaml::Mapping::new();
-    server_value.insert(
-        serde_yaml::Value::String("transport".to_string()),
-        serde_yaml::Value::String(server.transport.clone()),
-    );
-    if let Some(cmd) = &server.command {
-        server_value.insert(
-            serde_yaml::Value::String("command".to_string()),
-            serde_yaml::Value::String(cmd.clone()),
-        );
-    }
-    if let Some(args) = &server.args {
-        let seq: Vec<serde_yaml::Value> = args.iter()
-            .map(|a| serde_yaml::Value::String(a.clone()))
-            .collect();
-        server_value.insert(
-            serde_yaml::Value::String("args".to_string()),
-            serde_yaml::Value::Sequence(seq),
-        );
-    }
-    if let Some(url) = &server.url {
-        server_value.insert(
-            serde_yaml::Value::String("url".to_string()),
-            serde_yaml::Value::String(url.clone()),
-        );
-    }
-    server_value.insert(
-        serde_yaml::Value::String("enabled".to_string()),
-        serde_yaml::Value::Bool(server.enabled),
-    );
-    if let Some(auth) = &server.auth {
-        server_value.insert(
-            serde_yaml::Value::String("auth".to_string()),
-            serde_yaml::Value::String(auth.clone()),
-        );
-    }
-    if let Some(env) = &server.env {
-        let mapping: serde_yaml::Mapping = env.iter()
-            .map(|(k, v)| (serde_yaml::Value::String(k.clone()), serde_yaml::Value::String(v.clone())))
-            .collect();
-        server_value.insert(
-            serde_yaml::Value::String("env".to_string()),
-            serde_yaml::Value::Mapping(mapping),
-        );
-    }
-    if let Some(headers) = &server.headers {
-        let mapping: serde_yaml::Mapping = headers.iter()
-            .map(|(k, v)| (serde_yaml::Value::String(k.clone()), serde_yaml::Value::String(v.clone())))
-            .collect();
-        server_value.insert(
-            serde_yaml::Value::String("headers".to_string()),
-            serde_yaml::Value::Mapping(mapping),
-        );
-    }
-
-    servers.insert(
-        serde_yaml::Value::String(server.name.clone()),
-        serde_yaml::Value::Mapping(server_value),
-    );
-
-    write_mcp_config(&config)
+    write_mcp_servers_to_config(&servers_pairs)
 }
 
 #[tauri::command]
 pub async fn mcp_remove_server(name: String) -> Result<(), String> {
-    let mut config = read_mcp_config()?;
-
-    let servers = config.as_mapping_mut()
-        .ok_or("Invalid config format")?
-        .get_mut("mcp_servers")
-        .and_then(|v| v.as_mapping_mut())
-        .ok_or("mcp_servers not found")?;
-
-    servers.remove(&serde_yaml::Value::String(name));
-    write_mcp_config(&config)
+    let (_, mut servers_pairs) = read_mcp_servers_from_config()?;
+    servers_pairs.retain(|(n, _)| n != &name);
+    write_mcp_servers_to_config(&servers_pairs)
 }
 
 #[tauri::command]
@@ -297,24 +325,20 @@ pub async fn mcp_test_server(name: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn mcp_enable_server(name: String, enabled: bool) -> Result<(), String> {
-    let mut config = read_mcp_config()?;
+    let (_, mut servers_pairs) = read_mcp_servers_from_config()?;
 
-    let servers = config.as_mapping_mut()
-        .ok_or("Invalid config format")?
-        .get_mut("mcp_servers")
-        .and_then(|v| v.as_mapping_mut())
-        .ok_or("mcp_servers not found")?;
-
-    let server_entry = servers.get_mut(&serde_yaml::Value::String(name.clone()))
+    let idx = servers_pairs.iter()
+        .position(|(n, _)| n == &name)
         .ok_or(format!("Server '{}' not found", name))?;
 
-    let server_map = server_entry.as_mapping_mut()
-        .ok_or("Invalid server entry format")?;
+    let mut server_value = servers_pairs[idx].1.clone();
+    if let Some(mapping) = server_value.as_mapping_mut() {
+        mapping.insert(
+            serde_yaml::Value::String("enabled".to_string()),
+            serde_yaml::Value::Bool(enabled),
+        );
+    }
+    servers_pairs[idx].1 = server_value;
 
-    server_map.insert(
-        serde_yaml::Value::String("enabled".to_string()),
-        serde_yaml::Value::Bool(enabled),
-    );
-
-    write_mcp_config(&config)
+    write_mcp_servers_to_config(&servers_pairs)
 }
