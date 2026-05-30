@@ -1212,14 +1212,38 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                 .iter()
                 .any(|(_, _, action)| action == "need_confirm");
             let has_running_steps = !running_steps.is_empty();
-            let has_need_confirm_outgoing: bool = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'need_confirm'"
-            )
-            .bind(&rec_project)
-            .bind(&rec_role)
-            .fetch_one(&pool)
-            .await
-            .unwrap_or(0) > 0;
+
+            let run_group_id: Option<String> = if let Some((run_id, _, _)) = running_steps.first() {
+                sqlx::query_scalar("SELECT group_id FROM workflow_runs WHERE id = ?")
+                    .bind(run_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap_or(None)
+                    .flatten()
+            } else {
+                None
+            };
+
+            let has_need_confirm_outgoing: bool = if let Some(ref gid) = run_group_id {
+                sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'need_confirm' AND (group_id = ? OR group_id IS NULL)"
+                )
+                .bind(&rec_project)
+                .bind(&rec_role)
+                .bind(gid)
+                .fetch_one(&pool)
+                .await
+                .unwrap_or(0) > 0
+            } else {
+                sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'need_confirm'"
+                )
+                .bind(&rec_project)
+                .bind(&rec_role)
+                .fetch_one(&pool)
+                .await
+                .unwrap_or(0) > 0
+            };
             let requires_confirmation =
                 has_running_need_confirm_step || (!has_running_steps && has_need_confirm_outgoing);
 
@@ -1573,7 +1597,7 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
     })
 }
 
-async fn evaluate_condition_with_ai(
+pub(crate) async fn evaluate_condition_with_ai(
     app: &AppHandle,
     project_id: &str,
     role_id: &str,
@@ -1849,9 +1873,9 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
     let effective_task_id = task_id.unwrap_or_default();
 
     // 按流程组过滤工作流，如果未指定则查询主流程组
-    let workflows: Vec<(String, Option<String>, String, String, i64)> = if let Some(ref gid) = group_id {
+    let workflows: Vec<(String, Option<String>, String, String, String, i64)> = if let Some(ref gid) = group_id {
         sqlx::query_as(
-            "SELECT id, from_role_id, to_role_id, transition_type, sort_order FROM project_workflows WHERE project_id = ? AND group_id = ? ORDER BY sort_order ASC"
+            "SELECT id, from_role_id, to_role_id, transition_type, branch_label, sort_order FROM project_workflows WHERE project_id = ? AND group_id = ? ORDER BY sort_order ASC"
         )
         .bind(&project_id)
         .bind(gid)
@@ -1859,7 +1883,6 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
         .await
         .map_err(|e| e.to_string())?
     } else {
-        // 未指定流程组时，使用主流程组
         let primary_group_id: Option<String> = sqlx::query_scalar(
             "SELECT id FROM project_workflow_groups WHERE project_id = ? AND is_primary = 1 LIMIT 1"
         )
@@ -1870,7 +1893,7 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
 
         if let Some(pgid) = primary_group_id {
             sqlx::query_as(
-                "SELECT id, from_role_id, to_role_id, transition_type, sort_order FROM project_workflows WHERE project_id = ? AND group_id = ? ORDER BY sort_order ASC"
+                "SELECT id, from_role_id, to_role_id, transition_type, branch_label, sort_order FROM project_workflows WHERE project_id = ? AND group_id = ? ORDER BY sort_order ASC"
             )
             .bind(&project_id)
             .bind(&pgid)
@@ -1879,7 +1902,7 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
             .map_err(|e| e.to_string())?
         } else {
             sqlx::query_as(
-                "SELECT id, from_role_id, to_role_id, transition_type, sort_order FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
+                "SELECT id, from_role_id, to_role_id, transition_type, branch_label, sort_order FROM project_workflows WHERE project_id = ? ORDER BY sort_order ASC"
             )
             .bind(&project_id)
             .fetch_all(&pool)
@@ -1892,9 +1915,10 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
         return Err("No workflows defined for this project".to_string());
     }
 
-    sqlx::query("INSERT INTO workflow_runs (id, project_id, workflow_id, current_step, status, context, task_id, started_at) VALUES (?, ?, NULL, 0, 'running', '{}', ?, ?)")
+    sqlx::query("INSERT INTO workflow_runs (id, project_id, workflow_id, group_id, current_step, status, context, task_id, started_at) VALUES (?, ?, NULL, ?, 0, 'running', '{}', ?, ?)")
         .bind(&id)
         .bind(&project_id)
+        .bind(&group_id)
         .bind(&effective_task_id)
         .bind(now)
         .execute(&pool)
@@ -1913,7 +1937,7 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
 
     let mut next_action_by_role: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
-    for (_wf_id, from_role_id, _to_role_id, transition_type, _sort_order) in &workflows {
+    for (_wf_id, from_role_id, _to_role_id, transition_type, _branch_label, _sort_order) in &workflows {
         let Some(from_role_id) = from_role_id.as_ref().filter(|value| !value.is_empty() && **value != "start" && **value != "end") else {
             continue;
         };
@@ -1925,11 +1949,12 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
         }
     }
 
-    // Insert workflow steps starting from step_index 1.
-    // Each step's action represents how this role hands off work to its next step.
     let mut step_index = 1;
-    for (_i, (_wf_id, _from_role_id, to_role_id, _transition_type, _sort_order)) in workflows.iter().enumerate() {
+    for (_i, (_wf_id, _from_role_id, to_role_id, transition_type, branch_label, _sort_order)) in workflows.iter().enumerate() {
         if to_role_id == "end" {
+            continue;
+        }
+        if transition_type == "condition" && branch_label == "no" {
             continue;
         }
         let step_id = uuid::Uuid::new_v4().to_string();
@@ -1982,6 +2007,7 @@ pub async fn start_workflow_run(app: AppHandle, project_id: String, initial_mess
         id,
         project_id,
         workflow_id: None,
+        group_id,
         current_step: 0,
         status: "running".to_string(),
         context: "{}".to_string(),
@@ -2039,6 +2065,13 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
         .fetch_one(&pool)
         .await
         .map_err(|e| e.to_string())?;
+
+    let run_group_id: Option<String> = sqlx::query_scalar("SELECT group_id FROM workflow_runs WHERE id = ?")
+        .bind(&run_id)
+        .fetch_optional(&pool)
+        .await
+        .ok()
+        .flatten();
 
     let wf_task_id: Option<String> = sqlx::query_scalar("SELECT task_id FROM workflow_runs WHERE id = ?")
         .bind(&run_id)
@@ -2099,7 +2132,35 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
             .await
             .map_err(|e| e.to_string())?;
 
-        if next_step >= max_step {
+        // Check if completing this step should end the workflow:
+        // the current role has a need_confirm edge to "end", meaning approval terminates the flow.
+        let should_complete_now = if let Some(ref rid) = current_role_id {
+            if !rid.is_empty() && rid != "start" && rid != "end" {
+                let mut end_edge_query = String::from(
+                    "SELECT COUNT(*) FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND to_role_id = 'end' AND transition_type = 'need_confirm'"
+                );
+                if run_group_id.is_some() {
+                    end_edge_query.push_str(" AND (group_id = ? OR group_id IS NULL)");
+                }
+                let mut eq = sqlx::query_scalar::<_, i64>(&end_edge_query)
+                    .bind(&project_id)
+                    .bind(rid);
+                if let Some(ref gid) = run_group_id {
+                    eq = eq.bind(gid);
+                }
+                eq.fetch_one(&pool).await.unwrap_or(0) > 0
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if should_complete_now {
+            log::info!("confirm_workflow_step: role {} has need_confirm→end edge, completing workflow immediately", current_role_id.as_deref().unwrap_or(""));
+        }
+
+        if next_step >= max_step || should_complete_now {
             sqlx::query("UPDATE workflow_runs SET status = 'completed', current_step = ?, completed_at = ? WHERE id = ?")
                 .bind(next_step)
                 .bind(now)
@@ -2212,15 +2273,25 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
             let mut condition_branch_result: Option<String> = None;
             if let Some(from_role_id) = current_role_id {
                 if !from_role_id.is_empty() && from_role_id != "start" && from_role_id != "end" {
-                    let condition_expr: Option<String> = sqlx::query_scalar(
-                        "SELECT condition_expr FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'condition' AND condition_expr IS NOT NULL AND condition_expr != '' LIMIT 1"
-                    )
-                    .bind(&project_id)
-                    .bind(&from_role_id)
-                    .fetch_optional(&pool)
-                    .await
-                    .map_err(|e| e.to_string())?
-                    .flatten();
+                    let mut condition_query = String::from(
+                        "SELECT condition_expr FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'condition' AND condition_expr IS NOT NULL AND condition_expr != ''"
+                    );
+                    if run_group_id.is_some() {
+                        condition_query.push_str(" AND (group_id = ? OR group_id IS NULL)");
+                    }
+                    condition_query.push_str(" LIMIT 1");
+
+                    let mut query = sqlx::query_scalar::<_, String>(&condition_query)
+                        .bind(&project_id)
+                        .bind(&from_role_id);
+                    if let Some(ref gid) = run_group_id {
+                        query = query.bind(gid);
+                    }
+
+                    let condition_expr: Option<String> = query
+                        .fetch_optional(&pool)
+                        .await
+                        .map_err(|e| e.to_string())?;
 
                     let condition_result = if let Some(ref expr) = condition_expr {
                         if !expr.is_empty() {
@@ -2273,16 +2344,26 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
             // Determine next_step based on condition branch result
             if let Some(ref branch) = condition_branch_result {
                 if let Some(ref from_role_id) = current_role_id_for_branch {
-                    let target_role: Option<String> = sqlx::query_scalar(
-                        "SELECT to_role_id FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'condition' AND branch_label = ? LIMIT 1"
-                    )
-                    .bind(&project_id)
-                    .bind(from_role_id)
-                    .bind(branch)
-                    .fetch_optional(&pool)
-                    .await
-                    .map_err(|e| e.to_string())?
-                    .flatten();
+                    let mut target_query = String::from(
+                        "SELECT to_role_id FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'condition' AND branch_label = ?"
+                    );
+                    if run_group_id.is_some() {
+                        target_query.push_str(" AND (group_id = ? OR group_id IS NULL)");
+                    }
+                    target_query.push_str(" LIMIT 1");
+
+                    let mut tq = sqlx::query_scalar::<_, String>(&target_query)
+                        .bind(&project_id)
+                        .bind(from_role_id)
+                        .bind(branch);
+                    if let Some(ref gid) = run_group_id {
+                        tq = tq.bind(gid);
+                    }
+
+                    let target_role: Option<String> = tq
+                        .fetch_optional(&pool)
+                        .await
+                        .map_err(|e| e.to_string())?;
 
                     if let Some(ref target_role) = target_role {
                         let condition_target_step: Option<i64> = sqlx::query_scalar(
@@ -2350,28 +2431,44 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                 .map_err(|e| e.to_string())?
                 .flatten();
 
-                let reject_target: Option<String> = sqlx::query_scalar(
-                    "SELECT reject_to_role_id FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'need_confirm' AND reject_to_role_id IS NOT NULL AND reject_to_role_id != '' AND (artifact_type = ? OR artifact_type = '') ORDER BY CASE WHEN artifact_type = ? THEN 0 ELSE 1 END LIMIT 1"
-                )
-                .bind(&project_id)
-                .bind(&step_role_id)
-                .bind(step_artifact_type.as_deref().unwrap_or(""))
-                .bind(step_artifact_type.as_deref().unwrap_or(""))
-                .fetch_optional(&pool)
-                .await
-                .map_err(|e| e.to_string())?
-                .flatten();
+                let reject_target: Option<String> = {
+                    let mut rq = String::from(
+                        "SELECT reject_to_role_id FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'need_confirm' AND reject_to_role_id IS NOT NULL AND reject_to_role_id != '' AND (artifact_type = ? OR artifact_type = '')"
+                    );
+                    if run_group_id.is_some() {
+                        rq.push_str(" AND (group_id = ? OR group_id IS NULL)");
+                    }
+                    rq.push_str(" ORDER BY CASE WHEN artifact_type = ? THEN 0 ELSE 1 END LIMIT 1");
+
+                    let mut query = sqlx::query_scalar::<_, String>(&rq)
+                        .bind(&project_id)
+                        .bind(&step_role_id)
+                        .bind(step_artifact_type.as_deref().unwrap_or(""));
+                    if let Some(ref gid) = run_group_id {
+                        query = query.bind(gid);
+                    }
+                    query = query.bind(step_artifact_type.as_deref().unwrap_or(""));
+
+                    query.fetch_optional(&pool).await.map_err(|e| e.to_string())?
+                };
 
                 let reject_target = if reject_target.is_none() {
-                    sqlx::query_scalar(
-                        "SELECT reject_to_role_id FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'need_confirm' AND reject_to_role_id IS NOT NULL AND reject_to_role_id != '' LIMIT 1"
-                    )
-                    .bind(&project_id)
-                    .bind(&step_role_id)
-                    .fetch_optional(&pool)
-                    .await
-                    .map_err(|e| e.to_string())?
-                    .flatten()
+                    let mut fallback_query = String::from(
+                        "SELECT reject_to_role_id FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND transition_type = 'need_confirm' AND reject_to_role_id IS NOT NULL AND reject_to_role_id != ''"
+                    );
+                    if run_group_id.is_some() {
+                        fallback_query.push_str(" AND (group_id = ? OR group_id IS NULL)");
+                    }
+                    fallback_query.push_str(" LIMIT 1");
+
+                    let mut fq = sqlx::query_scalar::<_, String>(&fallback_query)
+                        .bind(&project_id)
+                        .bind(&step_role_id);
+                    if let Some(ref gid) = run_group_id {
+                        fq = fq.bind(gid);
+                    }
+
+                    fq.fetch_optional(&pool).await.map_err(|e| e.to_string())?
                 } else {
                     reject_target
                 };
@@ -2549,6 +2646,8 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                 let app_retry = app.clone();
                 let project_id_retry = project_id.clone();
                 let retry_comment_for_chat = comment.clone().unwrap_or_default();
+                let retry_run_id = run_id.clone();
+                let retry_step_index = current_step + 1;
                 tauri::async_runtime::spawn(async move {
                     log::info!("confirm_workflow_step(rejected): triggering AI rework for role_id={}", step_role_id);
 
@@ -2578,7 +2677,7 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                     let effective_task_id = wf_task_id.clone().unwrap_or_default();
                     let _ = sqlx::query(
                         "INSERT INTO project_artifacts (id, project_id, role_id, task_id, artifact_type, title, content, status, run_step_id, workflow_run_id, step_index, created_at, updated_at) \
-                         SELECT ?, project_id, role_id, ?, artifact_type, ? || ' - 修改稿', '', 'in_progress', ?, NULL, NULL, ?, ? \
+                         SELECT ?, project_id, role_id, ?, artifact_type, ? || ' - 修改稿', '', 'in_progress', ?, ?, ?, ?, ? \
                          FROM project_artifacts WHERE project_id = ? AND role_id = ? AND status = 'rejected' \
                          ORDER BY updated_at DESC LIMIT 1"
                     )
@@ -2586,6 +2685,8 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
                     .bind(&effective_task_id)
                     .bind(if step_action == "need_confirm" { "审批产物" } else { "自动产物" })
                     .bind(&retry_step_id)
+                    .bind(&retry_run_id)
+                    .bind(retry_step_index)
                     .bind(now_retry)
                     .bind(now_retry)
                     .bind(&project_id_retry)
@@ -2631,16 +2732,16 @@ pub async fn confirm_workflow_step(app: AppHandle, run_id: String, approved: boo
 #[tauri::command]
 pub async fn list_workflow_runs(app: AppHandle, project_id: String) -> Result<Vec<db::WorkflowRun>, String> {
     let pool = get_pool(&app)?;
-    let rows = sqlx::query_as::<_, (String, String, Option<String>, i64, String, String, String, i64, Option<i64>)>(
-        "SELECT id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at FROM workflow_runs WHERE project_id = ? ORDER BY started_at DESC"
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, i64, String, String, String, i64, Option<i64>)>(
+        "SELECT id, project_id, workflow_id, group_id, current_step, status, context, task_id, started_at, completed_at FROM workflow_runs WHERE project_id = ? ORDER BY started_at DESC"
     )
     .bind(&project_id)
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows.into_iter().map(|(id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at)| db::WorkflowRun {
-        id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at,
+    Ok(rows.into_iter().map(|(id, project_id, workflow_id, group_id, current_step, status, context, task_id, started_at, completed_at)| db::WorkflowRun {
+        id, project_id, workflow_id, group_id, current_step, status, context, task_id, started_at, completed_at,
     }).collect())
 }
 
@@ -2648,8 +2749,8 @@ pub async fn list_workflow_runs(app: AppHandle, project_id: String) -> Result<Ve
 pub async fn get_workflow_run_status(app: AppHandle, run_id: String) -> Result<db::WorkflowRunStatus, String> {
     let pool = get_pool(&app)?;
 
-    let run_row = sqlx::query_as::<_, (String, String, Option<String>, i64, String, String, String, i64, Option<i64>)>(
-        "SELECT id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at FROM workflow_runs WHERE id = ?"
+    let run_row = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, i64, String, String, String, i64, Option<i64>)>(
+        "SELECT id, project_id, workflow_id, group_id, current_step, status, context, task_id, started_at, completed_at FROM workflow_runs WHERE id = ?"
     )
     .bind(&run_id)
     .fetch_optional(&pool)
@@ -2661,12 +2762,13 @@ pub async fn get_workflow_run_status(app: AppHandle, run_id: String) -> Result<d
         id: run_row.0,
         project_id: run_row.1,
         workflow_id: run_row.2,
-        current_step: run_row.3,
-        status: run_row.4,
-        context: run_row.5,
-        task_id: run_row.6,
-        started_at: run_row.7,
-        completed_at: run_row.8,
+        group_id: run_row.3,
+        current_step: run_row.4,
+        status: run_row.5,
+        context: run_row.6,
+        task_id: run_row.7,
+        started_at: run_row.8,
+        completed_at: run_row.9,
     };
 
     let step_rows = sqlx::query_as::<_, (String, String, i64, Option<String>, String, String, String, String, Option<i64>, Option<i64>)>(
@@ -2950,15 +3052,15 @@ pub async fn get_task_progress(app: AppHandle, task_id: String) -> Result<db::Ta
 
     // 查询关联的工作流运行
     let workflow_run = if !task.workflow_group_id.as_ref().map_or(true, |s| s.is_empty()) {
-        let run_row = sqlx::query_as::<_, (String, String, Option<String>, i64, String, String, String, i64, Option<i64>)>(
-            "SELECT id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at FROM workflow_runs WHERE task_id = ? ORDER BY started_at DESC LIMIT 1"
+        let run_row = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, i64, String, String, String, i64, Option<i64>)>(
+            "SELECT id, project_id, workflow_id, group_id, current_step, status, context, task_id, started_at, completed_at FROM workflow_runs WHERE task_id = ? ORDER BY started_at DESC LIMIT 1"
         )
         .bind(&task_id)
         .fetch_optional(&pool)
         .await
         .map_err(|e| e.to_string())?;
 
-        if let Some((id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at)) = run_row {
+        if let Some((id, project_id, workflow_id, group_id, current_step, status, context, task_id, started_at, completed_at)) = run_row {
             // 查询工作流步骤
             let step_rows = sqlx::query_as::<_, (String, String, i64, Option<String>, String, String, String, String, Option<i64>, Option<i64>)>(
                 "SELECT id, run_id, step_index, role_id, action, status, input, output, started_at, completed_at FROM workflow_run_steps WHERE run_id = ? ORDER BY step_index ASC"
@@ -2974,7 +3076,7 @@ pub async fn get_task_progress(app: AppHandle, task_id: String) -> Result<db::Ta
 
             Some(db::WorkflowRunStatus {
                 run: db::WorkflowRun {
-                    id, project_id, workflow_id, current_step, status, context, task_id, started_at, completed_at,
+                    id, project_id, workflow_id, group_id, current_step, status, context, task_id, started_at, completed_at,
                 },
                 steps,
             })

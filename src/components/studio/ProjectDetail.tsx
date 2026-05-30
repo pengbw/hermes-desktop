@@ -251,22 +251,6 @@ function ProjectDetail({
     };
   }, [project.id, onTasksUpdate, onArtifactsUpdate, onMembersUpdate, onMessagesUpdate]);
 
-  useEffect(() => {
-    let unlistenFn: (() => void) | null = null;
-    listen<{ projectId: string; roleId: string }>("workflow_auto_push_completed", (event) => {
-      if (event.payload.projectId !== project.id) return;
-      invoke("trigger_workflow_execution", {
-        projectId: event.payload.projectId,
-        fromRoleId: event.payload.roleId,
-      }).catch((err) => console.error("Failed to trigger workflow execution:", err));
-    }).then((fn) => {
-      unlistenFn = fn;
-    });
-    return () => {
-      unlistenFn?.();
-    };
-  }, [project.id]);
-
   const mentionData = useMemo(
     () =>
       projectMembers.map((m) => {
