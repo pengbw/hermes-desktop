@@ -5031,13 +5031,12 @@
 
 .taskMgmtFormSelect {
   flex: 1;
-  height: 28px;
-  padding: 0 8px;
+  padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid var(--border-color, #e0e0e0);
   background: var(--input-bg, #fff);
   color: var(--text-primary, #333);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   min-width: 0;
   box-sizing: border-box;

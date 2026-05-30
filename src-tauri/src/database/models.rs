@@ -572,6 +572,7 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
             id TEXT PRIMARY KEY,
             project_id TEXT NOT NULL,
             workflow_id TEXT,
+            group_id TEXT,
             current_step INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'running',
             context TEXT NOT NULL DEFAULT '{}',
@@ -584,6 +585,11 @@ pub async fn init_db(pool: &sqlx::SqlitePool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
+
+    sqlx::query("ALTER TABLE workflow_runs ADD COLUMN group_id TEXT")
+        .execute(pool)
+        .await
+        .ok();
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_workflow_runs_project ON workflow_runs(project_id)")
         .execute(pool)
@@ -1515,6 +1521,7 @@ pub struct WorkflowRun {
     pub id: String,
     pub project_id: String,
     pub workflow_id: Option<String>,
+    pub group_id: Option<String>,
     pub current_step: i64,
     pub status: String,
     pub context: String,

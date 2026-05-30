@@ -3,6 +3,7 @@ use crate::commands::helpers::{
     kill_hermes_process, home_dir, try_install_python_via_uv,
     AppState, InstallProgress,
     sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
+    sync_providers_to_hermes_config,
 };
 use serde::Serialize;
 use std::process::Stdio;
@@ -214,9 +215,11 @@ pub async fn restart_hermes(app: AppHandle) -> Result<String, String> {
     .flatten()
     .unwrap_or_default();
     if !_api_key.is_empty() {
-        // 直接写入 .env，避免通过 hermes config set 落入 config.yaml
         let _ = crate::commands::helpers::write_env_value("API_SERVER_KEY", &_api_key);
     }
+
+    sync_api_keys_to_hermes_env(&app).await;
+    sync_providers_to_hermes_config(&app).await;
 
     super::channel::restart_gateway_internal(&app)
         .await

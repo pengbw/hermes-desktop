@@ -6,6 +6,7 @@ mod services;
 use commands::helpers::{
     hermes_command, ensure_gateway_config, kill_hermes_process,
     show_error_dialog, sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
+    sync_providers_to_hermes_config,
     AppState, AgentProcess, home_dir, hermes_home_dir, path_with_local_bin, get_ssl_cert_file,
 };
 use sqlx::SqlitePool;
@@ -180,6 +181,7 @@ pub fn run() {
                 tauri::async_runtime::block_on(async {
                     sync_hermes_providers_to_db(&handle).await;
                     sync_api_keys_to_hermes_env(&handle).await;
+                    sync_providers_to_hermes_config(&handle).await;
                 });
 
                 kill_hermes_process();
@@ -461,6 +463,8 @@ pub fn run() {
             commands::project::create_project_from_template,
             commands::project_workflow::sync_workflow_to_file,
             commands::project_workflow::load_workflow_from_file,
+            commands::project_workflow::save_workflow_layout,
+            commands::project_workflow::load_workflow_layout,
             commands::knowledge::list_knowledge_bases,
             commands::knowledge::create_knowledge_base,
             commands::knowledge::update_knowledge_base,

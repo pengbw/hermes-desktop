@@ -112,6 +112,8 @@ pub async fn create_provider(
         }
     }
 
+    sync_provider_to_hermes_config(&req.value, &req.name, req.base_url.as_deref().unwrap_or(""), &api_key_env);
+
     Ok(db::Provider {
         id, name: req.name, value: req.value,
         base_url: req.base_url.unwrap_or_default(),
@@ -164,6 +166,9 @@ pub async fn update_provider(
         }
     }
 
+    let provider_value = provider.value.clone();
+    sync_provider_to_hermes_config(&provider_value, &name, &base_url, &api_key_env);
+
     Ok(())
 }
 
@@ -184,11 +189,20 @@ pub async fn delete_provider(
         return Err("Built-in providers cannot be deleted".to_string());
     }
 
+    let provider_value: String = sqlx::query_scalar("SELECT value FROM providers WHERE id = ?")
+        .bind(&id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
     sqlx::query("DELETE FROM providers WHERE id = ?")
         .bind(&id)
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
+
+    remove_provider_from_hermes_config(&provider_value);
+
     Ok(())
 }
 
@@ -304,5 +318,67 @@ pub async fn verify_provider_api_key(base_url: String, api_key: String) -> Resul
 }
 
 fn write_hermes_env(key: &str, value: &str) -> Result<(), String> {
-    crate::commands::helpers::hermes_config_set(key, value)
+    crate::commands::helpers::write_env_value(key, value)
+}
+
+fn sync_provider_to_hermes_config(provider_value: &str, name: &str, base_url: &str, api_key_env: &str) {
+    let slug = provider_value.to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != '-', "_");
+    if slug.is_empty() {
+        return;
+    }
+    let set = crate::commands::helpers::hermes_config_set;
+    if let Err(e) = set(&format!("providers.{}.name", slug), name) {
+        log::warn!("Failed to set providers.{}.name: {}", slug, e);
+        return;
+    }
+    if !base_url.is_empty() {
+        let _ = set(&format!("providers.{}.api", slug), base_url);
+    }
+    if !api_key_env.is_empty() {
+        let _ = set(&format!("providers.{}.key_env", slug), api_key_env);
+    }
+    let _ = set(&format!("providers.{}.transport", slug), "openai_chat");
+    log::info!("Synced custom provider '{}' to hermes config.yaml", slug);
+}
+
+fn remove_provider_from_hermes_config(provider_value: &str) {
+    let slug = provider_value.to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != '-', "_");
+    if slug.is_empty() {
+        return;
+    }
+    let config_path = crate::commands::helpers::hermes_home_dir()
+        + &format!("{}config.yaml", std::path::MAIN_SEPARATOR);
+    let path = std::path::Path::new(&config_path);
+    if !path.exists() {
+        return;
+    }
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("Failed to read config.yaml for provider removal: {}", e);
+            return;
+        }
+    };
+    let mut config: serde_yaml::Value = match serde_yaml::from_str(&content) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("Failed to parse config.yaml for provider removal: {}", e);
+            return;
+        }
+    };
+    if let Some(providers) = config.get_mut("providers").and_then(|p| p.as_mapping_mut()) {
+        providers.remove(&serde_yaml::Value::String(slug.clone()));
+    }
+    let yaml_str = match serde_yaml::to_string(&config) {
+        Ok(s) => s,
+        Err(e) => {
+            log::warn!("Failed to serialize config.yaml after provider removal: {}", e);
+            return;
+        }
+    };
+    if let Err(e) = std::fs::write(path, yaml_str) {
+        log::warn!("Failed to write config.yaml after provider removal: {}", e);
+    } else {
+        log::info!("Removed custom provider '{}' from hermes config.yaml", slug);
+    }
 }

@@ -382,12 +382,16 @@ function buildFlowFromWorkflows(
       markerEnd: { type: MarkerType.ArrowClosed, color: "#00b894" },
     });
 
-    wfs.forEach((wf) => {
+    wfs.forEach((wf, idx) => {
       addRoleNode(wf.toRoleId, wf);
+      const outHandle = idx === 0 ? "out1" : "out2";
+      const inHandle = idx === 0 ? "in1" : "in2";
       edges.push({
-        id: `e-${parId}-${wf.toRoleId}`,
+        id: `e-${parId}-${wf.id || wf.toRoleId}-${idx}`,
         source: parId,
         target: wf.toRoleId,
+        sourceHandle: outHandle,
+        targetHandle: null,
         type: "smoothstep",
         animated: true,
         style: { stroke: "#00b894", strokeWidth: 2 },
@@ -399,9 +403,11 @@ function buildFlowFromWorkflows(
         markerEnd: { type: MarkerType.ArrowClosed, color: "#00b894" },
       });
       edges.push({
-        id: `e-${wf.toRoleId}-${mergeId}`,
+        id: `e-${wf.toRoleId}-${mergeId}-${idx}`,
         source: wf.toRoleId,
         target: mergeId,
+        sourceHandle: null,
+        targetHandle: inHandle,
         type: "smoothstep",
         animated: true,
         style: { stroke: "#0984e3", strokeWidth: 2 },
@@ -421,63 +427,36 @@ function buildFlowFromWorkflows(
     const fromId = wf.fromRoleId;
     const toId = wf.toRoleId;
 
-    if (toId && toId !== "end") addRoleNode(toId, wf);
-    if (fromId && fromId !== "start" && fromId !== "end") addRoleNode(fromId, null);
+    if (toId && toId !== "end") addRoleNode(toId, null);
+    if (fromId && fromId !== "start" && fromId !== "end") addRoleNode(fromId, wf);
     const noTargetRoleId = wf.rejectToRoleId || "";
     if (noTargetRoleId && noTargetRoleId !== "start" && noTargetRoleId !== "end")
       addRoleNode(noTargetRoleId, null);
 
     if (wf.transitionType === "need_confirm" && fromId && toId) {
-      const condId = `cond_${conditionCounter.val++}`;
-      nodes.push({
-        id: condId,
-        type: "conditionNode",
-        position: { x: 0, y: 0 },
-        data: {
-          label: "审批",
-          conditionDesc: "确认通过？",
-        },
-      });
-
       edges.push({
-        id: `e-${fromId}-${condId}`,
+        id: `e-${fromId}-${toId}-default`,
         source: fromId,
-        target: condId,
-        type: "smoothstep",
-        animated: true,
-        style: { stroke: "#6c5ce7", strokeWidth: 2 },
-        label: wf.artifactType || "产出",
-        labelStyle: { fill: "#6c5ce7", fontWeight: 600, fontSize: 11 },
-        labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
-        labelBgPadding: [4, 6] as [number, number],
-        labelBgBorderRadius: 4,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#6c5ce7" },
-      });
-
-      edges.push({
-        id: `e-${condId}-${toId}-yes`,
-        source: condId,
-        sourceHandle: "yes",
         target: toId,
         type: "smoothstep",
-        style: { stroke: "#27ae60", strokeWidth: 2 },
-        label: "✅ 通过",
-        labelStyle: { fill: "#27ae60", fontWeight: 600, fontSize: 11 },
+        animated: false,
+        style: { stroke: "#e67e22", strokeWidth: 2, strokeDasharray: "8 4" },
+        label: wf.artifactType ? `🔒 ${wf.artifactType}` : "🔒 需确认",
+        labelStyle: { fill: "#e67e22", fontWeight: 600, fontSize: 11 },
         labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
         labelBgPadding: [4, 6] as [number, number],
         labelBgBorderRadius: 4,
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#27ae60" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#e67e22" },
       });
-
-      if (noTargetRoleId) {
+      if (noTargetRoleId && noTargetRoleId !== fromId) {
         edges.push({
-          id: `e-${condId}-${noTargetRoleId}-no`,
-          source: condId,
-          sourceHandle: "no",
+          id: `e-${fromId}-${noTargetRoleId}-reject`,
+          source: fromId,
           target: noTargetRoleId,
           type: "smoothstep",
-          style: { stroke: "#e74c3c", strokeWidth: 2, strokeDasharray: "5 3" },
-          label: "❌ 打回修改",
+          animated: true,
+          style: { stroke: "#e74c3c", strokeWidth: 2 },
+          label: "打回重做",
           labelStyle: { fill: "#e74c3c", fontWeight: 600, fontSize: 11 },
           labelBgStyle: { fill: "#fff", fillOpacity: 0.9 },
           labelBgPadding: [4, 6] as [number, number],
@@ -487,7 +466,7 @@ function buildFlowFromWorkflows(
       }
     } else if (fromId && toId) {
       edges.push({
-        id: `e-${fromId}-${toId}`,
+        id: `e-${fromId}-${toId}-default`,
         source: fromId,
         target: toId,
         type: "smoothstep",
@@ -516,7 +495,7 @@ function buildFlowFromWorkflows(
       });
     } else if (fromId && !toId) {
       edges.push({
-        id: `e-${fromId}-end`,
+        id: `e-${fromId}-end-default`,
         source: fromId,
         target: "end",
         type: "smoothstep",
@@ -981,6 +960,7 @@ function WorkflowDesignerInner({
   const [workflows, setWorkflows] = useState<WorkflowData[]>([]);
   const [workflowGroups, setWorkflowGroups] = useState<WorkflowGroup[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const activeGroupIdRef = useRef<string | null>(null);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState("");
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
@@ -1052,14 +1032,25 @@ function WorkflowDesignerInner({
     return roles.filter((r) => memberRoleIds.has(r.id));
   }, [roles, projectMembers]);
 
-  const loadWorkflows = useCallback(async () => {
+  const groupWorkflows = useMemo(() => {
+    const primaryGroup = workflowGroups.find((g) => g.isPrimary);
+    return workflows.filter((w) =>
+      activeGroupId
+        ? w.groupId === activeGroupId || (!w.groupId && activeGroupId === primaryGroup?.id)
+        : true
+    );
+  }, [workflows, workflowGroups, activeGroupId]);
+
+  const loadWorkflows = useCallback(async (forceGroupId?: string) => {
     try {
       const groups = await invoke<WorkflowGroup[]>("list_workflow_groups", { projectId });
       setWorkflowGroups(groups);
 
-      // 如果没有选中的流程组，自动选中主流程组
-      if (!activeGroupId && groups.length > 0) {
+      const currentGroupId = forceGroupId ?? activeGroupIdRef.current;
+
+      if (!currentGroupId && groups.length > 0) {
         const primary = groups.find((g) => g.isPrimary) || groups[0];
+        activeGroupIdRef.current = primary.id;
         setActiveGroupId(primary.id);
       }
 
@@ -1068,25 +1059,47 @@ function WorkflowDesignerInner({
       });
       setWorkflows(list);
 
-      // 根据选中的流程组过滤工作流
-      const filtered = activeGroupId
+      const effectiveGroupId = forceGroupId ?? activeGroupIdRef.current;
+      const primaryGroup = groups.find((g) => g.isPrimary);
+
+      const filtered = effectiveGroupId
         ? list.filter(
             (w) =>
-              w.groupId === activeGroupId ||
-              (!w.groupId && activeGroupId === groups.find((g) => g.isPrimary)?.id)
+              w.groupId === effectiveGroupId ||
+              (!w.groupId && effectiveGroupId === primaryGroup?.id)
           )
         : list;
       const { nodes: flowNodes, edges: flowEdges } = buildFlowFromWorkflows(filtered, roles);
-      setNodes(flowNodes);
+
+      let savedLayout: Record<string, { x: number; y: number }> | null = null;
+        try {
+          const layoutStr = await invoke<string | null>("load_workflow_layout", { projectId });
+          if (layoutStr) {
+            savedLayout = JSON.parse(layoutStr);
+          }
+        } catch {}
+
+      if (savedLayout && Object.keys(savedLayout).length > 0) {
+        const positionedNodes = flowNodes.map((node) => {
+          const saved = savedLayout![node.id];
+          if (saved) {
+            return { ...node, position: saved };
+          }
+          return node;
+        });
+        setNodes(positionedNodes);
+      } else {
+        setNodes(flowNodes);
+      }
       setEdges(flowEdges);
     } catch {
       // console.error("Failed to load workflows:", err);
     }
-  }, [projectId, roles, setNodes, setEdges, activeGroupId]);
+  }, [projectId, roles, setNodes, setEdges]);
 
   useEffect(() => {
     loadWorkflows();
-  }, [loadWorkflows]);
+  }, []);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: FlowNode) => {
     setSelectedNode(node);
@@ -1194,13 +1207,15 @@ function WorkflowDesignerInner({
 
       if (sourceNode?.type === "roleNode" && targetNode?.type === "conditionNode") {
         const fromRoleId = (sourceNode as RoleNodeType).data.roleId;
-        const wf = workflows.find(
-          (w) => w.fromRoleId === fromRoleId && w.transitionType === "need_confirm"
+        const wf = groupWorkflows.find(
+          (w) =>
+            w.fromRoleId === fromRoleId &&
+            w.transitionType === "condition"
         );
         if (wf) {
           setEdgeEditorData({
-            source: fromRoleId,
-            target: wf.toRoleId,
+            source: edge.source,
+            target: edge.target,
             sourceHandle: null,
             artifactType: wf.artifactType || "",
             transitionType: wf.transitionType,
@@ -1208,21 +1223,10 @@ function WorkflowDesignerInner({
             workflowId: wf.id,
           });
           setEdgeEditorOpen(true);
-        } else {
-          setEdgeEditorData({
-            source: edge.source,
-            target: edge.target,
-            sourceHandle: null,
-            artifactType: "",
-            transitionType: "condition",
-            rejectToRoleId: "",
-            workflowId: "",
-          });
-          setEdgeEditorOpen(true);
         }
       }
     },
-    [nodes, edges, workflows]
+    [nodes, edges, groupWorkflows]
   );
 
   const onPaneClick = useCallback(() => {
@@ -1254,14 +1258,21 @@ function WorkflowDesignerInner({
         y: event.clientY,
       });
 
-      const newNode: FlowNode = {
-        id: getNextId(),
-        type: dndData.type as FlowNode["type"],
-        position,
-        data: dndData.data as FlowNode["data"],
-      };
+      const isRoleNode = dndData.type === "roleNode";
+      const nodeId = isRoleNode
+        ? (dndData.data as { roleId?: string }).roleId || getNextId()
+        : getNextId();
 
-      setNodes((nds) => nds.concat(newNode));
+      setNodes((nds) => {
+        if (nds.some((n) => n.id === nodeId)) return nds;
+        const newNode: FlowNode = {
+          id: nodeId,
+          type: dndData.type as FlowNode["type"],
+          position,
+          data: dndData.data as FlowNode["data"],
+        };
+        return nds.concat(newNode);
+      });
     },
     [reactFlow, setNodes]
   );
@@ -1271,13 +1282,17 @@ function WorkflowDesignerInner({
       if (!params.source || !params.target) return;
 
       const sourceNode = nodes.find((n) => n.id === params.source);
-      const isConditionNode = sourceNode?.type === "conditionNode";
       const isStartNode = sourceNode?.type === "startNode";
 
       if (isStartNode) {
         const targetNode = nodes.find((n) => n.id === params.target);
         const targetRole = targetNode as RoleNodeType | undefined;
         if (targetRole?.type === "roleNode") {
+          const existingStartEdge = edges.find(
+            (e) => e.source === params.source && e.target === params.target
+          );
+          if (existingStartEdge) return;
+
           const newEdge: Edge = {
             id: `e-start-${params.target}`,
             source: params.source,
@@ -1317,7 +1332,7 @@ function WorkflowDesignerInner({
         target: params.target,
         sourceHandle: params.sourceHandle ?? null,
         artifactType: "",
-        transitionType: isConditionNode ? "auto_push" : "auto_push",
+        transitionType: "auto_push",
         rejectToRoleId: "",
         workflowId: "",
       });
@@ -1391,7 +1406,7 @@ function WorkflowDesignerInner({
       labelBgPadding: [4, 6] as [number, number],
       labelBgBorderRadius: 4,
       markerEnd: edgeMarkerEnd,
-      data: { artifactType, transitionType },
+      data: { artifactType, transitionType, rejectToRoleId },
     };
 
     setEdges((eds) => addEdgeUnique(eds, newEdge));
@@ -1486,7 +1501,7 @@ function WorkflowDesignerInner({
 
       if (node.type === "roleNode") {
         const roleData = node.data as RoleNodeType["data"];
-        const relatedWfs = workflows.filter(
+        const relatedWfs = groupWorkflows.filter(
           (w) => w.fromRoleId === roleData.roleId || w.toRoleId === roleData.roleId
         );
         for (const wf of relatedWfs) {
@@ -1496,18 +1511,84 @@ function WorkflowDesignerInner({
             // console.error("Failed to remove workflow:", err);
           }
         }
+      } else if (node.type === "conditionNode") {
+        const upstreamEdge = edges.find((e) => e.target === nodeId);
+        const upstreamNode = upstreamEdge
+          ? nodes.find((n) => n.id === upstreamEdge.source)
+          : undefined;
+        const fromRoleId = upstreamNode?.type === "startNode"
+          ? "start"
+          : upstreamNode?.type === "roleNode"
+            ? (upstreamNode as RoleNodeType).data.roleId
+            : undefined;
+        if (fromRoleId) {
+          const relatedWfs = groupWorkflows.filter(
+            (w) =>
+              w.fromRoleId === fromRoleId &&
+              w.transitionType === "condition"
+          );
+          for (const wf of relatedWfs) {
+            try {
+              await invoke("remove_project_workflow", { id: wf.id });
+            } catch {}
+          }
+        }
+      } else if (node.type === "parallelNode") {
+        const upstreamEdge = edges.find((e) => e.target === nodeId);
+        const upstreamNode = upstreamEdge
+          ? nodes.find((n) => n.id === upstreamEdge.source)
+          : undefined;
+        const fromRoleId = upstreamNode?.type === "roleNode"
+          ? (upstreamNode as RoleNodeType).data.roleId
+          : undefined;
+        if (fromRoleId) {
+          const relatedWfs = groupWorkflows.filter(
+            (w) => w.fromRoleId === fromRoleId && w.transitionType === "parallel"
+          );
+          for (const wf of relatedWfs) {
+            try {
+              await invoke("remove_project_workflow", { id: wf.id });
+            } catch {}
+          }
+        }
+      } else if (node.type === "mergeNode") {
+        const incomingEdges = edges.filter((e) => e.target === nodeId);
+        const branchRoleIds = incomingEdges.map((e) => e.source);
+        const parallelEdge = edges.find((e) => {
+          const src = nodes.find((n) => n.id === e.source);
+          return src?.type === "parallelNode" && branchRoleIds.includes(e.target);
+        });
+        if (parallelEdge) {
+          const parUpstreamEdge = edges.find((e2) => e2.target === parallelEdge.source);
+          const parUpstreamNode = parUpstreamEdge
+            ? nodes.find((n) => n.id === parUpstreamEdge.source)
+            : undefined;
+          const fromRoleId = parUpstreamNode?.type === "roleNode"
+            ? (parUpstreamNode as RoleNodeType).data.roleId
+            : undefined;
+          if (fromRoleId) {
+            const relatedWfs = groupWorkflows.filter(
+              (w) => w.fromRoleId === fromRoleId && w.transitionType === "parallel"
+            );
+            for (const wf of relatedWfs) {
+              try {
+                await invoke("remove_project_workflow", { id: wf.id });
+              } catch {}
+            }
+          }
+        }
       }
 
       setNodes((nds) => nds.filter((n) => n.id !== nodeId));
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
       setSelectedNode(null);
 
-      if (node.type === "roleNode") {
+      if (node.type !== "startNode" && node.type !== "endNode") {
         await loadWorkflows();
         invoke("sync_workflow_to_file", { projectId }).catch(console.error);
       }
     },
-    [nodes, workflows, setNodes, setEdges, projectId, loadWorkflows]
+    [nodes, edges, groupWorkflows, setNodes, setEdges, projectId, loadWorkflows]
   );
 
   const handleDeleteEdge = useCallback(
@@ -1544,16 +1625,16 @@ function WorkflowDesignerInner({
         const fromRoleId = getFromRoleId(sourceNode);
         const toRoleId = getToRoleId(targetNode);
         if (fromRoleId && toRoleId) {
-          const wf = workflows.find((w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId);
+          const wf = groupWorkflows.find((w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId);
           if (wf) workflowsToDelete.push(wf.id);
         }
       } else if (sourceNode?.type === "roleNode" && targetNode?.type === "conditionNode") {
         const fromRoleId = getFromRoleId(sourceNode);
         if (fromRoleId) {
-          const relatedWfs = workflows.filter(
+          const relatedWfs = groupWorkflows.filter(
             (w) =>
               w.fromRoleId === fromRoleId &&
-              (w.transitionType === "condition" || w.transitionType === "need_confirm")
+              w.transitionType === "condition"
           );
           relatedWfs.forEach((wf) => workflowsToDelete.push(wf.id));
         }
@@ -1566,21 +1647,21 @@ function WorkflowDesignerInner({
         const toRoleId = getToRoleId(targetNode);
         const branchLabel = (edge.sourceHandle as string) || "yes";
         if (fromRoleId && toRoleId) {
-          const wf = workflows.find(
+          const wf = groupWorkflows.find(
             (w) =>
               w.fromRoleId === fromRoleId &&
               w.toRoleId === toRoleId &&
-              (w.transitionType === "condition" || w.transitionType === "need_confirm") &&
+              w.transitionType === "condition" &&
               (w.branchLabel === branchLabel || (!w.branchLabel && branchLabel === "yes"))
           );
           if (wf) {
             workflowsToDelete.push(wf.id);
           } else {
-            const fallbackWf = workflows.find(
+            const fallbackWf = groupWorkflows.find(
               (w) =>
                 w.fromRoleId === fromRoleId &&
                 w.toRoleId === toRoleId &&
-                (w.transitionType === "condition" || w.transitionType === "need_confirm")
+                w.transitionType === "condition"
             );
             if (fallbackWf) workflowsToDelete.push(fallbackWf.id);
           }
@@ -1588,7 +1669,7 @@ function WorkflowDesignerInner({
       } else if (sourceNode?.type === "roleNode" && targetNode?.type === "parallelNode") {
         const fromRoleId = getFromRoleId(sourceNode);
         if (fromRoleId) {
-          const relatedWfs = workflows.filter(
+          const relatedWfs = groupWorkflows.filter(
             (w) => w.fromRoleId === fromRoleId && w.transitionType === "parallel"
           );
           relatedWfs.forEach((wf) => workflowsToDelete.push(wf.id));
@@ -1601,7 +1682,7 @@ function WorkflowDesignerInner({
         const fromRoleId = getFromRoleId(upstreamNode);
         const toRoleId = getToRoleId(targetNode);
         if (fromRoleId && toRoleId) {
-          const wf = workflows.find(
+          const wf = groupWorkflows.find(
             (w) =>
               w.fromRoleId === fromRoleId &&
               w.toRoleId === toRoleId &&
@@ -1624,7 +1705,7 @@ function WorkflowDesignerInner({
             : undefined;
           const fromRoleId = getFromRoleId(upstreamNode2);
           if (fromRoleId && toRoleId) {
-            const wf = workflows.find(
+            const wf = groupWorkflows.find(
               (w) =>
                 w.fromRoleId === fromRoleId &&
                 w.toRoleId === toRoleId &&
@@ -1648,7 +1729,7 @@ function WorkflowDesignerInner({
         invoke("sync_workflow_to_file", { projectId }).catch(console.error);
       }
     },
-    [edges, nodes, workflows, setEdges, projectId, loadWorkflows]
+    [edges, nodes, groupWorkflows, setEdges, projectId, loadWorkflows]
   );
 
   const onNodeContextMenu = useCallback((event: React.MouseEvent, node: FlowNode) => {
@@ -1661,11 +1742,34 @@ function WorkflowDesignerInner({
     setContextMenu({ x: event.clientX, y: event.clientY, type: "edge", id: edge.id });
   }, []);
 
-  const handleAutoLayout = () => {
+  const saveLayout = useCallback(
+    (nodeList: FlowNode[]) => {
+      const layout: Record<string, { x: number; y: number }> = {};
+      nodeList.forEach((n) => {
+        layout[n.id] = { x: n.position.x, y: n.position.y };
+      });
+      invoke("save_workflow_layout", { projectId, layout: JSON.stringify(layout) }).catch(
+        console.error
+      );
+    },
+    [projectId]
+  );
+
+  const handleAutoLayout = useCallback(() => {
     const layouted = layoutGraph(nodes, edges);
     setNodes(layouted);
+    saveLayout(layouted);
     setTimeout(() => reactFlow.fitView({ padding: 1 }), 50);
-  };
+  }, [nodes, edges, setNodes, reactFlow, saveLayout]);
+
+  const onNodeDragStop = useCallback(
+    (_: React.MouseEvent, node: FlowNode) => {
+      const updatedNodes = nodes.map((n) => (n.id === node.id ? { ...n, position: node.position } : n));
+      setNodes(updatedNodes);
+      saveLayout(updatedNodes);
+    },
+    [nodes, setNodes, saveLayout]
+  );
 
   const roleMap = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
 
@@ -1688,7 +1792,7 @@ function WorkflowDesignerInner({
             sourceNode?.type === "startNode" ? "start" : (sourceNode as RoleNodeType)?.data?.roleId;
           const toRoleId =
             targetNode?.type === "endNode" ? "end" : (targetNode as RoleNodeType)?.data?.roleId;
-          const wf = workflows.find((w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId);
+          const wf = groupWorkflows.find((w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId);
           if (wf?.isPrimary) {
             return [{ label: "🔒 主流程不可删除", action: () => {}, danger: false }];
           }
@@ -1749,7 +1853,9 @@ function WorkflowDesignerInner({
               <button
                 key={g.id}
                 onClick={() => {
+                  activeGroupIdRef.current = g.id;
                   setActiveGroupId(g.id);
+                  loadWorkflows(g.id);
                 }}
                 onDoubleClick={() => {
                   if (g.isPrimary) return;
@@ -1782,6 +1888,7 @@ function WorkflowDesignerInner({
                         await invoke("delete_workflow_group", { id: g.id });
                         if (activeGroupId === g.id) {
                           const primary = workflowGroups.find((wg) => wg.isPrimary);
+                          activeGroupIdRef.current = primary?.id || null;
                           setActiveGroupId(primary?.id || null);
                         }
                         loadWorkflows();
@@ -1803,7 +1910,9 @@ function WorkflowDesignerInner({
                 const newGroup = await invoke<WorkflowGroup>("create_workflow_group", {
                   req: { projectId },
                 });
+                activeGroupIdRef.current = newGroup.id;
                 setActiveGroupId(newGroup.id);
+                loadWorkflows(newGroup.id);
                 invoke("sync_workflow_to_file", { projectId }).catch(console.error);
               } catch {
                 // console.error("Failed to create workflow group:", err);
@@ -1827,6 +1936,7 @@ function WorkflowDesignerInner({
           onConnect={onConnect}
           onDrop={onDrop}
           onDragOver={onDragOver}
+          onNodeDragStop={onNodeDragStop}
           nodeTypes={nodeTypes}
           fitView
           fitViewOptions={{ padding: 1 }}
@@ -1944,8 +2054,9 @@ function WorkflowDesignerInner({
                     return null;
                   };
 
-                  // Save role↔role edges
+                  // Save role↔role edges (skip reject edges - they are just visual representations of rejectToRoleId)
                   const roleEdges = edges.filter((e) => {
+                    if (e.id.endsWith("-reject")) return false;
                     const src = nodes.find((n) => n.id === e.source);
                     const tgt = nodes.find((n) => n.id === e.target);
                     return (
@@ -1970,15 +2081,15 @@ function WorkflowDesignerInner({
                       (w) => w.fromRoleId === fromRoleId && w.toRoleId === toRoleId
                     );
                     if (existing) continue;
+                    const edgeData = (edge.data || {}) as Record<string, unknown>;
                     await invoke("add_project_workflow", {
                       req: {
                         projectId,
                         fromRoleId,
                         toRoleId,
-                        artifactType:
-                          (edge.data as { artifactType?: string })?.artifactType || undefined,
-                        transitionType:
-                          (edge.data as { transitionType?: string })?.transitionType || undefined,
+                        artifactType: (edgeData.artifactType as string) || undefined,
+                        transitionType: (edgeData.transitionType as string) || undefined,
+                        rejectToRoleId: (edgeData.rejectToRoleId as string) || undefined,
                         groupId: activeGroupId || undefined,
                       },
                     });
@@ -2094,7 +2205,7 @@ function WorkflowDesignerInner({
               </p>
               <div className={styles.wfDetailWorkflows}>
                 <strong>{t("studio.wf.relatedSteps")}:</strong>
-                {workflows
+                {groupWorkflows
                   .filter(
                     (w) =>
                       w.fromRoleId === (selectedNode.data as RoleNodeType["data"]).roleId ||

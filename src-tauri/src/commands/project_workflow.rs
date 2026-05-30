@@ -3,10 +3,9 @@ use crate::crypto::file_storage;
 use crate::crypto::key_manager;
 use crate::database::models as db;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 use tauri::{AppHandle, Emitter};
 
-use super::project_execution::{auto_delegate_chat, start_workflow_run, confirm_workflow_step};
+use super::project_execution::{auto_delegate_chat, start_workflow_run, confirm_workflow_step, evaluate_condition_with_ai};
 
 async fn get_conversation_storage_path_from_pool(pool: &sqlx::SqlitePool) -> Option<String> {
     sqlx::query_scalar::<_, String>("SELECT value FROM app_config WHERE key = 'conversation_storage_path'")
@@ -118,6 +117,17 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
 
     let effective_task_id = found_task_id.clone().unwrap_or_default();
 
+    let effective_group_id: Option<String> = if let Some(ref run_id) = workflow_run_id {
+        sqlx::query_scalar("SELECT group_id FROM workflow_runs WHERE id = ?")
+            .bind(run_id)
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+
     // Build query based on the trigger type:
     // - Start trigger (from_role_id == "start"): only match workflows where from_role_id is "start"
     // - Normal role trigger: only match workflows from this role (do NOT re-match start transitions)
@@ -132,6 +142,9 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
         query_str.push_str(" AND artifact_type = ?");
         bind_artifact = artifact_type.clone();
     }
+    if effective_group_id.is_some() {
+        query_str.push_str(" AND (group_id = ? OR group_id IS NULL)");
+    }
     query_str.push_str(" ORDER BY sort_order ASC");
     log::info!("trigger_workflow_execution: query={}", query_str);
 
@@ -143,6 +156,9 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
     if let Some(ref at) = bind_artifact {
         q = q.bind(at);
     }
+    if let Some(ref gid) = effective_group_id {
+        q = q.bind(gid);
+    }
 
     let workflows = q.fetch_all(&pool).await.map_err(|e| e.to_string())?;
 
@@ -150,8 +166,8 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
     let mut pending = Vec::new();
 
     let condition_workflows: Vec<_> = workflows.iter()
-        .filter(|(_, _, _, _, _, transition_type, _, condition_expr, _, _, _, _)| {
-            transition_type == "condition" && !condition_expr.is_empty()
+        .filter(|(_, _, _, _, _, transition_type, _, _, _, _, _, _)| {
+            transition_type == "condition"
         })
         .collect();
 
@@ -166,12 +182,26 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
         .map(|(id, _, _, _, _, _, _, _, _, _, _, _)| id.clone())
         .collect();
 
+    // When there's a need_confirm edge to "end", the approval means the workflow should end.
+    // Skip all other non-condition, non-parallel edges to avoid triggering downstream nodes
+    // that were meant to be separate paths (e.g., a concurrent auto_push edge from the same role).
+    let has_need_confirm_to_end = workflows.iter().any(|(_, _, _, to_role_id, _, transition_type, _, _, _, _, _, _)| {
+        to_role_id == "end" && transition_type == "need_confirm"
+    });
+
     for (_id, _project_id, _from_role_id, to_role_id, wf_artifact_type, transition_type, task_id, _condition_expr, _branch_label, _parallel_group, _sort_order, _created_at) in &workflows {
         if condition_or_parallel_ids.contains(_id) {
             continue;
         }
 
         if to_role_id == "end" {
+            continue;
+        }
+
+        // When the current role has a need_confirm→end edge, skip other non-condition edges.
+        // The approval means the workflow should terminate, not branch to other roles.
+        if has_need_confirm_to_end && transition_type != "condition" {
+            log::info!("trigger_workflow_execution: skipping edge {}→{} (has need_confirm→end, workflow should terminate)", _from_role_id.as_deref().unwrap_or(""), to_role_id);
             continue;
         }
 
@@ -240,9 +270,9 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
         }
 
         // Check for existing artifact to avoid duplicates
-        // Look for both in_progress and pending artifacts
+        // Look for artifacts in any active state (not terminal like rejected/failed/cancelled)
         let existing_artifact: Option<(String, String)> = sqlx::query_as(
-            "SELECT id, status FROM project_artifacts WHERE project_id = ? AND task_id = ? AND role_id = ? AND artifact_type = ? AND status IN ('in_progress', 'pending')"
+            "SELECT id, status FROM project_artifacts WHERE project_id = ? AND task_id = ? AND role_id = ? AND artifact_type = ? AND status NOT IN ('rejected', 'failed', 'cancelled', 'archived')"
         )
         .bind(&project_id)
         .bind(&effective_task_id)
@@ -373,9 +403,46 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
     }
 
     if !condition_workflows.is_empty() {
-        let chosen_branch = condition_result.as_deref().unwrap_or("yes");
+        let chosen_branch = if let Some(ref cr) = condition_result {
+            cr.clone()
+        } else {
+            let first_cw = &condition_workflows[0];
+            let condition_from_role_id = first_cw.2.as_deref().unwrap_or("");
+            let condition_expr_str = &first_cw.7;
+
+            if condition_expr_str.is_empty() {
+                log::info!("trigger_workflow_execution: empty condition_expr for role {}, defaulting to 'yes'", condition_from_role_id);
+                "yes".to_string()
+            } else {
+                log::info!("trigger_workflow_execution: evaluating condition for role {} expr={}", condition_from_role_id, condition_expr_str);
+
+                let artifact_content: Option<String> = sqlx::query_scalar(
+                    "SELECT content FROM project_artifacts WHERE project_id = ? AND role_id = ? AND status = 'approved' ORDER BY updated_at DESC LIMIT 1"
+                )
+                .bind(&project_id)
+                .bind(condition_from_role_id)
+                .fetch_optional(&pool)
+                .await
+                .map_err(|e| e.to_string())?
+                .flatten();
+
+                if let Some(content) = artifact_content {
+                    match evaluate_condition_with_ai(&app, &project_id, condition_from_role_id, condition_expr_str, &content).await {
+                        Ok(result) => result,
+                        Err(e) => {
+                            log::error!("trigger_workflow_execution: condition evaluation failed: {}, defaulting to 'yes'", e);
+                            "yes".to_string()
+                        }
+                    }
+                } else {
+                    log::warn!("trigger_workflow_execution: no approved artifact content for role {}, defaulting to 'yes'", condition_from_role_id);
+                    "yes".to_string()
+                }
+            }
+        };
         for (_id, _project_id, _from_role_id, to_role_id, wf_artifact_type, _transition_type, task_id, _condition_expr, branch_label, _parallel_group, _sort_order, _created_at) in &condition_workflows {
-            if branch_label != chosen_branch {
+            let effective_branch = if branch_label.is_empty() { "yes" } else { branch_label.as_str() };
+            if effective_branch != chosen_branch {
                 continue;
             }
 
@@ -409,6 +476,31 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
                 .map_err(|e| e.to_string())?;
 
                 let _ = record_activity(&app, &project_id, Some(to_role_id), "condition_branch_taken", Some("workflow"), None, &format!("条件分支 [{}] → {}", branch_label, to_role_name)).await;
+            }
+
+            let existing_condition_artifact: Option<(String, String)> = sqlx::query_as(
+                "SELECT id, status FROM project_artifacts WHERE project_id = ? AND task_id = ? AND role_id = ? AND artifact_type = ? AND status NOT IN ('rejected', 'failed', 'cancelled', 'archived')"
+            )
+            .bind(&project_id)
+            .bind(&effective_task_id)
+            .bind(to_role_id)
+            .bind(wf_artifact_type)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            if let Some((existing_id, existing_status)) = existing_condition_artifact {
+                log::info!("trigger_workflow_execution: skipping condition artifact for role={}, artifact_type={} (already exists, status={})", to_role_id, wf_artifact_type, existing_status);
+                if existing_status == "in_progress" {
+                    triggered.push(TriggeredWorkflow {
+                        to_role_id: to_role_id.clone(),
+                        to_role_name,
+                        artifact_type: wf_artifact_type.clone(),
+                        transition_type: "condition".to_string(),
+                        artifact_id: existing_id,
+                    });
+                }
+                continue;
             }
 
             let new_artifact_id = uuid::Uuid::new_v4().to_string();
@@ -482,6 +574,31 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
                     let _ = record_activity(&app, &project_id, Some(to_role_id), "parallel_branch_triggered", Some("workflow"), None, &format!("并行分支触发 → {}", to_role_name)).await;
                 }
 
+                let existing_parallel_artifact: Option<(String, String)> = sqlx::query_as(
+                    "SELECT id, status FROM project_artifacts WHERE project_id = ? AND task_id = ? AND role_id = ? AND artifact_type = ? AND status NOT IN ('rejected', 'failed', 'cancelled', 'archived')"
+                )
+                .bind(&project_id)
+                .bind(&effective_task_id)
+                .bind(to_role_id)
+                .bind(wf_artifact_type)
+                .fetch_optional(&pool)
+                .await
+                .map_err(|e| e.to_string())?;
+
+                if let Some((existing_id, existing_status)) = existing_parallel_artifact {
+                    log::info!("trigger_workflow_execution: skipping parallel artifact for role={}, artifact_type={} (already exists, status={})", to_role_id, wf_artifact_type, existing_status);
+                    if existing_status == "in_progress" {
+                        triggered.push(TriggeredWorkflow {
+                            to_role_id: to_role_id.clone(),
+                            to_role_name,
+                            artifact_type: wf_artifact_type.clone(),
+                            transition_type: "parallel".to_string(),
+                            artifact_id: existing_id,
+                        });
+                    }
+                    continue;
+                }
+
                 let new_artifact_id = uuid::Uuid::new_v4().to_string();
                 let artifact_title = format!("{} - {}", wf_artifact_type, to_role_name);
 
@@ -533,6 +650,10 @@ pub async fn trigger_workflow_execution(app: AppHandle, project_id: String, from
         let start_trigger = is_start_trigger;
         let run_task_info_notify = run_task_info.clone();
         tauri::async_runtime::spawn(async move {
+            if !start_trigger {
+                log::info!("trigger_workflow_execution: waiting 3s before triggering AI calls to reduce API rate limit risk");
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
             for tw in triggered_clone {
                 let mut context_msg = if start_trigger {
                     format!(
@@ -596,22 +717,18 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
-    let max_sort: Option<i64> = sqlx::query_scalar("SELECT MAX(sort_order) FROM project_workflows WHERE project_id = ?")
-        .bind(&req.project_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    let sort_order = max_sort.unwrap_or(0) + 1;
-
     let artifact_type = req.artifact_type.unwrap_or_default();
     let transition_type = req.transition_type.unwrap_or("auto_push".to_string());
     let reject_to_role_id = req.reject_to_role_id.unwrap_or_default();
     let task_id = req.task_id.unwrap_or_default();
     let condition_expr = req.condition_expr.unwrap_or_default();
-    let branch_label = req.branch_label.unwrap_or_default();
+    let branch_label = if transition_type == "condition" {
+        req.branch_label.filter(|b| !b.is_empty()).unwrap_or_else(|| "yes".to_string())
+    } else {
+        req.branch_label.unwrap_or_default()
+    };
     let parallel_group = req.parallel_group.unwrap_or_default();
 
-    // 如果未指定流程组，使用主流程组
     let effective_group_id = if let Some(ref gid) = req.group_id {
         Some(gid.clone())
     } else {
@@ -623,6 +740,36 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
         .await
         .map_err(|e| e.to_string())?
     };
+
+    let max_sort: Option<i64> = sqlx::query_scalar(
+        "SELECT MAX(sort_order) FROM project_workflows WHERE project_id = ? AND (group_id = ? OR (group_id IS NULL AND ? IS NULL))"
+    )
+        .bind(&req.project_id)
+        .bind(&effective_group_id)
+        .bind(&effective_group_id)
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let sort_order = max_sort.unwrap_or(0) + 1;
+
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM project_workflows WHERE project_id = ? AND from_role_id = ? AND to_role_id = ? AND transition_type = ? AND (group_id = ? OR (group_id IS NULL AND ? IS NULL)) LIMIT 1"
+    )
+    .bind(&req.project_id)
+    .bind(&req.from_role_id)
+    .bind(&req.to_role_id)
+    .bind(&transition_type)
+    .bind(&effective_group_id)
+    .bind(&effective_group_id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some(existing_id) = existing {
+        return Ok(db::ProjectWorkflow {
+            id: existing_id, project_id: req.project_id, from_role_id: req.from_role_id, to_role_id: req.to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary: false, group_id: effective_group_id, sort_order, created_at: now,
+        });
+    }
 
     sqlx::query("INSERT INTO project_workflows (id, project_id, from_role_id, to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary, group_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)")
         .bind(&id)
@@ -842,11 +989,18 @@ async fn validate_group_workflows(pool: &sqlx::SqlitePool, group_id: &str) -> Re
         }
     }
 
-    // ⑤ 并行节点(transition_type='parallel')必须连接合并节点
-    let has_parallel = rows.iter().any(|(_, _, t, _, _)| t == "parallel");
-    let has_merge = rows.iter().any(|(_, _, t, _, _)| t == "merge");
-    if has_parallel && !has_merge {
-        return Err("流程包含并行节点但缺少合并节点".to_string());
+    // ⑤ 并行节点(transition_type='parallel')的各分支必须汇聚到同一个目标节点
+    // merge 节点是前端视觉元素，不在数据库中存储，所以检查 parallel_group 相同的记录是否有相同的 to_role_id
+    let mut parallel_groups: std::collections::HashMap<String, std::collections::HashSet<String>> = std::collections::HashMap::new();
+    for (_, to, t, _, pg) in &rows {
+        if t == "parallel" && !pg.is_empty() {
+            parallel_groups.entry(pg.clone()).or_default().insert(to.clone());
+        }
+    }
+    for (pg, targets) in &parallel_groups {
+        if targets.len() != 1 {
+            return Err(format!("并行分支组 '{}' 必须汇聚到同一个目标节点", pg));
+        }
     }
 
     // ⑥ 连通性：从 start 出发，所有节点必须能到达 end
@@ -1082,6 +1236,32 @@ pub async fn assign_task(
     }));
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn save_workflow_layout(app: AppHandle, project_id: String, layout: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+    let key = format!("workflow_layout_{}", project_id);
+    sqlx::query("INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?")
+        .bind(&key)
+        .bind(&layout)
+        .bind(&layout)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn load_workflow_layout(app: AppHandle, project_id: String) -> Result<Option<String>, String> {
+    let pool = get_pool(&app)?;
+    let key = format!("workflow_layout_{}", project_id);
+    let value: Option<String> = sqlx::query_scalar("SELECT value FROM app_config WHERE key = ?")
+        .bind(&key)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(value)
 }
 
 #[tauri::command]
@@ -1348,6 +1528,9 @@ pub async fn approve_project_artifact(app: AppHandle, id: String, comment: Optio
     }
 
     if workflow_run_id.is_none() && !project_id.is_empty() && !role_id.is_empty() {
+        let mut found_run_id: Option<String> = None;
+        let mut found_step_index: Option<i32> = None;
+        let mut should_trigger_workflow = false;
         {
             let pool_step = match get_pool(&app) {
                 Ok(p) => p,
@@ -1385,6 +1568,8 @@ pub async fn approve_project_artifact(app: AppHandle, id: String, comment: Optio
                         .execute(&pool_step)
                         .await;
                 }
+                found_run_id = Some(run_id.clone());
+                found_step_index = Some(step_idx as i32);
                 let _ = confirm_workflow_step(app.clone(), run_id, true, Some(review_comment.clone())).await;
             } else {
                 let pending_steps: Vec<(String, i64)> = sqlx::query_as(
@@ -1412,24 +1597,31 @@ pub async fn approve_project_artifact(app: AppHandle, id: String, comment: Optio
                     .execute(&pool_step)
                     .await;
                     log::info!("approve_project_artifact: advanced step {}/{} from pending_approval to running", step_index, run_id);
+                    if found_run_id.is_none() {
+                        found_run_id = Some(run_id.clone());
+                        found_step_index = Some(*step_index as i32);
+                    }
                 }
+                should_trigger_workflow = true;
             }
         }
 
-        let app_wf = app.clone();
-        let project_id_wf = project_id.clone();
-        let role_id_wf = role_id.clone();
-        let wf_run_id_wf = workflow_run_id.clone();
-        let wf_step_wf = step_index;
-        tauri::async_runtime::spawn(async move {
-            log::info!("approve_project_artifact: triggering workflow for project_id={}, from_role_id={}", project_id_wf, role_id_wf);
-            match trigger_workflow_execution(
-                app_wf, project_id_wf, role_id_wf, None, None, None, wf_run_id_wf, wf_step_wf,
-            ).await {
-                Ok(result) => log::info!("approve_project_artifact: triggered={}, pending={}", result.triggered_workflows.len(), result.pending_approvals.len()),
-                Err(e) => log::error!("approve_project_artifact: workflow trigger error={}", e),
-            }
-        });
+        if should_trigger_workflow {
+            let app_wf = app.clone();
+            let project_id_wf = project_id.clone();
+            let role_id_wf = role_id.clone();
+            let wf_run_id_wf = found_run_id.clone();
+            let wf_step_wf = found_step_index;
+            tauri::async_runtime::spawn(async move {
+                log::info!("approve_project_artifact: triggering workflow for project_id={}, from_role_id={}, run_id={:?}", project_id_wf, role_id_wf, wf_run_id_wf);
+                match trigger_workflow_execution(
+                    app_wf, project_id_wf, role_id_wf, None, None, None, wf_run_id_wf, wf_step_wf,
+                ).await {
+                    Ok(result) => log::info!("approve_project_artifact: triggered={}, pending={}", result.triggered_workflows.len(), result.pending_approvals.len()),
+                    Err(e) => log::error!("approve_project_artifact: workflow trigger error={}", e),
+                }
+            });
+        }
     }
 
     // Debounced data push for artifact approval

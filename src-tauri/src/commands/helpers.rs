@@ -530,9 +530,9 @@ pub(crate) async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
     let mut synced = 0u32;
     for (key_env, api_key) in &providers {
         let decrypted_key = decrypt_api_key(api_key);
-        match hermes_config_set(key_env, &decrypted_key) {
+        match write_env_value(key_env, &decrypted_key) {
             Ok(_) => synced += 1,
-            Err(e) => log::warn!("Failed to sync {} via hermes config set: {}", key_env, e),
+            Err(e) => log::warn!("Failed to sync {} via write_env_value: {}", key_env, e),
         }
     }
 
@@ -556,7 +556,53 @@ pub(crate) async fn sync_api_keys_to_hermes_env(app: &tauri::AppHandle) {
     }
 
     if synced > 0 {
-        log::info!("Synced {} API keys via hermes config set", synced);
+        log::info!("Synced {} API keys to hermes .env", synced);
+    }
+}
+
+pub(crate) async fn sync_providers_to_hermes_config(app: &tauri::AppHandle) {
+    let pool = match app.try_state::<AppState>() {
+        Some(s) => s.db_pool.clone(),
+        None => {
+            log::warn!("Cannot get database connection, skipping providers sync");
+            return;
+        }
+    };
+
+    let providers: Vec<(String, String, String, String)> = sqlx::query_as::<_, (String, String, String, String)>(
+        "SELECT value, base_url, api_key_env, name FROM providers WHERE is_builtin = 0 AND value != ''"
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_else(|e| {
+        log::warn!("Failed to query custom providers: {}", e);
+        Vec::new()
+    });
+
+    let mut synced = 0u32;
+    for (provider_value, base_url, api_key_env, name) in &providers {
+        let slug = provider_value.to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != '-', "_");
+        if slug.is_empty() {
+            continue;
+        }
+
+        if let Err(e) = hermes_config_set(&format!("providers.{}.name", slug), name) {
+            log::warn!("Failed to set providers.{}.name: {}", slug, e);
+            continue;
+        }
+        if !base_url.is_empty() {
+            let _ = hermes_config_set(&format!("providers.{}.api", slug), base_url);
+        }
+        if !api_key_env.is_empty() {
+            let _ = hermes_config_set(&format!("providers.{}.key_env", slug), api_key_env);
+        }
+        let _ = hermes_config_set(&format!("providers.{}.transport", slug), "openai_chat");
+
+        synced += 1;
+    }
+
+    if synced > 0 {
+        log::info!("Synced {} custom providers to hermes config.yaml", synced);
     }
 }
 
