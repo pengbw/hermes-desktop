@@ -605,14 +605,15 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
 
     let use_local_embedding = embedding_model == "local";
 
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-
     for (idx, (file_path, file_name, ext, file_size, modified_at)) in all_files.iter().enumerate() {
         let _ = app.emit("kb-index-progress", serde_json::json!({
             "id": &id, "status": "indexing", "current": idx + 1, "total": total, "file": file_name
         }));
 
         let file_path_str = file_path.to_string_lossy().to_string();
+
+        // 每个文件使用独立事务，避免长时间锁定整个数据库
+        let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
         let actual_file_id = if let Some(eid) = all_existing.remove(&file_path_str) {
             sqlx::query("DELETE FROM knowledge_chunks WHERE file_id = ?")
@@ -787,20 +788,26 @@ pub async fn index_knowledge_base(app: AppHandle, id: String) -> Result<serde_js
 
         total_files += 1;
         total_chunks += file_chunk_count;
+
+        // 每个文件处理完后提交事务，释放数据库锁
+        tx.commit().await.map_err(|e| e.to_string())?;
     }
 
-    for (_, stale_id) in all_existing {
-        let _ = sqlx::query("DELETE FROM knowledge_chunks WHERE file_id = ?")
-            .bind(&stale_id)
-            .execute(&mut *tx)
-            .await;
-        let _ = sqlx::query("DELETE FROM knowledge_files WHERE id = ?")
-            .bind(&stale_id)
-            .execute(&mut *tx)
-            .await;
+    // 清理已删除的陈旧文件（独立事务）
+    if !all_existing.is_empty() {
+        let mut cleanup_tx = pool.begin().await.map_err(|e| e.to_string())?;
+        for (_, stale_id) in &all_existing {
+            let _ = sqlx::query("DELETE FROM knowledge_chunks WHERE file_id = ?")
+                .bind(stale_id)
+                .execute(&mut *cleanup_tx)
+                .await;
+            let _ = sqlx::query("DELETE FROM knowledge_files WHERE id = ?")
+                .bind(stale_id)
+                .execute(&mut *cleanup_tx)
+                .await;
+        }
+        cleanup_tx.commit().await.map_err(|e| e.to_string())?;
     }
-
-    tx.commit().await.map_err(|e| e.to_string())?;
 
     let now2 = chrono::Utc::now().timestamp_millis();
     sqlx::query("UPDATE knowledge_bases SET status = 'ready', file_count = ?, chunk_count = ?, updated_at = ? WHERE id = ?")
@@ -1202,7 +1209,6 @@ pub async fn check_local_embedding_model() -> Result<String, String> {
         .join("models")
         .join("all-MiniLM-L6-v2");
 
-    #[cfg(not(target_os = "windows"))]
     let onnx_file = data_dir.join("model.onnx");
     let model_file = data_dir.join("model.safetensors");
     let config_file = data_dir.join("config.json");
@@ -1210,7 +1216,6 @@ pub async fn check_local_embedding_model() -> Result<String, String> {
 
     let has_tokenizer = tokenizer_file.exists();
 
-    #[cfg(not(target_os = "windows"))]
     if is_valid_file(&onnx_file) && has_tokenizer {
         return Ok("onnx_ready".to_string());
     }
@@ -1240,18 +1245,12 @@ pub async fn install_local_embedding_model(app: AppHandle) -> Result<String, Str
     let mirror_base = "https://hf-mirror.com/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
     let origin_base = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
 
-    #[cfg(not(target_os = "windows"))]
     let onnx_exists = is_valid_file(&data_dir.join("model.onnx"));
-    #[cfg(target_os = "windows")]
-    let onnx_exists: bool = false;
 
     let file_names = vec!["config.json", "special_tokens_map.json", "tokenizer.json", "model.safetensors"];
     let file_paths: Vec<std::path::PathBuf> = vec![config_path, special_tokens_path, tokenizer_path, model_path];
 
-    #[cfg(not(target_os = "windows"))]
     let skip_names: Vec<&str> = if onnx_exists { vec!["model.safetensors"] } else { vec![] };
-    #[cfg(target_os = "windows")]
-    let skip_names: Vec<&str> = vec![];
 
     let total = file_names.len();
     let client = reqwest::Client::builder()
@@ -1316,7 +1315,6 @@ pub async fn install_local_embedding_model(app: AppHandle) -> Result<String, Str
 
     let _ = app.emit("local-embedding-model-progress", 100u8);
     let _ = app.emit("local-embedding-model-installed", ());
-    #[cfg(not(target_os = "windows"))]
     if onnx_exists {
         return Ok("onnx_ready".to_string());
     }

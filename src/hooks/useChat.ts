@@ -66,6 +66,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
     const filesJson = hasFiles ? JSON.stringify(homeFiles) : undefined;
 
     setTimeout(async () => {
+      // Switch to chat tab immediately for responsive UI
+      setActiveTab("chat");
       try {
         const conversation = await invoke<Conversation>("create_conversation", {
           req: { title: userText.trim().slice(0, 30) || displayContent.slice(0, 30) },
@@ -75,7 +77,6 @@ export function useChat(t: (key: string, params?: Record<string, string | number
         conv.currentConversationIdRef.current = convId;
         conv.setCurrentConversation(convId);
         stream.setActiveConversation(convId);
-        setActiveTab("chat");
 
         if (kbIds && kbIds.length > 0) {
           const kbIdsJson = JSON.stringify(kbIds);
@@ -105,8 +106,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
               messageType: voiceInfo ? "voice" : "text",
             },
           });
-        } catch {
-          // console.error("Failed to save user message (home):", err);
+        } catch (err) {
+          console.error("[sendMessageFromHome] Failed to save user message:", err);
         }
 
         conv.addMessageToCache(convId, userMsg);
@@ -139,8 +140,10 @@ export function useChat(t: (key: string, params?: Record<string, string | number
             conv.loadConversations();
           }
         );
-      } catch {
-        // console.error("Failed to start chat from home:", err);
+      } catch (err) {
+        console.error("[sendMessageFromHome] Failed to start chat from home:", err);
+        // Revert to home tab on failure so user isn't stuck on empty chat
+        setActiveTab("home");
       }
     }, 50);
   };
@@ -175,8 +178,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
         conv.setConversations((prev) => [conversation, ...prev]);
         conv.setCurrentConversation(conversation.id);
         stream.setActiveConversation(conversation.id);
-      } catch {
-        // console.error("Failed to create conversation:", err);
+      } catch (err) {
+        console.error("[sendMessage] Failed to create conversation:", err);
         return;
       }
     }
@@ -234,8 +237,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
           messageType: voiceInfo ? "voice" : "text",
         },
       });
-    } catch {
-      // console.error("Failed to save user message:", err);
+    } catch (err) {
+      console.error("[sendMessage] Failed to save user message:", err);
     }
 
     if (isVoiceOnly) {
@@ -308,8 +311,8 @@ export function useChat(t: (key: string, params?: Record<string, string | number
           messageType: "voice",
         },
       });
-    } catch {
-      // console.warn("Failed to update voice message content:", err);
+    } catch (err) {
+      console.error("[streamVoiceResponse] Failed to update voice message:", err);
     }
 
     if (!sttText.trim()) return;

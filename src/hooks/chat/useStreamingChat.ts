@@ -161,7 +161,9 @@ export function useStreamingChat() {
                     audioPath = ttsResult.audioPath;
                     audioDuration = ttsResult.audioDuration ?? undefined;
                   }
-                } catch {}
+                } catch (ttsErr) {
+                  console.error("[startStreaming] TTS generation failed:", ttsErr);
+                }
               }
 
               const voiceMsg: Message = {
@@ -183,7 +185,8 @@ export function useStreamingChat() {
                   messageType: "voice",
                 },
               });
-            } catch {
+            } catch (err) {
+              console.error("[startStreaming] Failed to save voice assistant message:", err);
               onMessage(assistantMsg);
             }
             updateChatState(convId, { isStreaming: false, isThinking: false, toolProgress: "" });
@@ -207,7 +210,9 @@ export function useStreamingChat() {
                   messageType: "text",
                 },
               });
-            } catch {}
+            } catch (err) {
+              console.error("[startStreaming] Failed to save assistant message:", err);
+            }
           })();
           unlisten();
           unlistenSources();
@@ -236,7 +241,8 @@ export function useStreamingChat() {
 
     try {
       await invoke("chat_with_hermes_api", invokeParams);
-    } catch {
+    } catch (err) {
+      console.error("[startStreaming] chat_with_hermes_api failed:", err);
       const errorContent = fullContent || `⚠️ 请求失败`;
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),

@@ -14,8 +14,8 @@ export function useConversation() {
     try {
       const result = await invoke<Conversation[]>("list_conversations");
       setConversations(result);
-    } catch {
-      // console.error("Failed to load conversations:", err);
+    } catch (err) {
+      console.error("[loadConversations] Failed to load conversations:", err);
     }
   };
 
@@ -33,8 +33,8 @@ export function useConversation() {
       if (conversationId === currentConversationIdRef.current) {
         setMessages(result);
       }
-    } catch {
-      // console.error("Failed to load messages:", err);
+    } catch (err) {
+      console.error("[loadMessages] Failed to load messages:", err);
     }
   };
 
@@ -65,8 +65,8 @@ export function useConversation() {
       currentConversationIdRef.current = result.id;
       setMessages([]);
       return result.id;
-    } catch {
-      // console.error("Failed to create conversation:", err);
+    } catch (err) {
+      console.error("[createNewConversation] Failed to create conversation:", err);
       return null;
     }
   };
@@ -85,8 +85,8 @@ export function useConversation() {
         currentConversationIdRef.current = null;
         setMessages([]);
       }
-    } catch {
-      // console.error("Failed to delete conversation:", err);
+    } catch (err) {
+      console.error("[deleteConversation] Failed to delete conversation:", err);
     }
   };
 
@@ -94,8 +94,8 @@ export function useConversation() {
     try {
       await invoke("rename_conversation", { id, title });
       setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
-    } catch {
-      // console.error("Failed to rename conversation:", err);
+    } catch (err) {
+      console.error("[renameConversation] Failed to rename conversation:", err);
     }
   };
 
@@ -103,8 +103,8 @@ export function useConversation() {
     try {
       await invoke("update_conversation_kb_ids", { id, kbIds });
       setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, kbIds } : c)));
-    } catch {
-      // console.error("Failed to save kb_ids:", err);
+    } catch (err) {
+      console.error("[updateConversationKbIds] Failed to save kb_ids:", err);
     }
   };
 

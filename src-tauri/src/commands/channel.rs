@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 use std::process::Stdio;
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::helpers::{hermes_command, hermes_home_dir, hermes_agent_dir, hermes_venv_python, hermes_env_file_path, path_with_local_bin, AgentProcess, get_ssl_cert_file, home_dir};
+use super::helpers::{hermes_command, hermes_home_dir, hermes_agent_dir, hermes_venv_python, hermes_env_file_path, path_with_local_bin, AgentProcess, get_ssl_cert_file, home_dir, kill_hermes_process};
 
 fn get_pool(app: &AppHandle) -> Result<SqlitePool, String> {
     let state = app.state::<crate::commands::helpers::AppState>();
@@ -367,7 +367,8 @@ pub(crate) async fn restart_gateway_internal(app: &AppHandle) -> Result<(), Stri
     if stop_output.status.success() {
         log::info!("Old gateway stopped gracefully");
     } else {
-        // 备用方案：杀死我们记录的 child 进程
+        // 备用方案1：杀死我们记录的 child 进程
+        let mut killed_tracked = false;
         if let Some(state) = app.try_state::<AgentProcess>() {
             let child = {
                 let mut guard = state.0.lock().map_err(|e| format!("Lock error: {}", e))?;
@@ -380,11 +381,15 @@ pub(crate) async fn restart_gateway_internal(app: &AppHandle) -> Result<(), Stri
                     tokio::task::spawn_blocking(move || child.wait()),
                 )
                 .await;
+                killed_tracked = true;
                 log::info!("Old gateway process killed (fallback)");
             }
-        } else {
-            log::warn!("hermes gateway stop failed and no tracked child to kill: {}",
+        }
+        // 备用方案2：强力杀死所有 hermes 相关进程（Windows 上 gateway stop 经常不工作）
+        if !killed_tracked {
+            log::warn!("hermes gateway stop failed and no tracked child, using kill_hermes_process: {}",
                 String::from_utf8_lossy(&stop_output.stderr).trim());
+            kill_hermes_process();
         }
     }
 
