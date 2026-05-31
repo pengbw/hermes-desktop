@@ -1,6 +1,6 @@
 [package]
 name = "hermes-desktop"
-version = "0.3.0"
+version = "0.4.0"
 description = "Hermes Desktop - AI Assistant with Live2D Avatar"
 authors = ["Peng Baowei"]
 edition = "2021"
