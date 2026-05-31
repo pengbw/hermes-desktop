@@ -89,19 +89,19 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 
 ### 首页
 
-![首页](./docs/screenshots/01-home.png)
+![首页](./docs/screenshots/home.png)
 
 ### 智能对话
 
-![对话](./docs/screenshots/02-chat.png)
+![对话](./docs/screenshots/chat.png)
 
 ### 技能中心
 
-![技能中心](./docs/screenshots/03-skills.png)
+![技能中心](./docs/screenshots/skills.png)
 
 ### 系统设置
 
-![设置](./docs/screenshots/04-settings.png)
+![设置](./docs/screenshots/settings.png)
 
 ### VRM 数字人
 
@@ -119,13 +119,13 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 
 **项目模板 + 新建项目**
 
-![新建项目](./docs/screenshots/09-studio-new-project.jpg)
+![新建项目](./docs/screenshots/studio.png)
 
 > 选择行业模板（软件开发、内容创作、数据分析等），自动配置角色阵容和工作流，开箱即用。
 
 **工作流设计**
 
-![工作流设计](./docs/screenshots/10-studio-workflow.jpg)
+![工作流设计](./docs/screenshots/project-workflow.png)
 
 > 可视化编排 AI 角色协作流程：开始 → 节点角色 → 审批门控 → 结束。支持条件分支与并行汇聚。
 
@@ -137,27 +137,39 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 
 **角色管理**
 
-![角色管理](./docs/screenshots/12-studio-members.jpg)
+![角色管理](./docs/screenshots/setting_role.png)
 
 > 每个角色独立配置职责描述、专属技能与工作进度，任务分工一目了然。
 
 **技能市场**
 
-![技能市场](./docs/screenshots/13-skills-marketplace.jpg)
+![技能市场](./docs/screenshots/skills.png)
 
 > 721+ 技能插件可选安装，覆盖 AI 代理、设计创意、社交媒体等分类，按需扩展 Agent 能力。
 
 **知识库对话**
 
-![知识库对话](./docs/screenshots/14-chat-knowledge.jpg)
+![知识库对话](./docs/screenshots/knowledge.png)
 
 > 基于本地文档的 RAG 对话，检索结果实时展示文档来源与匹配度，来源可溯。
 
 **通信设置**
 
-![通信设置](./docs/screenshots/15-settings-communication.jpg)
+![通信设置](./docs/screenshots/settings-channels.png)
 
 > 一键接入微信、QQ、元宝、钉钉、飞书等平台，消息收发与 AI 回复无缝打通。
+
+**MCP 插件**
+
+![MCP 插件](./docs/screenshots/settings_mcp.png)
+
+> 添加mcp插件。
+
+**定时任务**
+
+![定时任务](./docs/screenshots/settings_jobs.png)
+
+> 配置定时任务，如每日备份、自动关闭等。
 
 ---
 
