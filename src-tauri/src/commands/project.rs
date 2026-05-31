@@ -59,6 +59,18 @@ pub(crate) async fn record_activity(app: &AppHandle, project_id: &str, role_id: 
     Ok(())
 }
 
+async fn check_project_name_unique(pool: &SqlitePool, name: &str) -> Result<(), String> {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM projects WHERE name = ?")
+        .bind(name)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    if count > 0 {
+        return Err(format!("项目名称 \"{}\" 已存在，请使用其他名称", name));
+    }
+    Ok(())
+}
+
 pub(crate) async fn mark_auto_delegate_failure(
     app: &AppHandle,
     project_id: &str,
@@ -432,6 +444,8 @@ pub async fn list_project_templates(app: AppHandle, locale: Option<String>) -> R
 #[tauri::command]
 pub async fn create_project_from_template(app: AppHandle, req: db::CreateProjectFromTemplateRequest, locale: Option<String>) -> Result<db::Project, String> {
     let pool = get_pool(&app)?;
+
+    check_project_name_unique(&pool, &req.name).await?;
 
     if let Err(e) = seed_builtin_templates(&pool).await {
         log::error!("create_project_from_template: seed_builtin_templates failed: {}", e);
@@ -945,6 +959,7 @@ pub async fn list_projects(app: AppHandle) -> Result<Vec<db::Project>, String> {
 #[tauri::command]
 pub async fn create_empty_project(app: AppHandle, req: db::CreateEmptyProjectRequest) -> Result<db::Project, String> {
     let pool = get_pool(&app)?;
+    check_project_name_unique(&pool, &req.name).await?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
@@ -1015,6 +1030,7 @@ pub async fn create_empty_project(app: AppHandle, req: db::CreateEmptyProjectReq
 #[tauri::command]
 pub async fn create_project(app: AppHandle, req: db::CreateProjectRequest) -> Result<db::Project, String> {
     let pool = get_pool(&app)?;
+    check_project_name_unique(&pool, &req.name).await?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
@@ -1085,7 +1101,20 @@ pub async fn update_project(app: AppHandle, req: db::UpdateProjectRequest) -> Re
     .await
     .map_err(|e| e.to_string())?;
 
-    let name = req.name.unwrap_or(project.name);
+    let name = req.name.clone().unwrap_or(project.name.clone());
+
+    if req.name.is_some() && name != project.name {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM projects WHERE name = ? AND id != ?")
+            .bind(&name)
+            .bind(&req.id)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        if count > 0 {
+            return Err(format!("项目名称 \"{}\" 已存在，请使用其他名称", name));
+        }
+    }
+
     let description = req.description.unwrap_or(project.description);
     let status = req.status.unwrap_or(project.status);
     let tag = req.tag.unwrap_or(project.tag);
@@ -1137,7 +1166,61 @@ pub async fn delete_project(app: AppHandle, id: String) -> Result<(), String> {
 
     let _ = file_storage::delete_project_messages_file(sp.as_deref(), &id);
 
+    let workspace_path: Option<String> = sqlx::query_scalar(
+        "SELECT workspace_path FROM projects WHERE id = ?"
+    )
+    .bind(&id)
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let artifact_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM project_artifacts WHERE project_id = ?"
+    )
+    .bind(&id)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    for aid in &artifact_ids {
+        let _ = sqlx::query("DELETE FROM artifact_versions WHERE artifact_id = ?")
+            .bind(aid)
+            .execute(&mut *tx)
+            .await;
+    }
+
+    sqlx::query("DELETE FROM task_comments WHERE task_id IN (SELECT id FROM project_tasks WHERE project_id = ?)")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM task_links WHERE from_task_id IN (SELECT id FROM project_tasks WHERE project_id = ?) OR to_task_id IN (SELECT id FROM project_tasks WHERE project_id = ?)")
+        .bind(&id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM task_events WHERE task_id IN (SELECT id FROM project_tasks WHERE project_id = ?)")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM task_dispatches WHERE task_id IN (SELECT id FROM project_tasks WHERE project_id = ?)")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM workflow_run_steps WHERE run_id IN (SELECT id FROM workflow_runs WHERE project_id = ?)")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
 
     sqlx::query("DELETE FROM project_tasks WHERE project_id = ?")
         .bind(&id)
@@ -1163,7 +1246,49 @@ pub async fn delete_project(app: AppHandle, id: String) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
 
+    sqlx::query("DELETE FROM project_workflow_groups WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
     sqlx::query("DELETE FROM project_members WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_member_skills WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_activities WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_memories WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_file_records WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM project_boards WHERE project_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM workflow_runs WHERE project_id = ?")
         .bind(&id)
         .execute(&mut *tx)
         .await
@@ -1176,6 +1301,16 @@ pub async fn delete_project(app: AppHandle, id: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
+
+    if let Some(ws) = workspace_path {
+        if !ws.is_empty() {
+            let ws_path = std::path::PathBuf::from(&ws);
+            if ws_path.exists() {
+                let _ = std::fs::remove_dir_all(&ws_path);
+            }
+        }
+    }
+
     Ok(())
 }
 

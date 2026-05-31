@@ -389,6 +389,7 @@ pub fn run() {
             commands::project_workflow::list_project_workflows,
             commands::project_workflow::add_project_workflow,
             commands::project_workflow::remove_project_workflow,
+            commands::project_workflow::update_condition_expr,
             commands::project_workflow::list_workflow_groups,
             commands::project_workflow::create_workflow_group,
             commands::project_workflow::update_workflow_group,

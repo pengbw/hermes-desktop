@@ -766,6 +766,14 @@ pub async fn add_project_workflow(app: AppHandle, req: db::CreateProjectWorkflow
     .map_err(|e| e.to_string())?;
 
     if let Some(existing_id) = existing {
+        sqlx::query("UPDATE project_workflows SET condition_expr = ?, artifact_type = ?, branch_label = ? WHERE id = ?")
+            .bind(&condition_expr)
+            .bind(&artifact_type)
+            .bind(&branch_label)
+            .bind(&existing_id)
+            .execute(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
         return Ok(db::ProjectWorkflow {
             id: existing_id, project_id: req.project_id, from_role_id: req.from_role_id, to_role_id: req.to_role_id, artifact_type, transition_type, reject_to_role_id, task_id, condition_expr, branch_label, parallel_group, is_primary: false, group_id: effective_group_id, sort_order, created_at: now,
         });
@@ -815,6 +823,22 @@ pub async fn remove_project_workflow(app: AppHandle, id: String) -> Result<(), S
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_condition_expr(app: AppHandle, project_id: String, from_role_id: String, condition_expr: String) -> Result<(), String> {
+    let pool = get_pool(&app)?;
+
+    sqlx::query("UPDATE project_workflows SET condition_expr = ? WHERE project_id = ? AND from_role_id = ? AND transition_type = 'condition'")
+        .bind(&condition_expr)
+        .bind(&project_id)
+        .bind(&from_role_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    crate::commands::helpers::debounced_emit(&app, &project_id, "workflows");
     Ok(())
 }
 

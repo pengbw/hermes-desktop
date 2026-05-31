@@ -22,7 +22,6 @@ interface ProjectListProps {
   onContextMenu: (e: React.MouseEvent, project: ProjectItem) => void;
   onEditProject: (project: ProjectItem) => void;
   onOpenSettings: (projectId: string) => void;
-  onArchiveProject: (project: ProjectItem) => void;
   onDeleteProject: (project: ProjectItem) => void;
   t: (key: string) => string;
 }
@@ -46,7 +45,6 @@ function ProjectList({
   onContextMenu: _onContextMenu,
   onEditProject,
   onOpenSettings,
-  onArchiveProject,
   onDeleteProject,
   t,
 }: ProjectListProps) {
@@ -109,18 +107,6 @@ function ProjectList({
             }}
           >
             ⚙️ {t("studio.settings")}
-          </button>
-          <button
-            className={styles.studioContextMenuItem}
-            onClick={() => {
-              if (window.confirm(t("studio.archiveConfirm"))) {
-                onArchiveProject(contextMenuProject);
-              }
-              setContextMenuPos(null);
-              setContextMenuProject(null);
-            }}
-          >
-            📦 {t("studio.archive")}
           </button>
           <div className={styles.studioContextMenuDivider} />
           <button

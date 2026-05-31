@@ -51,8 +51,8 @@ export default function EditProjectModal({
       });
       handleClose();
       onSaved();
-    } catch {
-      // console.error("Failed to save project:", err);
+    } catch (err) {
+      alert(err);
     }
   };
 

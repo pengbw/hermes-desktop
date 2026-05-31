@@ -369,7 +369,7 @@
   "studio.detail": "详情",
   "studio.archive": "归档",
   "studio.archiveConfirm": "确定归档该项目吗？",
-  "studio.deleteConfirm": "确定删除该项目吗？此操作不可撤销。",
+  "studio.deleteConfirm": "确定删除该项目吗？项目相关的所有数据（包括产物、任务、工作流、消息等）将被永久删除，此操作不可撤销。",
   "studio.tag.keyProject": "重点项目",
   "studio.tag.normal": "一般项目",
   "studio.virtualOffice": "虚拟办公",

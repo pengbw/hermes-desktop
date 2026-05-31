@@ -993,6 +993,7 @@ function WorkflowDesignerInner({
   const [detailPanelPos, setDetailPanelPos] = useState({ x: 16, y: 60 });
   const [isDragging, setIsDragging] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
+  const conditionSaveTimer = useRef<number | null>(null);
 
   const reactFlow = useReactFlow();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -2292,18 +2293,39 @@ function WorkflowDesignerInner({
                   style={{ resize: "vertical", minHeight: 80 }}
                   value={(selectedNode.data as ConditionNodeType["data"]).conditionDesc || ""}
                   onChange={(e) => {
+                    const newVal = e.target.value;
                     setNodes((nds) =>
                       nds.map((n) =>
                         n.id === selectedNode.id
-                          ? { ...n, data: { ...n.data, conditionDesc: e.target.value } }
+                          ? { ...n, data: { ...n.data, conditionDesc: newVal } }
                           : n
                       )
                     );
                     setSelectedNode((prev) =>
                       prev
-                        ? { ...prev, data: { ...prev.data, conditionDesc: e.target.value } }
+                        ? { ...prev, data: { ...prev.data, conditionDesc: newVal } }
                         : null
                     );
+                    if (conditionSaveTimer.current) clearTimeout(conditionSaveTimer.current);
+                    conditionSaveTimer.current = window.setTimeout(() => {
+                      const upstreamEdge = edges.find((e2) => e2.target === selectedNode.id);
+                      const upstreamNode = upstreamEdge
+                        ? nodes.find((n) => n.id === upstreamEdge.source)
+                        : undefined;
+                      const fromRoleId = upstreamNode?.type === "roleNode"
+                        ? (upstreamNode as RoleNodeType).data.roleId
+                        : (upstreamNode?.type === "startNode" || upstreamNode?.id === "start")
+                          ? "start"
+                          : null;
+                      if (fromRoleId && projectId) {
+                        invoke("update_condition_expr", {
+                          projectId,
+                          fromRoleId,
+                          conditionExpr: newVal,
+                        }).catch(() => {});
+                        invoke("sync_workflow_to_file", { projectId }).catch(() => {});
+                      }
+                    }, 500);
                   }}
                 />
               </div>

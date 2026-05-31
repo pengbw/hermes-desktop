@@ -370,7 +370,7 @@
   "studio.detail": "詳情",
   "studio.archive": "歸檔",
   "studio.archiveConfirm": "確定歸檔該專案嗎？",
-  "studio.deleteConfirm": "確定刪除該專案嗎？此操作不可撤銷。",
+  "studio.deleteConfirm": "確定刪除該專案嗎？專案相關的所有數據（包括產物、任務、工作流、消息等）將被永久刪除，此操作不可撤銷。",
   "studio.tag.keyProject": "重點專案",
   "studio.tag.normal": "一般專案",
   "studio.virtualOffice": "虛擬辦公",

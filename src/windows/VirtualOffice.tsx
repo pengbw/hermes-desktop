@@ -273,13 +273,6 @@ const VirtualOfficeInner = forwardRef<VirtualOfficeHandle, VirtualOfficeProps>(
         <div className={styles.office3dControls}>
           <button
             className={styles.office3dCtrlBtn}
-            onClick={() => setSpeakingMember(members[0]?.id || null)}
-            title={t("office.speak")}
-          >
-            🎤
-          </button>
-          <button
-            className={styles.office3dCtrlBtn}
             onClick={() => {
               const s = sceneRef.current;
               if (s) s.setTimeOfDay(s.tod >= 0.8 ? 0.1 : s.tod + 0.2);

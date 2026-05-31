@@ -154,15 +154,6 @@ function StudioPanel() {
     }
   };
 
-  const handleArchiveProject = async (project: ProjectItem) => {
-    try {
-      await invoke("update_project", { req: { id: project.id, status: "archived" } });
-      loadProjects();
-    } catch {
-      // console.error("Failed to archive project:", err);
-    }
-  };
-
   const handleSelectProject = async (project: ProjectItem) => {
     setSelectedProject(project);
     try {
@@ -301,7 +292,6 @@ function StudioPanel() {
         onContextMenu={() => {}}
         onEditProject={handleEditProject}
         onOpenSettings={handleOpenSettings}
-        onArchiveProject={handleArchiveProject}
         onDeleteProject={handleDeleteProject}
         t={t}
       />

@@ -369,7 +369,7 @@
   "studio.detail": "Detail",
   "studio.archive": "Archive",
   "studio.archiveConfirm": "Are you sure you want to archive this project?",
-  "studio.deleteConfirm": "Are you sure you want to delete this project? This action cannot be undone.",
+  "studio.deleteConfirm": "Are you sure you want to delete this project? All related data (including artifacts, tasks, workflows, messages, etc.) will be permanently deleted. This action cannot be undone.",
   "studio.tag.keyProject": "Key Project",
   "studio.tag.normal": "Normal Project",
   "studio.virtualOffice": "Virtual Office",
