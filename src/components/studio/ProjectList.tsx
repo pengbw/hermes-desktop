@@ -112,9 +112,7 @@ function ProjectList({
           <button
             className={styles.studioContextMenuItem + " " + styles.danger}
             onClick={() => {
-              if (window.confirm(t("studio.deleteConfirm"))) {
-                onDeleteProject(contextMenuProject);
-              }
+              onDeleteProject(contextMenuProject);
               setContextMenuPos(null);
               setContextMenuProject(null);
             }}

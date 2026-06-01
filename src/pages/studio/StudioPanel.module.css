@@ -7587,3 +7587,73 @@
 [data-theme="dark"] .office3dMemberInfoValue {
   color: rgba(255, 255, 255, 0.8);
 }
+
+.studioConfirmModal {
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  padding: 28px 24px 20px;
+}
+
+.studioConfirmIcon {
+  font-size: 36px;
+  margin-bottom: 12px;
+}
+
+.studioConfirmMsg {
+  font-size: 13px;
+  color: var(--text-secondary, #999);
+  text-align: center;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+
+.studioConfirmProjectName {
+  display: block;
+  margin-top: 8px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  font-size: 14px;
+}
+
+.studioConfirmActions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.studioConfirmBtn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.studioConfirmBtnCancel {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  color: var(--text-secondary, #999);
+}
+
+.studioConfirmBtnCancel:hover {
+  border-color: var(--primary-color, #6c5ce7);
+  color: var(--primary-color, #6c5ce7);
+}
+
+.studioConfirmBtnDanger {
+  background: #ef5350;
+  border: none;
+  color: #fff;
+}
+
+.studioConfirmBtnDanger:hover {
+  opacity: 0.85;
+}

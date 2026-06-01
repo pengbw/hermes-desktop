@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import styles from "./StudioPanel.module.css";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -44,6 +45,8 @@ function StudioPanel() {
   const [previewFile, setPreviewFile] = useState<{ path: string; name: string } | null>(null);
   const [projectMessages, setProjectMessages] = useState<ProjectMessage[]>([]);
   const [projectTasks, setProjectTasks] = useState<ProjectTask[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTargetProject, setDeleteTargetProject] = useState<ProjectItem | null>(null);
 
   useEffect(() => {
     let permissionGranted = false;
@@ -143,14 +146,23 @@ function StudioPanel() {
   };
 
   const handleDeleteProject = async (project: ProjectItem) => {
+    setDeleteTargetProject(project);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!deleteTargetProject) return;
     try {
-      await invoke("delete_project", { id: project.id });
-      if (selectedProject?.id === project.id) {
+      await invoke("delete_project", { id: deleteTargetProject.id });
+      if (selectedProject?.id === deleteTargetProject.id) {
         setSelectedProject(null);
       }
       loadProjects();
     } catch {
       // console.error("Failed to delete project:", err);
+    } finally {
+      setShowDeleteConfirm(false);
+      setDeleteTargetProject(null);
     }
   };
 
@@ -263,6 +275,44 @@ function StudioPanel() {
             onClose={() => setPreviewFile(null)}
           />
         )}
+        {showDeleteConfirm && (
+          <div
+            className={styles.studioModalOverlay}
+            onClick={() => {
+              setShowDeleteConfirm(false);
+              setDeleteTargetProject(null);
+            }}
+          >
+            <div className={styles.studioConfirmModal} onClick={(e) => e.stopPropagation()}>
+              <div className={styles.studioConfirmIcon}>⚠️</div>
+              <div className={styles.studioConfirmMsg}>
+                {t("studio.deleteConfirm")}
+                {deleteTargetProject && (
+                  <span className={styles.studioConfirmProjectName}>
+                    "{deleteTargetProject.name}"
+                  </span>
+                )}
+              </div>
+              <div className={styles.studioConfirmActions}>
+                <button
+                  className={styles.studioConfirmBtn + " " + styles.studioConfirmBtnCancel}
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setDeleteTargetProject(null);
+                  }}
+                >
+                  {t("studio.cancel")}
+                </button>
+                <button
+                  className={styles.studioConfirmBtn + " " + styles.studioConfirmBtnDanger}
+                  onClick={confirmDeleteProject}
+                >
+                  {t("studio.delete")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </>
     );
   }
@@ -334,6 +384,45 @@ function StudioPanel() {
           fileName={previewFile.name}
           onClose={() => setPreviewFile(null)}
         />
+      )}
+
+      {showDeleteConfirm && (
+        <div
+          className={styles.studioModalOverlay}
+          onClick={() => {
+            setShowDeleteConfirm(false);
+            setDeleteTargetProject(null);
+          }}
+        >
+          <div className={styles.studioConfirmModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.studioConfirmIcon}>⚠️</div>
+            <div className={styles.studioConfirmMsg}>
+              {t("studio.deleteConfirm")}
+              {deleteTargetProject && (
+                <span className={styles.studioConfirmProjectName}>
+                  "{deleteTargetProject.name}"
+                </span>
+              )}
+            </div>
+            <div className={styles.studioConfirmActions}>
+              <button
+                className={styles.studioConfirmBtn + " " + styles.studioConfirmBtnCancel}
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteTargetProject(null);
+                }}
+              >
+                {t("studio.cancel")}
+              </button>
+              <button
+                className={styles.studioConfirmBtn + " " + styles.studioConfirmBtnDanger}
+                onClick={confirmDeleteProject}
+              >
+                {t("studio.delete")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
