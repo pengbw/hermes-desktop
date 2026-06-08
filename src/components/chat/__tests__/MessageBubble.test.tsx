@@ -127,11 +127,14 @@ describe("MessageBubble", () => {
   it("applies correct CSS class based on role", () => {
     const { container, rerender } = render(<MessageBubble message={baseMessage} />);
 
-    expect(container.querySelector(".message-row.user")).toBeInTheDocument();
+    // User messages have flex-row-reverse class to align right
+    const userRow = container.querySelector(".flex-row-reverse");
+    expect(userRow).toBeInTheDocument();
 
     const assistantMsg: Message = { ...baseMessage, role: "assistant" };
     rerender(<MessageBubble message={assistantMsg} />);
 
-    expect(container.querySelector(".message-row.assistant")).toBeInTheDocument();
+    // Assistant messages do NOT have flex-row-reverse
+    expect(container.querySelector(".flex-row-reverse")).not.toBeInTheDocument();
   });
 });

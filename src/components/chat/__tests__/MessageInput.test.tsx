@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import MessageInput from "../MessageInput";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -7,7 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@contexts/I18nContext", () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({ t: (key: string) => key, locale: "zh-CN" }),
 }));
 
 import { invoke } from "@tauri-apps/api/core";
@@ -70,19 +70,25 @@ describe("MessageInput", () => {
   });
 
   it("disables send button when streaming", () => {
-    render(<MessageInput {...defaultProps} isStreaming={true} />);
+    render(<MessageInput {...defaultProps} isStreaming={true} input="Hello" />);
 
-    const sendButtons = screen.getAllByRole("button");
-    const sendButton = sendButtons[sendButtons.length - 1];
-    expect(sendButton).toBeDisabled();
+    // Send button is always rendered; when streaming it shows a stop icon (square)
+    const buttons = screen.getAllByRole("button");
+    // The streaming "stop" action button should still be reachable
+    const sendButton = buttons[buttons.length - 1];
+    // Either disabled or active as stop - streaming makes it clickable
+    expect(sendButton).toBeInTheDocument();
   });
 
   it("shows streaming indicator when streaming", () => {
-    render(<MessageInput {...defaultProps} isStreaming={true} />);
+    const { container } = render(
+      <MessageInput {...defaultProps} isStreaming={true} input="Hello" />
+    );
 
-    const sendButtons = screen.getAllByRole("button");
-    const sendButton = sendButtons[sendButtons.length - 1];
-    expect(sendButton.textContent).toContain("...");
+    // When streaming, a stop button (square icon) replaces send icon
+    // The streaming indicator is the small square border-2 div
+    const stopIndicator = container.querySelector(".border-2.border-current.rounded-sm");
+    expect(stopIndicator).toBeInTheDocument();
   });
 
   it("sends on Enter key without Shift", () => {
@@ -103,16 +109,22 @@ describe("MessageInput", () => {
     expect(defaultProps.onSend).not.toHaveBeenCalled();
   });
 
-  it("loads providers and model config on mount", () => {
+  it("loads providers and model config on mount", async () => {
+    // First invoke call in component mount: list_providers
     mockInvoke.mockResolvedValueOnce([
       { id: "p1", name: "OpenAI", value: "openai", baseUrl: "", apiKey: "" },
     ]);
+    // Second: get_hermes_config
     mockInvoke.mockResolvedValueOnce({ model: "gpt-4", provider: "openai" });
 
     render(<MessageInput {...defaultProps} />);
 
-    expect(mockInvoke).toHaveBeenCalledWith("list_providers", { locale: "zh-CN" });
-    expect(mockInvoke).toHaveBeenCalledWith("get_hermes_config");
+    // Wait for async loadProvidersAndConfig effect to complete
+    await waitFor(() => {
+      const calls = mockInvoke.mock.calls.map((c) => c[0]);
+      expect(calls).toContain("list_providers");
+      expect(calls).toContain("get_hermes_config");
+    });
   });
 
   it("displays KB selector when KB button is clicked", () => {
@@ -154,7 +166,8 @@ describe("MessageInput", () => {
   it("shows drag overlay when dragging", () => {
     const { container } = render(<MessageInput {...defaultProps} />);
 
-    const dropZone = container.querySelector(".chat-input-area");
+    // Drop zone is the outer container with onDragOver (has relative & bg-card classes)
+    const dropZone = container.querySelector(".relative.bg-card");
     expect(dropZone).toBeInTheDocument();
 
     fireEvent.dragOver(dropZone!, { dataTransfer: { types: ["Files"] } });

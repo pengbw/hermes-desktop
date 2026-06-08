@@ -83,7 +83,7 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 
 ### 安装引导
 
-![安装引导](./docs/screenshots/07-install.jpg)
+![安装引导](./docs/screenshots/install_1.png)
 
 > 📥 安装完成后，进入 **设置 → 供应商管理** 配置 API Key → 选择供应商 → 配置模型 → 保存，即可开始使用。
 
@@ -125,19 +125,19 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 
 **工作流设计**
 
-![工作流设计](./docs/screenshots/project-workflow.png)
+![工作流设计](./docs/screenshots/project_workflow.png)
 
 > 可视化编排 AI 角色协作流程：开始 → 节点角色 → 审批门控 → 结束。支持条件分支与并行汇聚。
 
 **多角色协作**
 
-![多角色协作](./docs/screenshots/11-studio-collaboration.jpg)
+![多角色协作](./docs/screenshots/studio_detail.png)
 
 > 内容策划、撰稿人、编辑、审核员实时协同，AI 角色之间自动传递产物，审核意见可追溯。
 
 **角色管理**
 
-![角色管理](./docs/screenshots/setting_role.png)
+![角色管理](./docs/screenshots/settings_role.png)
 
 > 每个角色独立配置职责描述、专属技能与工作进度，任务分工一目了然。
 
@@ -155,7 +155,7 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 
 **通信设置**
 
-![通信设置](./docs/screenshots/settings-channels.png)
+![通信设置](./docs/screenshots/settings_channels.png)
 
 > 一键接入微信、QQ、元宝、钉钉、飞书等平台，消息收发与 AI 回复无缝打通。
 
@@ -201,6 +201,7 @@ Hermes Desktop 不是又一个聊天窗口——它给你的 AI 助理赋予了�
 ```bash
 git clone https://github.com/pengbw/hermes-desktop.git
 cd hermes-desktop
+node ./scripts/download_hermes_source.cjs
 npm install
 npm run tauri dev
 ```

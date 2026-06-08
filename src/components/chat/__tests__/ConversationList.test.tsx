@@ -75,19 +75,30 @@ describe("ConversationList", () => {
   });
 
   it("calls onDeleteConversation when delete button is clicked", () => {
-    render(<ConversationList {...defaultProps} />);
+    const { container } = render(<ConversationList {...defaultProps} />);
 
-    const deleteButtons = screen.getAllByText("×");
-    fireEvent.click(deleteButtons[0]);
+    // Delete button is the trash icon (lucide Trash2) - find via class
+    const deleteButtons = container.querySelectorAll("button");
+    // First matching delete button belongs to first conv
+    const deleteBtn = Array.from(deleteButtons).find((b) =>
+      b.className.includes("group-hover:opacity-60")
+    );
+    expect(deleteBtn).toBeTruthy();
+    fireEvent.click(deleteBtn!);
 
     expect(defaultProps.onDeleteConversation).toHaveBeenCalled();
   });
 
   it("highlights the current conversation", () => {
-    render(<ConversationList {...defaultProps} currentConversationId="conv-1" />);
+    const { container } = render(
+      <ConversationList {...defaultProps} currentConversationId="conv-1" />
+    );
 
-    const activeItem = screen.getByText("Chat about React").closest(".conversation-item");
-    expect(activeItem?.classList.contains("active")).toBe(true);
+    // Active item has border-l-primary class
+    const activeItem = Array.from(container.querySelectorAll("div")).find((el) =>
+      el.className.includes("border-l-primary")
+    );
+    expect(activeItem).toBeTruthy();
   });
 
   it("filters conversations by search", () => {
@@ -126,21 +137,23 @@ describe("ConversationList", () => {
   });
 
   it("enters rename mode on double click", () => {
-    render(<ConversationList {...defaultProps} />);
+    const { container } = render(<ConversationList {...defaultProps} />);
 
     fireEvent.doubleClick(screen.getByText("Chat about React"));
 
-    const input = document.querySelector(".conv-rename-input") as HTMLInputElement;
+    // Rename input is a bare <input> with border-primary class (distinguishes from search Input component)
+    const input = container.querySelector("input.border-primary") as HTMLInputElement;
     expect(input).toBeInTheDocument();
     expect(input?.value).toBe("Chat about React");
   });
 
   it("commits rename on Enter key", () => {
-    render(<ConversationList {...defaultProps} />);
+    const { container } = render(<ConversationList {...defaultProps} />);
 
     fireEvent.doubleClick(screen.getByText("Chat about React"));
 
-    const input = document.querySelector(".conv-rename-input") as HTMLInputElement;
+    const input = container.querySelector("input.border-primary") as HTMLInputElement;
+    expect(input).toBeInTheDocument();
     fireEvent.change(input, { target: { value: "Renamed Chat" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -148,15 +161,17 @@ describe("ConversationList", () => {
   });
 
   it("cancels rename on Escape key", () => {
-    render(<ConversationList {...defaultProps} />);
+    const { container } = render(<ConversationList {...defaultProps} />);
 
     fireEvent.doubleClick(screen.getByText("Chat about React"));
 
-    const input = document.querySelector(".conv-rename-input") as HTMLInputElement;
+    // Rename input has the border-primary class (distinguishes from search input)
+    const input = container.querySelector("input.border-primary") as HTMLInputElement;
     expect(input).toBeInTheDocument();
     fireEvent.keyDown(input, { key: "Escape" });
 
     expect(defaultProps.onRenameConversation).not.toHaveBeenCalled();
-    expect(document.querySelector(".conv-rename-input")).not.toBeInTheDocument();
+    // After Escape, rename input is removed
+    expect(container.querySelector("input.border-primary")).not.toBeInTheDocument();
   });
 });
