@@ -2,6 +2,7 @@ import type { ProjectTemplateDetail } from "@core/tauri/types";
 import styles from "@pages/studio/StudioPanel.module.css";
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useToast } from "@contexts/ToastContext";
 import { projectIcons } from "../../constants/projectTemplates";
 import { useI18n } from "@contexts/I18nContext";
 
@@ -21,6 +22,7 @@ const TRANSITION_TYPE_LABELS: Record<string, { label: string; color: string }> =
 
 export default function NewProjectModal({ visible, onClose, onCreated, t }: NewProjectModalProps) {
   const { locale } = useI18n();
+  const toast = useToast();
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
   const [newProjectIcon, setNewProjectIcon] = useState("💼");
@@ -109,7 +111,7 @@ export default function NewProjectModal({ visible, onClose, onCreated, t }: NewP
       onCreated();
     } catch (err) {
       // console.error("Failed to create project:", err);
-      alert(t("studio.createFailed") + ": " + err);
+      toast.error(t("studio.createFailed") + ": " + err);
     }
   };
 

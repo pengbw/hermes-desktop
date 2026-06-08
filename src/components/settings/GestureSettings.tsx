@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useToast } from "@contexts/ToastContext";
 import type { AvatarGesture } from "@core/types";
 
 interface GestureSettingsProps {
@@ -26,6 +27,7 @@ export default function GestureSettings({
   onShowEditor,
   t,
 }: GestureSettingsProps) {
+  const toast = useToast();
   const gestureFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImportGestureJson = async () => {
@@ -68,7 +70,7 @@ export default function GestureSettings({
         }
 
         if (Object.keys(poseData).length === 0) {
-          alert("未识别到有效的骨骼姿势数据，请检查 JSON 格式");
+          toast.warning("未识别到有效的骨骼姿势数据，请检查 JSON 格式");
           return;
         }
 
@@ -83,9 +85,9 @@ export default function GestureSettings({
           req: { name: gestureName, targetJson, duration, lookAtX, lookAtY, tilt },
         });
         onRefresh();
-        alert(`成功导入动作: ${gestureName}`);
+        toast.success(`成功导入动作: ${gestureName}`);
       } catch (e) {
-        alert("导入失败: " + String(e));
+        toast.error("导入失败: " + String(e));
       }
     };
     fileInput.click();

@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../../contexts/I18nContext";
+import { useToast } from "@contexts/ToastContext";
 import type { HermesConfigData, AvatarGesture } from "@core/types";
 import { CardManagerPanel } from "@pages/cards";
 const GestureEditor = lazy(() => import("../../windows/GestureEditor"));
@@ -19,6 +20,7 @@ declare const __APP_VERSION__: string;
 
 function SettingsPanel() {
   const { locale, setLocale, t } = useI18n();
+  const toast = useToast();
   const [config, setConfig] = useState<HermesConfigData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -155,7 +157,7 @@ function SettingsPanel() {
       await invoke("delete_provider", { id });
       loadProviders();
     } catch (e) {
-      alert("删除供应商失败: " + String(e));
+      toast.error("删除供应商失败: " + String(e));
     }
   };
 
@@ -688,7 +690,7 @@ function SettingsPanel() {
                 setShowGestureModal(false);
                 loadGestures();
               } catch (e) {
-                alert("保存失败: " + String(e));
+                toast.error("保存失败: " + String(e));
               }
             }}
           />

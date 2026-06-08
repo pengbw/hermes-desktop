@@ -3,6 +3,7 @@ import styles from "./KnowledgePanel.module.css";
 import { useState, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { useToast } from "@contexts/ToastContext";
 import KnowledgeBaseList from "@components/knowledge/KnowledgeBaseList";
 import KnowledgeFileList from "@components/knowledge/KnowledgeFileList";
 import KnowledgeSearch from "@components/knowledge/KnowledgeSearch";
@@ -12,6 +13,7 @@ import type { KnowledgeBase, KnowledgeFile } from "@core/types";
 import { useKnowledgeStore } from "../../stores/knowledgeStore";
 
 function KnowledgePanel({ t }: { t: (key: string) => string }) {
+  const toast = useToast();
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [selectedKb, setSelectedKb] = useState<KnowledgeBase | null>(null);
   const [kbSearchQuery, setKbSearchQuery] = useState("");
@@ -223,7 +225,7 @@ function KnowledgePanel({ t }: { t: (key: string) => string }) {
         });
       }
     } catch (e) {
-      alert("更新知识库失败: " + e);
+      toast.error("更新知识库失败: " + e);
     }
   };
 

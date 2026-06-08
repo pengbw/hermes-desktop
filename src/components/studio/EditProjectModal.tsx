@@ -2,6 +2,7 @@ import type { ProjectItem } from "@core/types";
 import styles from "@pages/studio/StudioPanel.module.css";
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useToast } from "@contexts/ToastContext";
 import { projectIcons } from "../../constants/projectTemplates";
 
 interface EditProjectModalProps {
@@ -19,6 +20,7 @@ export default function EditProjectModal({
   onSaved,
   t,
 }: EditProjectModalProps) {
+  const toast = useToast();
   const [editProjectName, setEditProjectName] = useState("");
   const [editProjectDesc, setEditProjectDesc] = useState("");
   const [editProjectIcon, setEditProjectIcon] = useState("💼");
@@ -52,7 +54,7 @@ export default function EditProjectModal({
       handleClose();
       onSaved();
     } catch (err) {
-      alert(err);
+      toast.error(String(err));
     }
   };
 

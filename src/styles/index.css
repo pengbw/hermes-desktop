@@ -409,3 +409,74 @@ code,
   --density-gap-md: 1rem;
   --density-gap-lg: 1.5rem;
 }
+
+/* Global toast container */
+.hermes-toast-container {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 90vw;
+}
+
+.hermes-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: var(--card, #fff);
+  color: var(--text, #222);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  pointer-events: auto;
+  cursor: pointer;
+  animation: hermes-toast-in 0.2s ease-out;
+  min-width: 200px;
+  max-width: 480px;
+}
+
+@keyframes hermes-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hermes-toast-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.hermes-toast-msg {
+  flex: 1;
+  word-break: break-word;
+}
+
+.hermes-toast-success {
+  border-left: 3px solid #22c55e;
+}
+
+.hermes-toast-error {
+  border-left: 3px solid #ef4444;
+}
+
+.hermes-toast-warning {
+  border-left: 3px solid #f59e0b;
+}
+
+.hermes-toast-info {
+  border-left: 3px solid #3b82f6;
+}

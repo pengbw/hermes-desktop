@@ -25,6 +25,7 @@ import {
 import dagre from "dagre";
 import "@xyflow/react/dist/style.css";
 import { invoke } from "@tauri-apps/api/core";
+import { useToast } from "@contexts/ToastContext";
 import type { AiRoleItem, ProjectMember, ProjectWorkflow, WorkflowGroup } from "@core/types";
 
 type WorkflowData = ProjectWorkflow;
@@ -955,6 +956,7 @@ function WorkflowDesignerInner({
   projectMembers: ProjectMember[];
   t: (key: string) => string;
 }) {
+  const toast = useToast();
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [workflows, setWorkflows] = useState<WorkflowData[]>([]);
@@ -1898,7 +1900,7 @@ function WorkflowDesignerInner({
                         }
                         loadWorkflows();
                       } catch (err) {
-                        alert(String(err));
+                        toast.error(String(err));
                       }
                     }}
                     title="删除此流程"
@@ -1976,9 +1978,9 @@ function WorkflowDesignerInner({
               onClick={() => {
                 const validation = validateWorkflow(nodes, edges);
                 if (validation.valid) {
-                  alert("✅ 流程校验通过，所有节点均可连通到结束节点");
+                  toast.success("✅ 流程校验通过，所有节点均可连通到结束节点");
                 } else {
-                  alert("❌ 流程校验失败：\n" + validation.error);
+                  toast.error("❌ 流程校验失败：\n" + validation.error);
                 }
               }}
               title="验证工作流完整性"
@@ -2036,7 +2038,7 @@ function WorkflowDesignerInner({
               onClick={async () => {
                 const validation = validateWorkflow(nodes, edges);
                 if (!validation.valid) {
-                  alert("流程校验失败：\n" + validation.error);
+                  toast.error("流程校验失败：\n" + validation.error);
                   if (activeGroupId) {
                     invoke("set_workflow_group_valid", { id: activeGroupId, isValid: false }).catch(
                       console.error
@@ -2161,10 +2163,10 @@ function WorkflowDesignerInner({
                     );
                   }
                   await loadWorkflows();
-                  alert("同步成功");
+                  toast.success("同步成功");
                 } catch (err) {
                   // console.error("Failed to sync workflow:", err);
-                  alert("同步失败: " + err);
+                  toast.error("同步失败: " + err);
                 }
               }}
               title="同步工作流到配置文件"
@@ -2302,9 +2304,7 @@ function WorkflowDesignerInner({
                       )
                     );
                     setSelectedNode((prev) =>
-                      prev
-                        ? { ...prev, data: { ...prev.data, conditionDesc: newVal } }
-                        : null
+                      prev ? { ...prev, data: { ...prev.data, conditionDesc: newVal } } : null
                     );
                     if (conditionSaveTimer.current) clearTimeout(conditionSaveTimer.current);
                     conditionSaveTimer.current = window.setTimeout(() => {
@@ -2312,11 +2312,12 @@ function WorkflowDesignerInner({
                       const upstreamNode = upstreamEdge
                         ? nodes.find((n) => n.id === upstreamEdge.source)
                         : undefined;
-                      const fromRoleId = upstreamNode?.type === "roleNode"
-                        ? (upstreamNode as RoleNodeType).data.roleId
-                        : (upstreamNode?.type === "startNode" || upstreamNode?.id === "start")
-                          ? "start"
-                          : null;
+                      const fromRoleId =
+                        upstreamNode?.type === "roleNode"
+                          ? (upstreamNode as RoleNodeType).data.roleId
+                          : upstreamNode?.type === "startNode" || upstreamNode?.id === "start"
+                            ? "start"
+                            : null;
                       if (fromRoleId && projectId) {
                         invoke("update_condition_expr", {
                           projectId,

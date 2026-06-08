@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useToast } from "@contexts/ToastContext";
 import type {
   WorkflowRun,
   WorkflowRunStep as _WorkflowRunStep,
@@ -29,6 +30,7 @@ const STEP_STATUS_MAP: Record<string, { label: string; color: string }> = {
 };
 
 function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
+  const toast = useToast();
   const [runs, setRuns] = useState<WorkflowRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState<WorkflowRunStatus | null>(null);
@@ -113,7 +115,7 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
       setSelectedRunId(run.id);
     } catch (err) {
       // console.error("Failed to start workflow run:", err);
-      alert("启动工作流失败: " + err);
+      toast.error("启动工作流失败: " + err);
     }
   };
 
@@ -139,7 +141,7 @@ function WorkflowRunPanel({ projectId, allRoles }: WorkflowRunPanelProps) {
 
   const handleConfirmStep = async (runId: string, approved: boolean) => {
     if (!approved && !confirmComment.trim()) {
-      alert("请先填写驳回意见");
+      toast.warning("请先填写驳回意见");
       return;
     }
     try {

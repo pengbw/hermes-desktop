@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useToast } from "@contexts/ToastContext";
 import ProviderIcon from "./ProviderIcon";
 
 interface Provider {
@@ -39,6 +40,7 @@ export default function ProviderModal({
   onDelete,
   t,
 }: ProviderModalProps) {
+  const toast = useToast();
   const [providerForm, setProviderForm] = useState({
     name: "",
     value: "",
@@ -79,7 +81,7 @@ export default function ProviderModal({
       }
       onSave();
     } catch (e) {
-      alert("保存供应商失败: " + String(e));
+      toast.error("保存供应商失败: " + String(e));
     }
   };
 

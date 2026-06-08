@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { TauriCommands } from "@services/tauri/TauriCommands";
+import { useToast } from "@contexts/ToastContext";
 import type { McpServerInfo } from "@core/tauri/types";
 
 interface McpSettingsProps {
@@ -410,6 +411,7 @@ function McpServerModal({
 }
 
 export default function McpSettings({ t }: McpSettingsProps) {
+  const toast = useToast();
   const [servers, setServers] = useState<McpServerInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -453,7 +455,7 @@ export default function McpSettings({ t }: McpSettingsProps) {
       setEditingServer(null);
       loadServers();
     } catch (e) {
-      alert(String(e));
+      toast.error(String(e));
     }
   };
 
@@ -463,7 +465,7 @@ export default function McpSettings({ t }: McpSettingsProps) {
       await TauriCommands.mcpRemoveServer(name);
       loadServers();
     } catch (e) {
-      alert(String(e));
+      toast.error(String(e));
     }
   };
 
@@ -485,7 +487,7 @@ export default function McpSettings({ t }: McpSettingsProps) {
       await TauriCommands.mcpEnableServer(name, enabled);
       loadServers();
     } catch (e) {
-      alert(String(e));
+      toast.error(String(e));
     }
   };
 

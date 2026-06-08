@@ -5,6 +5,7 @@ import "./styles/themes.css";
 
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { I18nProvider } from "./contexts/I18nContext";
+import { ToastProvider } from "./contexts/ToastContext";
 import MainWindow from "./windows/MainWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -30,7 +31,9 @@ async function bootstrap() {
         <React.StrictMode>
           <ThemeProvider>
             <I18nProvider>
-              <AvatarWindow />
+              <ToastProvider>
+                <AvatarWindow />
+              </ToastProvider>
             </I18nProvider>
           </ThemeProvider>
         </React.StrictMode>
@@ -44,7 +47,9 @@ async function bootstrap() {
         <React.StrictMode>
           <ThemeProvider>
             <I18nProvider>
-              <ChatWindow />
+              <ToastProvider>
+                <ChatWindow />
+              </ToastProvider>
             </I18nProvider>
           </ThemeProvider>
         </React.StrictMode>
@@ -54,7 +59,9 @@ async function bootstrap() {
         <React.StrictMode>
           <ThemeProvider>
             <I18nProvider>
-              <MainWindow />
+              <ToastProvider>
+                <MainWindow />
+              </ToastProvider>
             </I18nProvider>
           </ThemeProvider>
         </React.StrictMode>

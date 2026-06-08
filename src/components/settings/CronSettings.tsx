@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { TauriCommands } from "@services/tauri/TauriCommands";
+import { useToast } from "@contexts/ToastContext";
 import type { CronJob, CronJobOutput } from "@core/tauri/types";
 import type { SkillItem } from "@core/types";
 
@@ -421,6 +422,7 @@ function CronOutputModal({
 }
 
 export default function CronSettings({ t }: CronSettingsProps) {
+  const toast = useToast();
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -474,7 +476,7 @@ export default function CronSettings({ t }: CronSettingsProps) {
       setEditingJob(null);
       loadJobs();
     } catch (e) {
-      alert(String(e));
+      toast.error(String(e));
     }
   };
 
@@ -484,7 +486,7 @@ export default function CronSettings({ t }: CronSettingsProps) {
       await TauriCommands.cronDeleteJob(id);
       loadJobs();
     } catch (e) {
-      alert(String(e));
+      toast.error(String(e));
     }
   };
 
@@ -497,7 +499,7 @@ export default function CronSettings({ t }: CronSettingsProps) {
         setOutputJob(updatedJob);
       }
     } catch (e) {
-      alert(String(e));
+      toast.error(String(e));
     }
   };
 
@@ -506,7 +508,7 @@ export default function CronSettings({ t }: CronSettingsProps) {
       await TauriCommands.cronPauseJob(id);
       loadJobs();
     } catch (e) {
-      alert(String(e));
+      toast.error(String(e));
     }
   };
 
@@ -515,7 +517,7 @@ export default function CronSettings({ t }: CronSettingsProps) {
       await TauriCommands.cronResumeJob(id);
       loadJobs();
     } catch (e) {
-      alert(String(e));
+      toast.error(String(e));
     }
   };
 
