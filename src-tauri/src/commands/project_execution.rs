@@ -1143,19 +1143,42 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
             // After role finishes work, handle workflow-associated artifacts
             let now = chrono::Utc::now().timestamp_millis();
 
-            // Check if this role is part of any workflow in this project
-            let is_in_workflow: bool = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM project_workflows WHERE project_id = ? AND (from_role_id = ? OR to_role_id = ?)"
-            )
-            .bind(&rec_project)
-            .bind(&rec_role)
-            .bind(&rec_role)
-            .fetch_one(&pool)
-            .await
-            .unwrap_or(0) > 0;
+            // 判断当前任务是否走流程模式：依据任务自身的 workflow_group_id
+            // （而非角色是否出现在 project_workflows 表中，否则自由分配模式会被误判为流程中）
+            // 空字符串视为无流程（前端未选流程时会传空串而非 null）
+            let (task_workflow_group_id, fallback_task_id): (Option<String>, Option<String>) = if !rec_task_id.is_empty() {
+                let r = sqlx::query_scalar("SELECT workflow_group_id FROM project_tasks WHERE id = ?")
+                    .bind(&rec_task_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .ok()
+                    .flatten();
+                (r, Some(rec_task_id.clone()))
+            } else {
+                // rec_task_id 为空时，回退查询：找当前项目+该角色+running 状态的最新任务
+                let row: Option<(Option<String>, String)> = sqlx::query_as(
+                    "SELECT workflow_group_id, id FROM project_tasks WHERE project_id = ? AND assignee = ? AND status = 'running' ORDER BY updated_at DESC LIMIT 1"
+                )
+                .bind(&rec_project)
+                .bind(&rec_role)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten();
+                match row {
+                    Some((gid, tid)) => (gid, Some(tid)),
+                    None => (None, None),
+                }
+            };
+            let is_in_workflow = task_workflow_group_id
+                .as_deref()
+                .map(|s| !s.is_empty())
+                .unwrap_or(false);
+            log::info!("auto_delegate_chat: is_in_workflow={}, task_id={:?}", is_in_workflow, fallback_task_id);
 
             if !is_in_workflow {
-                if let Some(ref tid) = task_id {
+                let mut marked_task_id: Option<String> = None;
+                if let Some(ref tid) = fallback_task_id {
                     let task_result = sqlx::query(
                         "UPDATE project_tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ? AND status = 'running'"
                     )
@@ -1168,27 +1191,27 @@ pub async fn auto_delegate_chat(app: AppHandle, project_id: String, from_role_id
                     match task_result {
                         Ok(r) if r.rows_affected() > 0 => {
                             log::info!("auto_delegate_chat: role {} not in workflow, marked task {} as done", rec_role, tid);
+                            marked_task_id = Some(tid.clone());
                         }
-                        _ => {}
+                        _ => {
+                            log::warn!("auto_delegate_chat: task update rows_affected=0, task_id={}", tid);
+                        }
                     }
                 } else {
-                    let task_result = sqlx::query(
-                        "UPDATE project_tasks SET status = 'done', completed_at = ?, updated_at = ? WHERE project_id = ? AND assignee = ? AND status = 'running'"
-                    )
-                    .bind(now)
-                    .bind(now)
-                    .bind(&rec_project)
-                    .bind(&rec_role)
-                    .execute(&pool)
-                    .await;
-
-                    match task_result {
-                        Ok(r) if r.rows_affected() > 0 => {
-                            log::info!("auto_delegate_chat: role {} not in workflow, marked task as done", rec_role);
-                        }
-                        _ => {}
-                    }
+                    log::warn!("auto_delegate_chat: no running task found for project {} role {}", rec_project, rec_role);
                 }
+
+                // 通知前端：任务状态已变为 done，让前端刷新任务列表
+                if let Some(ref tid) = marked_task_id {
+                    let _ = rec_app.emit("task_status_changed", serde_json::json!({
+                        "projectId": rec_project,
+                        "taskId": tid,
+                        "newStatus": "done",
+                    }));
+                }
+                // debounced emit 让 ProjectDetail 的 onProjectDataChanged 监听器刷新 tasks 列表
+                crate::commands::helpers::debounced_emit(&rec_app, &rec_project, "tasks");
+                crate::commands::helpers::debounced_emit(&rec_app, &rec_project, "artifacts");
             }
 
             // Determine how the current role's artifacts should be handled.

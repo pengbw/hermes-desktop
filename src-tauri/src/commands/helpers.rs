@@ -860,6 +860,23 @@ pub(crate) fn ensure_gateway_config(app: &AppHandle) {
         }
     }
 
+    // v0.15.1+ 兼容：api_server.api_key 在所有场景（含 loopback）都被强制要求
+    // 桌面端单用户场景下，若缺失则从 DB 读取或自动生成一个，避免 Gateway 启动失败
+    // 注意：ensure_gateway_config 是同步函数，不能在此做 DB 操作
+    // api_key 校验由 ensure_api_server_key_async() 在 setup hook 的 async 上下文中完成
+    let needs_api_key = !config_content.contains("api_server:")
+        || !config_content.contains("api_key");
+    if needs_api_key {
+        log::info!("api_server.api_key missing, will be set by ensure_api_server_key_async");
+    }
+
+    // v0.17.0 兼容：multiplex_profiles 默认关闭，但用户若手动开启会阻止
+    // `hermes gateway run` 单独启动。桌面端只跑一个 Profile，确保关闭
+    if config_content.contains("multiplex_profiles") {
+        log::warn!("Detected gateway.multiplex_profiles in config, disabling for desktop single-profile mode");
+        let _ = hermes_config_set("gateway.multiplex_profiles", "false");
+    }
+
     if !config_content.contains("max_iterations") {
         match hermes_config_set("agent.max_iterations", "10") {
             Ok(_) => {
@@ -1831,4 +1848,51 @@ pub(crate) async fn stop_hermes_run(
     }
 
     Ok(())
+}
+
+/// v0.15.1+ 兼容：api_server.api_key 在所有场景（含 loopback）都被强制要求
+/// 桌面端单用户场景下，若缺失则从 DB 读取或自动生成一个，避免 Gateway 启动失败
+/// 此函数必须在 async 上下文中调用（setup hook 的 block_on 块内）
+pub(crate) async fn ensure_api_server_key_async(app: &AppHandle) {
+    let hermes_home = hermes_home_dir();
+    let config_path = format!("{}{}config.yaml", hermes_home, std::path::MAIN_SEPARATOR);
+    let config_content = std::fs::read_to_string(&config_path).unwrap_or_default();
+
+    if config_content.contains("api_server:") && config_content.contains("api_key") {
+        return; // 已配置
+    }
+
+    let pool = {
+        let state = app.state::<crate::AppState>();
+        state.db_pool.clone()
+    };
+
+    let existing_key: Option<String> = sqlx::query_scalar::<_, String>(
+        "SELECT value FROM app_config WHERE key = 'hermes_api_key'"
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten();
+
+    let api_key = match existing_key {
+        Some(k) if !k.is_empty() => k,
+        _ => {
+            let generated = format!("desktop-{}", chrono::Utc::now().timestamp_millis());
+            let _ = sqlx::query(
+                "INSERT OR REPLACE INTO app_config (key, value) VALUES ('hermes_api_key', ?)"
+            )
+            .bind(&generated)
+            .execute(&pool)
+            .await;
+            generated
+        }
+    };
+
+    if let Err(e) = hermes_config_set("platforms.api_server.api_key", &api_key) {
+        log::warn!("Failed to set api_server.api_key via hermes config set: {}", e);
+    } else {
+        let _ = write_env_value("API_SERVER_KEY", &api_key);
+        log::info!("api_server.api_key configured for v0.15.1+ compatibility");
+    }
 }

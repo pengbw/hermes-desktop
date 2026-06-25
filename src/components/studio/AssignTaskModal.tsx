@@ -65,6 +65,8 @@ export default function AssignTaskModal({
   const handleAssign = async () => {
     if (!assignee) return;
     setLoading(true);
+    // await assign_task：后端会先 UPDATE 任务为 running，再 spawn auto_delegate_chat
+    // （AI 执行耗时不阻塞），因此 invoke 会快速返回，弹窗可立即关闭
     try {
       await invoke("assign_task", {
         taskId,

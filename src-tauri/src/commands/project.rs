@@ -1008,6 +1008,22 @@ pub async fn create_empty_project(app: AppHandle, req: db::CreateEmptyProjectReq
 
     let _ = record_activity(&app, &id, None, "project_created", Some("project"), Some(&id), "创建自定义项目").await;
 
+    // 自动创建默认主流程组，确保自定义项目可立即在工作流设计器中使用
+    let group_id = uuid::Uuid::new_v4().to_string();
+    let group_sort: i64 = 1;
+    sqlx::query(
+        "INSERT INTO project_workflow_groups (id, project_id, name, is_primary, is_valid, parent_group_id, sort_order, created_at, updated_at) VALUES (?, ?, ?, 1, 1, NULL, ?, ?, ?)"
+    )
+    .bind(&group_id)
+    .bind(&id)
+    .bind("主流程")
+    .bind(group_sort)
+    .bind(now)
+    .bind(now)
+    .execute(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
     Ok(db::Project {
         id,
         name: req.name,

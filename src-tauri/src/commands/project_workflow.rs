@@ -1197,6 +1197,11 @@ pub async fn assign_task(
     let pool = get_pool(&app)?;
     let now = chrono::Utc::now().timestamp_millis();
 
+    // 归一化：空字符串视为无流程（与前端 selectedGroupId || undefined 对齐）
+    let workflow_group_id = workflow_group_id.and_then(|s| {
+        if s.is_empty() { None } else { Some(s) }
+    });
+
     // 更新任务状态为 running，设置受理人和流程组
     sqlx::query(
         "UPDATE project_tasks SET assignee = ?, status = 'running', workflow_group_id = ?, started_at = ?, updated_at = ? WHERE id = ?"
@@ -1224,7 +1229,8 @@ pub async fn assign_task(
         let initial_message = message.unwrap_or_else(|| "请开始你的工作".to_string());
         let _ = start_workflow_run(app.clone(), project_id.clone(), initial_message, Some(gid.clone()), Some(task_id.clone())).await;
     } else {
-        // 无流程模式：直接调用 auto_delegate_chat
+        // 无流程模式：异步触发 auto_delegate_chat，让 assign_task 立即返回
+        // （AI 执行可能耗时数十秒~数分钟，不应阻塞前端 invoke）
         let task_info: Option<(String, String)> = sqlx::query_as(
             "SELECT title, body FROM project_tasks WHERE id = ?"
         )
@@ -1236,15 +1242,22 @@ pub async fn assign_task(
         if let Some((title, _body)) = task_info {
             let context_msg = message.unwrap_or_else(|| format!("请完成以下任务：{}", title));
             let event_id = format!("assign_task_{}_{}", project_id, task_id);
-            let _ = auto_delegate_chat(
-                app.clone(),
-                project_id.clone(),
-                "builtin_user".to_string(),
-                assignee.clone(),
-                context_msg,
-                event_id,
-                Some(task_id.clone()),
-            ).await;
+            // 后台执行，不阻塞 assign_task 返回
+            let app_clone = app.clone();
+            let project_id_clone = project_id.clone();
+            let assignee_clone = assignee.clone();
+            let task_id_clone = task_id.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = auto_delegate_chat(
+                    app_clone,
+                    project_id_clone,
+                    "builtin_user".to_string(),
+                    assignee_clone,
+                    context_msg,
+                    event_id,
+                    Some(task_id_clone),
+                ).await;
+            });
         }
     }
 

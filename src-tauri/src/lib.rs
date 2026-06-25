@@ -4,7 +4,7 @@ mod database;
 mod services;
 
 use commands::helpers::{
-    hermes_command, ensure_gateway_config, kill_hermes_process,
+    hermes_command, ensure_gateway_config, ensure_api_server_key_async, kill_hermes_process,
     show_error_dialog, sync_api_keys_to_hermes_env, sync_hermes_providers_to_db,
     sync_providers_to_hermes_config,
     AppState, AgentProcess, home_dir, hermes_home_dir, path_with_local_bin, get_ssl_cert_file,
@@ -182,6 +182,8 @@ pub fn run() {
                     sync_hermes_providers_to_db(&handle).await;
                     sync_api_keys_to_hermes_env(&handle).await;
                     sync_providers_to_hermes_config(&handle).await;
+                    // v0.15.1+ 兼容：补全 api_server.api_key（需 DB 访问，必须在 async 上下文）
+                    ensure_api_server_key_async(&handle).await;
                 });
 
                 kill_hermes_process();
